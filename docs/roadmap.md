@@ -31,9 +31,9 @@ All open questions across the docs are resolved (see
 Use the homectl **`scaffold-new-app`** skill, but trimmed: **no `frontend/`**,
 no homectl-auth in v1. Lay out `backend/src/{config,db,discord,agent,tools,youtube,llm,scheduler}`,
 `migrations/`, plus `Dockerfile`, `docker-compose.yml`, `k8s/deployment.yml`,
-`.github/workflows/{ci.yaml,deploy.yml}`, `.env.example`, `.npmrc.example` from
-the templates. Adopt the Zod env + pg/Kysely + migrations-at-boot + `/health`
-patterns.
+`.github/workflows/{ci.yml,deploy.yml}`, `.env.example`, `.env.development`,
+`.npmrc.example` from the templates. Adopt the Zod env + pg/Kysely +
+migrations-at-boot + `/health` patterns.
 - Skills: `scaffold-new-app`, `add-postgres-database`, `local-dev-stack`.
 
 ### 2. Onboard infrastructure
@@ -79,7 +79,7 @@ web dashboard — the point at which **homectl-auth** is integrated (the
 - **Scheduler:** in-process `node-cron`, polling for due work (no durable job table in v1).
 - **History retention:** retain full chat history in v1; roll-up before household.
 - **Budget granularity:** per-user; YouTube cost attributed to the owner.
-- **Household YouTube digest:** deferred; future direction is a second connected account.
+- **Household YouTube digest:** YouTube stays a single owner-connected account permanently — household members share the owner's digest; no second account, no per-user YouTube fan-out.
 - **Resource limits:** keep 384Mi/768Mi; revisit on OOMKills.
 - **Alerting:** Discord-only in v1.
 

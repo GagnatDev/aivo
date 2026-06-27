@@ -186,7 +186,7 @@ A trimmed homectl monorepo — backend-only:
 - `backend/` — `src/{config,db,discord,agent,tools,youtube,llm,scheduler}`,
   `migrations/*.sql`
 - `Dockerfile`, `docker-compose.yml` (local Postgres + the service)
-- `k8s/deployment.yml`, `.github/workflows/{ci.yaml,deploy.yml}`
+- `k8s/deployment.yml`, `.github/workflows/{ci.yml,deploy.yml}`
 - `.env.example`, `.env.development` (local, no real secrets), `.npmrc.example`
 - `docs/` (these files)
 

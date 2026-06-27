@@ -6,7 +6,11 @@ architecture decisions (Node 24 + Express, `pi.dev`, storage, auth, deployment, 
 it slots into `homectl-infra` / `homectl-auth`) are deliberately deferred to a separate
 technical pass.
 
-> Status: concept locked for review. Phase planning to follow.
+> Status: **concept locked**; the technical pass is complete and decisions are locked.
+> Companion docs: [`data-model.md`](data-model.md),
+> [`technical-overview.md`](technical-overview.md), [`deployment.md`](deployment.md),
+> and the [`roadmap.md`](roadmap.md). This doc remains concept-only by design — see
+> those for the resolved technical decisions.
 
 ## Core identity
 
@@ -159,11 +163,21 @@ many tokens, at what model price, how often.**
   (browsing/feedback history); Discovery lane (interest-based official search only; scraping
   ruled out) per the constraints above.
 
-## Open items deferred (by request)
+## Open items — now resolved in the technical pass
 
-- Technical stack (Node 24 + Express, `pi.dev`), data storage, auth, deployment, and how
-  this slots into `homectl-infra` / `homectl-auth` — to be planned in a separate technical
-  pass.
-- Exact budget figures and per-task cost numbers — depend on the chosen inference
-  provider/model; pinned down in the technical pass. All cost-control mechanisms above are
+These were deferred when this concept was written and have since been settled in the
+companion docs:
+
+- Technical stack, data storage, auth, deployment, and how this slots into
+  `homectl-infra` / `homectl-auth` — resolved in
+  [`technical-overview.md`](technical-overview.md), [`data-model.md`](data-model.md), and
+  [`deployment.md`](deployment.md). (Net: a single long-running Node 24 / TypeScript
+  service, Discord-only, shared homectl Postgres, no homectl-auth in v1.)
+- Exact budget figures and per-task cost numbers — still depend on the chosen inference
+  provider/model and are set in chat at runtime; all cost-control mechanisms above remain
   provider-agnostic.
+
+> **YouTube remains a single-account capability — permanently.** Even after household
+> members are added (phase 3), the digest is driven by the one owner-connected YouTube
+> account; there is no per-user YouTube fan-out or second connected account. Other
+> capabilities (memory, reminders, mail) are per-person.

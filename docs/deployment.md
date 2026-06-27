@@ -197,9 +197,9 @@ grow.
 ## CI/CD
 
 Standard homectl pipeline using the templates
-(`homectl-reference/templates/github-workflows/{ci.yaml,deploy.yml}`):
+(`homectl-reference/templates/github-workflows/{ci.yml,deploy.yml}`):
 
-- **CI (`ci.yaml`):** install (with GitHub Packages token), typecheck, test, build
+- **CI (`ci.yml`):** install (with GitHub Packages token), typecheck, test, build
   image on PRs/main.
 - **Deploy (`deploy.yml`):** on green CI on main → build → push to
   `rg.fr-par.scw.cloud/homectl/aivo:<sha>` → `kubectl apply` of `k8s/deployment.yml`

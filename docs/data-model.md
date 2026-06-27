@@ -37,7 +37,7 @@ erDiagram
   users ||--o{ profiles : has
   users ||--o{ conversations : has
   conversations ||--o{ messages : contains
-  users ||--o{ digests : "receives (owner only in v1)"
+  users ||--o{ digests : "receives (owner only)"
   digests ||--o{ digest_items : contains
   videos ||--o{ digest_items : appears_in
   youtube_account ||--o{ youtube_channels : subscribes_to
@@ -71,12 +71,13 @@ Per-user, chat-editable knobs (one row per user).
 
 - `user_id` uuid pk → users
 - `digest_hour` int default 7, `timezone` text default `Europe/Oslo`
-- `digest_cap` int default 8 — ranked picks cap (~8–10)
+- `digest_cap` int default 8 — ranked picks cap; chat-adjustable within the concept's
+  ~8–10 range (default sits at the low end)
 - `model_tier` text default `auto` — `auto` | `cheap` | `premium` (the chat
   override "use the cheap model for everything this week")
 - `persona_prompt` text null — editable system-prompt addendum ("be more casual")
 - `proactivity` jsonb — which proactive lanes are enabled (digest, reminders)
-- `updated_at` timestamptz
+- `created_at`, `updated_at` timestamptz
 
 ### `memories`
 The persistent, **inspectable** memory ("what do you remember about me?" /
@@ -106,9 +107,10 @@ evolution is traceable.
 - `is_current` boolean — exactly one current per (user, kind)
 - `created_at`
 
-> `kind=youtube_interest` is **owner-scoped** in v1: exactly one current row, owned
-> by the `is_owner` user (YouTube is a single-account capability). `mail_importance`
-> (phase 2) may legitimately be per-user, which is why this table stays user-keyed.
+> `kind=youtube_interest` is **owner-scoped (permanent)**: exactly one current row,
+> owned by the `is_owner` user (YouTube is a single-account capability and stays that
+> way). `mail_importance` (phase 2) may legitimately be per-user, which is why this
+> table stays user-keyed.
 
 ### `conversations` / `messages`
 Chat context per channel, enough to give the agent memory of the running thread
@@ -116,7 +118,8 @@ and to attribute spend.
 
 `conversations`
 - `id` uuid pk, `user_id` uuid → users
-- `channel` text — `chat` | `youtube` | `mail` | `dm`
+- `channel` text — `chat` | `youtube` | `mail` (the per-capability channels from
+  [`concept.md`](concept.md); `mail` is phase 2)
 - `discord_channel_id` text
 - `created_at`, `last_message_at`
 
@@ -126,12 +129,15 @@ and to attribute spend.
 - `discord_message_id` text null — links assistant output to a Discord message
   (needed to attach reaction buttons / edit later)
 - `content` text
-- `tokens_in` int, `tokens_out` int null
+- `tokens_in` int null, `tokens_out` int null — denormalized convenience copy for
+  showing per-message size in context; **`llm_usage` is the authoritative cost/token
+  ledger** (these may be null, e.g. inbound user messages, and must never be summed for
+  billing)
 - `created_at`
 
 ### `youtube_account`
 The **single connected YouTube account** whose subscriptions feed the digest.
-Exactly one row in v1 — YouTube is a single-account, owner-scoped capability, not
+Always exactly one row — YouTube is a single-account, owner-scoped capability, not
 a per-user one (only the connected account exists; there is no per-user fan-out).
 
 - `id` smallint pk default 1 — singleton guard (one row)
@@ -168,7 +174,8 @@ Candidate videos discovered from subscriptions, carrying both filter stages.
 - `published_at` timestamptz, `thumbnail_url` text
 - `stage1_score` real null, `stage1_at` timestamptz null
 - `transcript_status` text — `none` | `fetched` | `unavailable`
-- `stage2_decision` text null — `keep` | `reject`
+- `stage2_decision` text null — `pick` | `reject` (same vocabulary as
+  `digest_items.kind`; see the terminology note in [Cross-cutting notes](#cross-cutting-notes))
 - `summary` text null — the 2–3 bullet TL;DW (from stage-2 transcript)
 - `why` text null — one-line "why you're seeing this"
 - `created_at`
@@ -177,7 +184,7 @@ Candidate videos discovered from subscriptions, carrying both filter stages.
 A digest run and its entries. `digest_items` distinguishes **picks** from the
 **rejected list** (with reasons) that drives cold-start boundary calibration.
 
-> Owner-scoped in v1: the YouTube lane (`digests`, `digest_items`, and the
+> Owner-scoped (permanent): the YouTube lane (`digests`, `digest_items`, and the
 > `feedback` drawn from them) always references the `is_owner` user. The `user_id`
 > column is kept for schema uniformity, not because YouTube fans out per user.
 
@@ -186,7 +193,8 @@ A digest run and its entries. `digest_items` distinguishes **picks** from the
 - `run_date` date, `status` text — `pending` | `delivered` | `skipped_budget`
 - `covers_since` timestamptz — watermark of "new since last digest"
 - `delivered_at` timestamptz null
-- `token_cost_cents` int default 0
+- `cost_cents` numeric(12,4) default 0 — fractional cents, summed from this run's
+  `llm_usage` rows (see the cents-precision note in [Cross-cutting notes](#cross-cutting-notes))
 
 `digest_items`
 - `id` uuid pk, `digest_id` uuid → digests, `video_id` text → videos
@@ -223,7 +231,8 @@ Per-call cost ledger — the basis for budget caps, alerts, and usage reports.
 - `task_type` text — `chat` | `stage1_rank` | `stage2_summary` | `onboarding` |
   `mail_classify` (phase 2)
 - `model` text, `tokens_in` int, `tokens_out` int
-- `cost_cents` real
+- `cost_cents` numeric(12,4) — fractional cents (a single cheap call can cost a
+  fraction of a cent); see the cents-precision note in [Cross-cutting notes](#cross-cutting-notes)
 - `created_at` timestamptz
 - indexed on (`user_id`, `created_at`) for daily/monthly rollups
 
@@ -231,14 +240,26 @@ Per-call cost ledger — the basis for budget caps, alerts, and usage reports.
 Per-user budget settings (one row per user).
 
 - `user_id` uuid pk → users
-- `monthly_ceiling_cents` int — hard ceiling
-- `daily_soft_cap_cents` int null
-- `alert_thresholds` jsonb default `[50,80,100]`
-- `degradation_state` text — `normal` | `cheap_models` | `proactive_paused`
-- `updated_at`
+- `monthly_ceiling_cents` int — hard ceiling (whole cents)
+- `daily_soft_cap_cents` int null — whole cents
+- `approval_threshold_cents` int null — the per-request approval gate: a single
+  on-demand request whose **estimated** cost exceeds this is confirmed before running
+  (concept's "approval gate for expensive one-offs"); null disables the gate
+- `alert_thresholds` jsonb default `[50,80,100]` — percent-of-ceiling alert points
+- `degradation_state` text — `normal` | `cheap_models` | `proactive_paused` |
+  `over_ceiling` (see the degradation note below)
+- `created_at`, `updated_at`
 
 > Daily/month-to-date spend is **derived** from `llm_usage` (a view or rollup),
 > not stored, so reports and threshold checks can't drift from the ledger.
+
+> **`degradation_state` ↔ concept stages.** `alert_thresholds` only *notify*; the
+> state machine is what changes behavior: `normal` → `cheap_models` (drop to cheaper
+> models + shorter summaries, triggered around the daily soft cap / upper alert
+> thresholds) → `proactive_paused` (pause digests + other proactive work) →
+> `over_ceiling` (monthly hard ceiling reached: keep answering direct chat only, with
+> an "over budget" note, per the concept's "never goes fully dark"). The exact
+> threshold→state thresholds are app config, not stored per-row.
 
 ## Cross-cutting notes
 
@@ -250,7 +271,7 @@ Per-user budget settings (one row per user).
   singleton; `youtube_channels`/`videos` are a shared cache with no `user_id`; the
   interest profile, digest, and feedback belong to the `is_owner` user. App code
   enforces the owner invariant — the per-user identity model deliberately does
-  **not** extend to YouTube in v1.
+  **not** extend to YouTube (permanently, not just in v1).
 - **No FKs to YouTube ids across user data** beyond the cache tables; the video
   cache can be pruned independently of digests (keep `videos` rows referenced by
   any `digest_item`).
@@ -258,6 +279,16 @@ Per-user budget settings (one row per user).
   (`status`) keep the agent's actions auditable and reversible.
 - **pgvector is optional** — only add the `embedding` column + extension if we
   decide semantic memory recall beats keyword/recency retrieval in v1.
+- **Decision vocabulary (two distinct layers).** The *system's* relevance verdict is
+  `pick | reject` (`videos.stage2_decision`, `digest_items.kind`). The *user's*
+  feedback on a delivered item is `keep | drop` (`feedback.signal`, matching the
+  concept's buttons) plus `too_long | wrong_topic | freeform`. "pick/reject" = what the
+  agent decided; "keep/drop" = whether you agreed. Don't mix the two sets.
+- **Money is fractional cents in the ledger, whole cents in caps.** Per-call/per-run
+  costs (`llm_usage.cost_cents`, `digests.cost_cents`) are `numeric(12,4)` so a
+  sub-cent call isn't rounded to zero. User-facing limits (`monthly_ceiling_cents`,
+  `daily_soft_cap_cents`, `approval_threshold_cents`) are whole-cent `int`. Checks sum
+  the fractional ledger and compare against the integer cap; round only at display.
 
 ## Decisions (locked)
 
@@ -271,7 +302,10 @@ Per-user budget settings (one row per user).
   owner in v1; members get their own caps when household lands. Shared YouTube digest
   cost is attributed to the owner (consistent with YouTube being owner-scoped). No
   schema change needed.
-- **Household YouTube digest (deferred, direction set):** v1 is the single
-  owner-connected account only. If a member later wants their own digest, they
-  connect a **second** account (multiple `youtube_account` rows, lifting the
-  singleton guard) — not a per-user filter over the shared subscription firehose.
+- **YouTube stays single-account (permanent):** the digest is always driven by the
+  one owner-connected account — there is no plan to add a second connected account or
+  per-user YouTube fan-out, even after household lands. This is why `youtube_account`
+  is a permanent singleton and `youtube_channels`/`videos` carry no account id: there
+  is only ever one subscription firehose to cache. Household members share the owner's
+  digest (or simply don't use the YouTube lane); their per-user data is memory,
+  reminders, conversations, settings, budget, and the phase-2 mail profile.
