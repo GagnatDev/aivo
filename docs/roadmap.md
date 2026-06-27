@@ -1,6 +1,6 @@
 # aivo — Roadmap / Next Steps (Draft)
 
-> Status: **draft for review**. Ties together [`concept.md`](concept.md) and the
+> Status: **reviewed — decisions locked**. Ties together [`concept.md`](concept.md) and the
 > technical pass ([`data-model.md`](data-model.md),
 > [`technical-overview.md`](technical-overview.md),
 > [`deployment.md`](deployment.md)). Each build step maps to a homectl-reference
@@ -9,7 +9,7 @@
 ## Where we are
 
 - Concept locked ([`concept.md`](concept.md)).
-- Technical pass drafted (this set of docs) — **needs your review**.
+- Technical pass reviewed; open questions resolved (see [Decisions (locked)](#decisions-locked)).
 - No code, no infra yet.
 
 ## Sequence
@@ -23,10 +23,9 @@ flowchart TD
   p4 --> p5["5. Phase 3: household + web dashboard"]
 ```
 
-### 0. Review + lock the technical pass (now)
-Resolve the open questions across the three docs — notably: pgvector in v1?,
-YouTube OAuth callback option A vs B, transcript source, in-process scheduler.
-Lock decisions before scaffolding.
+### 0. Review + lock the technical pass — done
+All open questions across the docs are resolved (see
+[Decisions (locked)](#decisions-locked)). Ready to scaffold.
 
 ### 1. Scaffold the repo (backend-only)
 Use the homectl **`scaffold-new-app`** skill, but trimmed: **no `frontend/`**,
@@ -71,16 +70,20 @@ web dashboard — the point at which **homectl-auth** is integrated (the
 `users.auth_sub` seam is already reserved). Optionally revisit the Discovery lane
 (official interest-based search only; scraping ruled out).
 
-## Decisions still open (carried from the docs)
+## Decisions (locked)
 
-- Semantic memory (pgvector) in v1 or later.
-- YouTube OAuth callback: ingress (option A) vs local one-time consent (option B).
-- Transcript source + reliability for stage 2.
-- LLM SDK / tool-calling framework choice.
-- In-process scheduler vs durable job table.
+- **Semantic memory:** simple category/recency/keyword retrieval in v1; pgvector deferred.
+- **YouTube OAuth callback:** option A — minimal ingress at `aivo.homectl.no`.
+- **Transcript source:** transcript library + metadata-only fallback for missing tracks (ToS-gray; revisit).
+- **LLM SDK:** official OpenAI SDK via `LLM_BASE_URL`, hidden behind the `llm/` provider interface; in-house tool-calling.
+- **Scheduler:** in-process `node-cron`, polling for due work (no durable job table in v1).
+- **History retention:** retain full chat history in v1; roll-up before household.
+- **Budget granularity:** per-user; YouTube cost attributed to the owner.
+- **Household YouTube digest:** deferred; future direction is a second connected account.
+- **Resource limits:** keep 384Mi/768Mi; revisit on OOMKills.
+- **Alerting:** Discord-only in v1.
 
 ## Suggested immediate action
 
-Review the three technical docs, mark the open questions, and confirm scope for
-step 1 (scaffold). Once locked, the scaffold + infra onboarding can proceed as a
-single focused work session.
+Decisions are locked. Proceed to step 1 (scaffold the backend-only repo); the
+scaffold + infra onboarding can run as a single focused work session.

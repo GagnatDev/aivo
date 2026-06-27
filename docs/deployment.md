@@ -1,6 +1,6 @@
 # aivo — Deployment Architecture (Draft)
 
-> Status: **draft for review** (technical pass). Companion to
+> Status: **reviewed — decisions locked** (technical pass). Companion to
 > [`concept.md`](concept.md), [`technical-overview.md`](technical-overview.md),
 > and [`data-model.md`](data-model.md). Follows the homectl-reference platform
 > conventions; **all infra is Terraform-managed in `homectl-infra` — never create
@@ -175,7 +175,7 @@ Two options for the one inbound need (YouTube OAuth consent → refresh token):
   token into `aivo-secrets`. Simpler infra, but manual re-auth if the token is
   revoked.
 
-Recommendation: **A** — it's the standard homectl shape and unblocks a future web
+**Decided: option A** — it's the standard homectl shape and unblocks a future web
 dashboard, at the cost of one Ingress object.
 
 ## Scheduling: in-process vs k8s CronJob
@@ -190,7 +190,9 @@ The daily digest (~07:00 local) and reminder delivery need a timer.
   needs an internal trigger endpoint and duplicates config/secrets; overkill for a
   singleton.
 
-Recommendation: **in-process**, revisit only if scheduling needs grow.
+**Decided: in-process** (`node-cron`, polling for due work — see
+[`technical-overview.md`](technical-overview.md)); revisit only if scheduling needs
+grow.
 
 ## CI/CD
 
@@ -223,10 +225,13 @@ last-line guard the concept calls for.
 - **Backups:** rely on the shared Postgres instance's backup policy in
   `homectl-infra`; aivo holds the only durable state (no bucket).
 
-## Open questions
+## Decisions (locked)
 
-- Confirm option A vs B for the YouTube OAuth callback / ingress.
-- Resource limits: is 384Mi/768Mi enough headroom for transcript + LLM payload
-  handling, or bump memory?
-- Do we want a separate low-traffic alert path (e.g. budget 100% hit) beyond the
-  Discord message itself?
+- **YouTube OAuth callback:** option A — keep the minimal ingress at
+  `aivo.homectl.no` (see "Do we even need the ingress?" above).
+- **Resource limits:** keep `requests 384Mi` / `limit 768Mi` for v1 — fine for one
+  user's throughput. Revisit only on observed OOMKills (long transcripts are already
+  truncated/chunked per the concept, capping the worst case).
+- **Alerting:** Discord message only in v1 — the bot pings you in-channel for budget
+  thresholds; process-down cases rely on the k8s restart + gateway reconnect. No
+  separate external alert path yet.

@@ -1,6 +1,6 @@
 # aivo — Technical Overview (Draft)
 
-> Status: **draft for review** (technical pass). Companion to
+> Status: **reviewed — decisions locked** (technical pass). Companion to
 > [`concept.md`](concept.md), [`data-model.md`](data-model.md), and
 > [`deployment.md`](deployment.md). Drawn from the homectl-reference platform
 > docs and the canonical `workbench` app.
@@ -136,7 +136,10 @@ flowchart LR
 
 ### LLM provider abstraction (cost control lives here)
 A thin provider interface that every LLM call goes through, implementing the
-concept's first-class cost controls:
+concept's first-class cost controls. Implemented with the **official OpenAI SDK
+pointed at `LLM_BASE_URL`** (OpenAI-compatible endpoints) and wrapped so the
+provider/model can be swapped without touching callers; tool-calling is
+orchestrated in-house against this interface (no heavier agent framework):
 
 - **Model tiering** — cheap model for stage-1 ranking / classification; premium
   only for TL;DW summaries + real conversation; chat-overridable.
@@ -193,12 +196,20 @@ A trimmed homectl monorepo — backend-only:
 test Discord guild with a dev `DISCORD_BOT_TOKEN`. Use the cheap model tier and a
 tiny budget for local runs. No auth service is needed (Discord identity only).
 
-## Open questions
+## Decisions (locked)
 
-- LLM SDK choice and whether to use a framework for tool-calling or hand-roll it.
-- Transcript source (official captions vs a transcript library) and its
-  reliability/ToS posture for stage 2.
-- YouTube subscriptions need user OAuth (not just an API key) — confirm the
-  one-time consent flow (local callback vs the `aivo.homectl.no` ingress route).
-- Is `node-cron` in-process sufficient, or do we want a small durable job table to
-  survive restarts cleanly? (Leaning in-process + the `digests` watermark.)
+- **LLM SDK:** the official OpenAI SDK, pointed at `LLM_BASE_URL` (OpenAI-compatible
+  endpoints), wrapped behind the `llm/` provider interface so the provider/model can
+  be swapped without touching callers. Tool-calling is orchestrated in-house against
+  that interface — no heavier agent framework.
+- **Transcript source:** a transcript library (auto-generated/uploaded caption track
+  for any public video) with a metadata-only fallback — when no track exists, set
+  `videos.transcript_status = unavailable` and summarize from title/description at
+  lower confidence rather than dropping the video. This is the unofficial/ToS-gray
+  path flagged in the concept; revisit if it proves fragile.
+- **YouTube OAuth:** keep a minimal ingress at `aivo.homectl.no` so the OAuth
+  `redirect_uri` resolves in-cluster (option A in [`deployment.md`](deployment.md)).
+- **Scheduler:** in-process `node-cron`, **polling-based** — tick ~every minute and
+  query for due work (reminders where `status = pending AND due_at <= now`, and the
+  `digests.run_date` watermark) rather than holding per-item in-memory timers, so the
+  brief `Recreate` downtime self-heals on the next tick. No durable job table in v1.

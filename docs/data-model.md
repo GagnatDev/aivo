@@ -1,6 +1,6 @@
 # aivo — Data Model (Draft)
 
-> Status: **draft for review** (technical pass). Companion to
+> Status: **reviewed — decisions locked** (technical pass). Companion to
 > [`concept.md`](concept.md), [`technical-overview.md`](technical-overview.md),
 > and [`deployment.md`](deployment.md). Nothing here is built yet — this is a
 > proposed schema to react to.
@@ -259,15 +259,19 @@ Per-user budget settings (one row per user).
 - **pgvector is optional** — only add the `embedding` column + extension if we
   decide semantic memory recall beats keyword/recency retrieval in v1.
 
-## Open questions
+## Decisions (locked)
 
-- Do we want semantic memory (pgvector) in v1, or start with simple
-  category/recency retrieval and add embeddings later?
-- Should `conversations`/`messages` retain full history indefinitely, or roll up
-  old threads into `memories` and prune (cost + privacy)?
-- Per-user vs per-household budget: v1 is one user, but `budget_config` is keyed
-  per user — confirm that's the right granularity when household lands.
-- If a household member ever wants their own YouTube digest, do they connect a
-  second account (multiple `youtube_account` rows) or filter the shared
-  subscription firehose into a per-user profile/digest? Deferred — v1 is the
-  single owner-connected account only.
+- **Semantic memory:** start simple — category + recency + keyword retrieval in v1.
+  The `memories.embedding` column stays reserved; add the pgvector extension +
+  backfill only if recall quality demands it later.
+- **History retention:** retain full `conversations`/`messages` history in v1
+  (trivial volume for one user, aids early debugging of the agent). Add roll-up into
+  `memories` + pruning before household lands.
+- **Budget granularity:** per-user as designed — one `budget_config` row for the
+  owner in v1; members get their own caps when household lands. Shared YouTube digest
+  cost is attributed to the owner (consistent with YouTube being owner-scoped). No
+  schema change needed.
+- **Household YouTube digest (deferred, direction set):** v1 is the single
+  owner-connected account only. If a member later wants their own digest, they
+  connect a **second** account (multiple `youtube_account` rows, lifting the
+  singleton guard) — not a per-user filter over the shared subscription firehose.
