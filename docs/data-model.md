@@ -17,6 +17,13 @@
   user id. We keep a nullable `auth_sub` column so homectl-auth (and a later web
   dashboard) can attach without a migration — this is the same JIT-user seam
   `workbench` uses, minus the OAuth flow for now.
+- **YouTube is single-account, owner-scoped — not per-user.** Unlike memory,
+  reminders, conversations, settings, and budget (all per-user / household-ready),
+  the YouTube capability is one connected account (one OAuth token, one
+  subscription firehose) whose digest belongs to the `is_owner` user. The data
+  layer (`youtube_account`, `youtube_channels`, `videos`) carries no `user_id`;
+  the output layer (`youtube_interest` profile, `digests`, related `feedback`) is
+  the owner's. There is no per-user subscriptions join.
 - **Conventions:** `snake_case` columns, `uuid` primary keys (server-generated)
   except where an external id is the natural key, `timestamptz` everywhere,
   `created_at` / `updated_at` on mutable rows. JSON payloads validated with Zod
@@ -30,9 +37,10 @@ erDiagram
   users ||--o{ profiles : has
   users ||--o{ conversations : has
   conversations ||--o{ messages : contains
-  users ||--o{ digests : receives
+  users ||--o{ digests : "receives (owner only in v1)"
   digests ||--o{ digest_items : contains
   videos ||--o{ digest_items : appears_in
+  youtube_account ||--o{ youtube_channels : subscribes_to
   youtube_channels ||--o{ videos : publishes
   digest_items ||--o{ feedback : draws
   users ||--o{ feedback : gives
@@ -40,8 +48,6 @@ erDiagram
   users ||--o{ llm_usage : incurs
   users ||--|| budget_config : configures
   users ||--|| settings : configures
-  users ||--o{ youtube_subscriptions : follows
-  youtube_channels ||--o{ youtube_subscriptions : followed_by
 ```
 
 ## Tables
@@ -100,6 +106,10 @@ evolution is traceable.
 - `is_current` boolean — exactly one current per (user, kind)
 - `created_at`
 
+> `kind=youtube_interest` is **owner-scoped** in v1: exactly one current row, owned
+> by the `is_owner` user (YouTube is a single-account capability). `mail_importance`
+> (phase 2) may legitimately be per-user, which is why this table stays user-keyed.
+
 ### `conversations` / `messages`
 Chat context per channel, enough to give the agent memory of the running thread
 and to attribute spend.
@@ -119,21 +129,35 @@ and to attribute spend.
 - `tokens_in` int, `tokens_out` int null
 - `created_at`
 
+### `youtube_account`
+The **single connected YouTube account** whose subscriptions feed the digest.
+Exactly one row in v1 — YouTube is a single-account, owner-scoped capability, not
+a per-user one (only the connected account exists; there is no per-user fan-out).
+
+- `id` smallint pk default 1 — singleton guard (one row)
+- `youtube_channel_id` text — the connected account's own channel id
+- `title` text
+- `connected_by_user_id` uuid null → users — the owner who linked it (attribution
+  only; the capability is account-scoped, not user-scoped)
+- `subscriptions_synced_at` timestamptz null — last subscription-list refresh
+- `videos_polled_at` timestamptz null — last new-video poll watermark
+- `created_at`, `updated_at`
+
+> The OAuth refresh token lives in `aivo-secrets` (see
+> [`deployment.md`](deployment.md)), **not** in the DB; this row is metadata +
+> sync watermarks only.
+
 ### `youtube_channels`
-Cache of subscribed channels (v1 is subscriptions-only).
+Cache of the connected account's channels. v1 is subscriptions-only, so every
+cached channel is (or was) a subscription of the single connected account.
 
 - `id` text pk — YouTube channel id
 - `title` text, `thumbnail_url` text
+- `subscribed` boolean default true — currently in the account's subscription list
+- `subscribed_at` timestamptz, `unsubscribed_at` timestamptz null — keep historical
+  channels (still referenced by old `videos`/`digest_items`) after an unsubscribe
 - `muted` boolean default false — from feedback ("stop showing me X channel")
 - `last_seen_at` timestamptz
-
-### `youtube_subscriptions`
-Which user follows which channel (join; supports per-person digests later).
-
-- `user_id` uuid → users
-- `channel_id` text → youtube_channels
-- `created_at`
-- pk (`user_id`, `channel_id`)
 
 ### `videos`
 Candidate videos discovered from subscriptions, carrying both filter stages.
@@ -152,6 +176,10 @@ Candidate videos discovered from subscriptions, carrying both filter stages.
 ### `digests` / `digest_items`
 A digest run and its entries. `digest_items` distinguishes **picks** from the
 **rejected list** (with reasons) that drives cold-start boundary calibration.
+
+> Owner-scoped in v1: the YouTube lane (`digests`, `digest_items`, and the
+> `feedback` drawn from them) always references the `is_owner` user. The `user_id`
+> column is kept for schema uniformity, not because YouTube fans out per user.
 
 `digests`
 - `id` uuid pk, `user_id` uuid → users
@@ -218,6 +246,11 @@ Per-user budget settings (one row per user).
   `feedback` → `profiles`/`memories` → next run's stage-1 ranking) is the whole
   point; the rejected list auto-tapers as agreement rises, which is a query over
   recent `feedback` agreement rate, not a stored flag.
+- **YouTube is a single connected account, owner-scoped.** `youtube_account` is a
+  singleton; `youtube_channels`/`videos` are a shared cache with no `user_id`; the
+  interest profile, digest, and feedback belong to the `is_owner` user. App code
+  enforces the owner invariant — the per-user identity model deliberately does
+  **not** extend to YouTube in v1.
 - **No FKs to YouTube ids across user data** beyond the cache tables; the video
   cache can be pruned independently of digests (keep `videos` rows referenced by
   any `digest_item`).
@@ -234,3 +267,7 @@ Per-user budget settings (one row per user).
   old threads into `memories` and prune (cost + privacy)?
 - Per-user vs per-household budget: v1 is one user, but `budget_config` is keyed
   per user — confirm that's the right granularity when household lands.
+- If a household member ever wants their own YouTube digest, do they connect a
+  second account (multiple `youtube_account` rows) or filter the shared
+  subscription firehose into a per-user profile/digest? Deferred — v1 is the
+  single owner-connected account only.
