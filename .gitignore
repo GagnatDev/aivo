@@ -1,0 +1,50 @@
+# Build output
+build/
+**/build/
+out/
+dist/
+
+# npm / Node
+node_modules/
+npm-debug.log*
+.pnpm-debug.log*
+.npm
+# .npmrc may hold a GitHub Packages token for @gagnatdev/* — never commit it.
+.npmrc
+
+*.tsbuildinfo
+*.local
+
+# Env (secrets: bot token, DB URL). Committed overlays are .env.development.
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / merge backups
+*.orig
+*~
+*.bak
+*.swp
+*.swo
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Test / coverage
+coverage/
+.nyc_output/
+*.lcov

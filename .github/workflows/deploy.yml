@@ -1,0 +1,70 @@
+# Build image, push to Scaleway registry, deploy to Kapsule.
+# Source pattern: workbench/.github/workflows/deploy.yml.
+# Required repo secrets (set during infra onboarding, roadmap step 2):
+# SCW_ACCESS_KEY, SCW_SECRET_KEY, SCW_ORGANIZATION_ID, SCW_PROJECT_ID, K8S_CLUSTER_ID.
+name: Deploy to Kubernetes
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-k8s-aivo
+  cancel-in-progress: true
+
+env:
+  IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+
+      - name: Build and push image
+        run: |
+          echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud \
+            -u nologin --password-stdin
+          docker build \
+            -t rg.fr-par.scw.cloud/homectl/aivo:${{ env.IMAGE_TAG }} \
+            -t rg.fr-par.scw.cloud/homectl/aivo:latest .
+          docker push rg.fr-par.scw.cloud/homectl/aivo:${{ env.IMAGE_TAG }}
+          docker push rg.fr-par.scw.cloud/homectl/aivo:latest
+
+  deploy:
+    needs: build
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+
+      - name: Setup Scaleway CLI and get kubeconfig
+        uses: scaleway/action-scw@v0
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-organization-id: ${{ secrets.SCW_ORGANIZATION_ID }}
+          default-project-id: ${{ secrets.SCW_PROJECT_ID }}
+          args: k8s kubeconfig install ${{ secrets.K8S_CLUSTER_ID }} region=fr-par
+
+      - name: Deploy to cluster
+        run: |
+          sed -i "s|\$IMAGE_TAG|${{ env.IMAGE_TAG }}|g" k8s/deployment.yml
+          kubectl apply -f k8s/deployment.yml
+          kubectl rollout status deployment/aivo -n homectl --timeout=300s

@@ -1,0 +1,8 @@
+# Only needed if aivo later adds a private @gagnatdev/* dependency (e.g. the
+# homectl-auth client, which arrives with the phase-3 web dashboard). The v1
+# Discord-only backend has no private deps, so this file is currently unused.
+# Copy to .npmrc (gitignored), then:
+#   1. Create a GitHub Personal Access Token with the `read:packages` scope.
+#   2. export GITHUB_TOKEN=ghp_xxx
+@gagnatdev:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}

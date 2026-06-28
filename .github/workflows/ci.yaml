@@ -1,0 +1,40 @@
+# CI (test + build) for aivo. Source pattern: workbench/.github/workflows/ci.yaml,
+# trimmed to the backend-only workspace (no frontend steps, no e2e job).
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Backend tests spin up Postgres via Testcontainers (no external services).
+      - name: Backend tests
+        run: pnpm --filter @aivo/backend run test
+
+      - name: Backend build
+        run: pnpm --filter @aivo/backend run build

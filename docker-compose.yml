@@ -1,0 +1,22 @@
+# Local dev stack. Source pattern: workbench/docker-compose.yml, trimmed to just
+# Postgres (aivo has no object-storage bucket in v1). The bot itself is run with
+# `pnpm dev` against a real Discord token from .env, not from compose.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aivo
+      POSTGRES_PASSWORD: aivo
+      POSTGRES_DB: aivo
+    ports:
+      - "5532:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aivo -d aivo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

@@ -1,0 +1,28 @@
+import { z } from "zod";
+
+// Validated at boot; fails fast on misconfiguration. v1 is Discord-only: identity
+// is the Discord user id, so there is no auth-service / OAuth config here (the
+// `users.auth_sub` seam is reserved for the phase-3 web dashboard).
+const EnvSchema = z.object({
+  NODE_ENV: z.string().default("development"),
+  PORT: z.coerce.number().int().positive().default(8080),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  LOG_LEVEL: z.string().optional(),
+
+  // Discord. The bot connects to one private guild; messages from other guilds
+  // (or from bots) are ignored. OWNER_DISCORD_USER_ID flags the is_owner user on
+  // just-in-time provisioning.
+  DISCORD_BOT_TOKEN: z.string().min(1, "DISCORD_BOT_TOKEN is required"),
+  DISCORD_APP_ID: z.string().min(1, "DISCORD_APP_ID is required"),
+  DISCORD_GUILD_ID: z.string().min(1, "DISCORD_GUILD_ID is required"),
+  OWNER_DISCORD_USER_ID: z.string().min(1, "OWNER_DISCORD_USER_ID is required"),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+/** Validate the environment. Throws (fail fast) on misconfiguration. */
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  return EnvSchema.parse(source);
+}
+
+export const env: Env = loadEnv();
