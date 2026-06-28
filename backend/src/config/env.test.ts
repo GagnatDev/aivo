@@ -33,4 +33,14 @@ describe("loadEnv", () => {
     void DATABASE_URL;
     expect(() => loadEnv(missing as NodeJS.ProcessEnv)).toThrow();
   });
+
+  it("accepts DISCORD_HOME_CHANNEL_ID when present", () => {
+    const env = loadEnv({ ...validEnv, DISCORD_HOME_CHANNEL_ID: "123456" } as NodeJS.ProcessEnv);
+    expect(env.DISCORD_HOME_CHANNEL_ID).toBe("123456");
+  });
+
+  it("leaves DISCORD_HOME_CHANNEL_ID undefined when absent", () => {
+    const env = loadEnv(validEnv as NodeJS.ProcessEnv);
+    expect(env.DISCORD_HOME_CHANNEL_ID).toBeUndefined();
+  });
 });

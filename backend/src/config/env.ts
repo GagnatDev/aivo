@@ -16,6 +16,9 @@ const EnvSchema = z.object({
   DISCORD_APP_ID: z.string().min(1, "DISCORD_APP_ID is required"),
   DISCORD_GUILD_ID: z.string().min(1, "DISCORD_GUILD_ID is required"),
   OWNER_DISCORD_USER_ID: z.string().min(1, "OWNER_DISCORD_USER_ID is required"),
+  // If set, Aivo responds freely only in this channel; elsewhere only on mention
+  // or reply to one of Aivo's messages.
+  DISCORD_HOME_CHANNEL_ID: z.string().min(1, "DISCORD_HOME_CHANNEL_ID is required"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

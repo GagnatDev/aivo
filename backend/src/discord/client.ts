@@ -63,9 +63,25 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
   };
 }
 
+async function isReplyToAivo(message: Message): Promise<boolean> {
+  const refId = message.reference?.messageId;
+  if (!refId) return false;
+  try {
+    const ref = await message.channel.messages.fetch(refId);
+    return ref.author.id === message.client.user?.id;
+  } catch {
+    return false;
+  }
+}
+
 async function onMessage(deps: HandleMessageDeps, message: Message): Promise<void> {
   if (message.author.bot) return;
   if (message.guildId !== env.DISCORD_GUILD_ID) return;
+
+  if (message.channelId !== env.DISCORD_HOME_CHANNEL_ID) {
+    const mentioned = message.mentions.has(message.client.user!);
+    if (!mentioned && !(await isReplyToAivo(message))) return;
+  }
 
   try {
     const result = await handleIncomingMessage(deps, normalize(message));
