@@ -21,6 +21,7 @@ export default defineConfig({
       DISCORD_APP_ID: "test-app",
       DISCORD_GUILD_ID: "test-guild",
       OWNER_DISCORD_USER_ID: "test-owner",
+      DISCORD_HOME_CHANNEL_ID: "test-home-channel",
     },
     coverage: {
       provider: "v8",

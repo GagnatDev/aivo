@@ -19,6 +19,11 @@ const EnvSchema = z.object({
   // If set, Aivo responds freely only in this channel; elsewhere only on mention
   // or reply to one of Aivo's messages.
   DISCORD_HOME_CHANNEL_ID: z.string().min(1, "DISCORD_HOME_CHANNEL_ID is required"),
+  // On startup Aivo catches up on messages it missed while offline (see
+  // discord/catchup.ts). When it answers a message older than this many minutes,
+  // it prefixes the reply with a short note that it was offline so the delay is
+  // explained. Set to 0 to acknowledge every caught-up message.
+  OFFLINE_ACK_THRESHOLD_MINUTES: z.coerce.number().int().nonnegative().default(15),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

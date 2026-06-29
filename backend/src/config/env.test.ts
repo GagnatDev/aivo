@@ -7,6 +7,7 @@ const validEnv = {
   DISCORD_APP_ID: "app",
   DISCORD_GUILD_ID: "guild",
   OWNER_DISCORD_USER_ID: "owner",
+  DISCORD_HOME_CHANNEL_ID: "home",
 };
 
 describe("loadEnv", () => {
@@ -39,8 +40,15 @@ describe("loadEnv", () => {
     expect(env.DISCORD_HOME_CHANNEL_ID).toBe("123456");
   });
 
-  it("leaves DISCORD_HOME_CHANNEL_ID undefined when absent", () => {
-    const env = loadEnv(validEnv as NodeJS.ProcessEnv);
-    expect(env.DISCORD_HOME_CHANNEL_ID).toBeUndefined();
+  it("throws when DISCORD_HOME_CHANNEL_ID is missing", () => {
+    const { DISCORD_HOME_CHANNEL_ID, ...missing } = validEnv;
+    void DISCORD_HOME_CHANNEL_ID;
+    expect(() => loadEnv(missing as NodeJS.ProcessEnv)).toThrow();
+  });
+
+  it("defaults OFFLINE_ACK_THRESHOLD_MINUTES to 15 and coerces it", () => {
+    expect(loadEnv(validEnv as NodeJS.ProcessEnv).OFFLINE_ACK_THRESHOLD_MINUTES).toBe(15);
+    const env = loadEnv({ ...validEnv, OFFLINE_ACK_THRESHOLD_MINUTES: "30" } as NodeJS.ProcessEnv);
+    expect(env.OFFLINE_ACK_THRESHOLD_MINUTES).toBe(30);
   });
 });

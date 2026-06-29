@@ -1,12 +1,9 @@
 import { Client, Events, GatewayIntentBits, type Message } from "discord.js";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
-import {
-  handleIncomingMessage,
-  recordAssistantReply,
-  type HandleMessageDeps,
-  type IncomingMessage,
-} from "./handleMessage.js";
+import { catchUpOnMissedMessages } from "./catchup.js";
+import type { HandleMessageDeps } from "./handleMessage.js";
+import { processAndReply, shouldRespond } from "./router.js";
 
 export interface DiscordGateway {
   client: Client;
@@ -15,22 +12,12 @@ export interface DiscordGateway {
   isReady: () => boolean;
 }
 
-/** Normalize a discord.js message to the plain shape the core operates on. */
-function normalize(message: Message): IncomingMessage {
-  return {
-    id: message.id,
-    authorId: message.author.id,
-    authorDisplayName: message.member?.displayName ?? message.author.username,
-    channelId: message.channelId,
-    content: message.content,
-  };
-}
-
 /**
  * Wire the discord.js gateway to the message core. On each guild message we
  * JIT-provision the user, persist the inbound message, reply with the ping-pong
  * stub, and persist the assistant reply linked to the sent message. Messages from
- * bots or from outside the configured guild are ignored.
+ * bots or from outside the configured guild are ignored. On connect we also catch
+ * up on anything sent while the process was offline (see discord/catchup.ts).
  */
 export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
   const client = new Client({
@@ -43,6 +30,9 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
 
   client.once(Events.ClientReady, (ready) => {
     logger.info({ tag: ready.user.tag }, "discord gateway ready");
+    void catchUpOnMissedMessages(deps, ready).catch((err) => {
+      logger.error(err, "catch-up on missed messages failed");
+    });
   });
 
   client.on(Events.MessageCreate, (message) => {
@@ -63,30 +53,10 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
   };
 }
 
-async function isReplyToAivo(message: Message): Promise<boolean> {
-  const refId = message.reference?.messageId;
-  if (!refId) return false;
-  try {
-    const ref = await message.channel.messages.fetch(refId);
-    return ref.author.id === message.client.user?.id;
-  } catch {
-    return false;
-  }
-}
-
 async function onMessage(deps: HandleMessageDeps, message: Message): Promise<void> {
-  if (message.author.bot) return;
-  if (message.guildId !== env.DISCORD_GUILD_ID) return;
-
-  if (message.channelId !== env.DISCORD_HOME_CHANNEL_ID) {
-    const mentioned = message.mentions.has(message.client.user!);
-    if (!mentioned && !(await isReplyToAivo(message))) return;
-  }
-
+  if (!(await shouldRespond(message))) return;
   try {
-    const result = await handleIncomingMessage(deps, normalize(message));
-    const sent = await message.reply(result.reply);
-    await recordAssistantReply(deps, result.conversationId, result.reply, sent.id);
+    await processAndReply(deps, message);
   } catch (err) {
     logger.error(err, "failed to handle discord message");
   }

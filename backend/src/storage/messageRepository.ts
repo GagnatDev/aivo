@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
 import type { MessageRole } from "../db/schema.js";
 
@@ -49,5 +50,36 @@ export class MessageRepository {
       .where("conversation_id", "=", conversationId)
       .orderBy("created_at", "asc")
       .execute();
+  }
+
+  /**
+   * The highest Discord message id Aivo has recorded, or null if none. This is the
+   * offline catch-up watermark: it marks the last message Aivo handled before going
+   * down — i.e. roughly when it was last online. Because Discord snowflakes are
+   * globally monotonic in time, anything newer than it (in any channel) was sent
+   * during the downtime, so it is a valid "after" cursor for every channel. Ordered
+   * by the snowflake as a bigint, since ids are not lexically comparable across
+   * widths.
+   */
+  async getLatestDiscordMessageId(): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("messages")
+      .select("discord_message_id")
+      .where("discord_message_id", "is not", null)
+      .orderBy(sql<string>`discord_message_id::bigint`, "desc")
+      .limit(1)
+      .executeTakeFirst();
+    return row?.discord_message_id ?? null;
+  }
+
+  /** Whether a message with this Discord id has already been recorded. */
+  async existsByDiscordMessageId(discordMessageId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("messages")
+      .select("id")
+      .where("discord_message_id", "=", discordMessageId)
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
   }
 }
