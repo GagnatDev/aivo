@@ -1,18 +1,12 @@
-import type { ConversationRepository } from "../storage/conversationRepository.js";
-import type { MessageRepository } from "../storage/messageRepository.js";
-import type { UserRepository } from "../storage/userRepository.js";
+import { runAgent } from "../agent/agent.js";
+import type { AgentDeps } from "../agent/deps.js";
 
 /**
  * The dependencies the message core needs, injected so the core stays free of
- * discord.js and is unit-testable against a real database.
+ * discord.js and is unit-testable against a real database + a fake LLM provider. This
+ * is the full AgentDeps (repos + LLM provider + owner id).
  */
-export interface HandleMessageDeps {
-  users: UserRepository;
-  conversations: ConversationRepository;
-  messages: MessageRepository;
-  /** Discord id of the owner; flags is_owner on JIT provisioning. */
-  ownerDiscordUserId: string;
-}
+export type HandleMessageDeps = AgentDeps;
 
 /** A Discord message normalized to the plain shape the core operates on. */
 export interface IncomingMessage {
@@ -29,18 +23,20 @@ export interface HandleMessageResult {
   reply: string;
   /** The conversation the exchange was recorded under. */
   conversationId: string;
-}
-
-/** Build the deterministic ping-pong stub reply (no LLM in this slice). */
-export function buildReply(content: string): string {
-  return `🏓 pong — you said: "${content}"`;
+  /**
+   * Set when the turn is gated pending the user's approval — the caller should post
+   * the reply with Approve/Cancel buttons rather than as a final answer.
+   */
+  pendingApprovalId?: string;
+  /** Set when a budget alert threshold was newly crossed this turn. */
+  alertPct?: number;
 }
 
 /**
  * Core inbound handler: JIT-provision the user, open/update the chat conversation,
- * persist the inbound message, and compute the reply. The caller is responsible
- * for actually sending the reply to Discord and then calling
- * {@link recordAssistantReply} with the sent message's id.
+ * persist the inbound message, then run the LLM-backed agent. The caller is
+ * responsible for sending the reply to Discord and then calling
+ * {@link recordAssistantReply} with the sent message's id (unless the turn is gated).
  */
 export async function handleIncomingMessage(
   deps: HandleMessageDeps,
@@ -52,11 +48,7 @@ export async function handleIncomingMessage(
     isOwner: msg.authorId === deps.ownerDiscordUserId,
   });
 
-  const conversation = await deps.conversations.getOrCreate(
-    user.id,
-    "chat",
-    msg.channelId,
-  );
+  const conversation = await deps.conversations.getOrCreate(user.id, "chat", msg.channelId);
 
   await deps.messages.insert({
     conversationId: conversation.id,
@@ -65,7 +57,19 @@ export async function handleIncomingMessage(
     discordMessageId: msg.id,
   });
 
-  return { reply: buildReply(msg.content), conversationId: conversation.id };
+  const result = await runAgent(deps, {
+    userId: user.id,
+    isOwner: user.is_owner,
+    conversationId: conversation.id,
+    triggerMessageId: msg.id,
+  });
+
+  return {
+    reply: result.reply,
+    conversationId: result.conversationId,
+    pendingApprovalId: result.pendingApprovalId,
+    alertPct: result.alertPct,
+  };
 }
 
 /** Persist the assistant reply after it has been sent to Discord. */

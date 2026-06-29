@@ -1,9 +1,9 @@
-import { Client, Events, GatewayIntentBits, type Message } from "discord.js";
+import { Client, Events, GatewayIntentBits, type Interaction, type Message } from "discord.js";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
-import type { HandleMessageDeps } from "./handleMessage.js";
-import { processAndReply, shouldRespond } from "./router.js";
+import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
+import { processAndReply, resolveApproval, shouldRespond } from "./router.js";
 
 export interface DiscordGateway {
   client: Client;
@@ -39,6 +39,10 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
     void onMessage(deps, message);
   });
 
+  client.on(Events.InteractionCreate, (interaction) => {
+    void onInteraction(deps, interaction);
+  });
+
   client.on(Events.Error, (err) => {
     logger.error(err, "discord client error");
   });
@@ -59,5 +63,60 @@ async function onMessage(deps: HandleMessageDeps, message: Message): Promise<voi
     await processAndReply(deps, message);
   } catch (err) {
     logger.error(err, "failed to handle discord message");
+    // Last resort: the agent already turns LLM failures into a friendly reply, so
+    // reaching here means something else broke (DB, Discord send). Acknowledge it
+    // rather than leaving the user with silence.
+    try {
+      await message.reply("Sorry — I ran into a problem handling that. Please try again.");
+    } catch (replyErr) {
+      logger.error(replyErr, "failed to send error reply");
+    }
+  }
+}
+
+/**
+ * Handle Approve/Cancel button clicks on an approval-gate prompt. We defer the update
+ * first (Discord requires an ack within 3s, and resuming the turn runs the LLM, which
+ * can take longer), then edit the prompt to drop its buttons and, on approval, post
+ * the answer as a follow-up and persist it.
+ */
+async function onInteraction(deps: HandleMessageDeps, interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  const [action, approvalId] = interaction.customId.split(":");
+  if ((action !== "approve" && action !== "cancel") || !approvalId) return;
+
+  try {
+    await interaction.deferUpdate();
+    const outcome = await resolveApproval(deps, {
+      action,
+      approvalId,
+      clickerDiscordId: interaction.user.id,
+    });
+
+    if (outcome.type === "denied") {
+      await interaction.followUp({ content: outcome.ephemeral, ephemeral: true });
+      return;
+    }
+
+    const original = interaction.message.content;
+    await interaction.editReply({
+      content: `${original}\n\n*${outcome.promptUpdate}*`,
+      components: [],
+    });
+
+    if (outcome.type === "approved") {
+      const sent = await interaction.followUp({ content: outcome.followUpReply });
+      await recordAssistantReply(deps, outcome.conversationId, outcome.followUpReply, sent.id);
+    }
+  } catch (err) {
+    logger.error(err, "failed to handle button interaction");
+    try {
+      await interaction.followUp({
+        content: "Sorry — I ran into a problem with that. Please try again.",
+        ephemeral: true,
+      });
+    } catch (replyErr) {
+      logger.error(replyErr, "failed to send interaction error reply");
+    }
   }
 }

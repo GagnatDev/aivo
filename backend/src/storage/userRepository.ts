@@ -35,6 +35,14 @@ export class UserRepository {
       .executeTakeFirst();
   }
 
+  findById(id: string): Promise<UserRow | undefined> {
+    return this.db
+      .selectFrom("users")
+      .select(USER_COLUMNS)
+      .where("id", "=", id)
+      .executeTakeFirst();
+  }
+
   async count(): Promise<number> {
     const row = await this.db
       .selectFrom("users")

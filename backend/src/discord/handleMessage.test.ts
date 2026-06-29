@@ -1,28 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildReply,
   handleIncomingMessage,
   recordAssistantReply,
   type HandleMessageDeps,
   type IncomingMessage,
 } from "./handleMessage.js";
-import { ConversationRepository } from "../storage/conversationRepository.js";
-import { MessageRepository } from "../storage/messageRepository.js";
-import { UserRepository } from "../storage/userRepository.js";
-import { testDb, useCleanDb } from "../test/db.js";
+import { makeFakeLlm, textResult } from "../test/fakeLlm.js";
+import { makeAgentDeps, OWNER_ID } from "../test/agentDeps.js";
+import { useCleanDb } from "../test/db.js";
 
 useCleanDb();
 
-const OWNER_ID = "owner-123";
-
-function makeDeps(): HandleMessageDeps {
-  const db = testDb();
-  return {
-    users: new UserRepository(db),
-    conversations: new ConversationRepository(db),
-    messages: new MessageRepository(db),
-    ownerDiscordUserId: OWNER_ID,
-  };
+/** Build deps whose fake LLM replies with the given texts, one per agent turn. */
+function makeDeps(replies: string[]): HandleMessageDeps {
+  return makeAgentDeps(makeFakeLlm(replies.map((r) => textResult(r))));
 }
 
 const incoming = (over: Partial<IncomingMessage> = {}): IncomingMessage => ({
@@ -34,53 +25,46 @@ const incoming = (over: Partial<IncomingMessage> = {}): IncomingMessage => ({
   ...over,
 });
 
-describe("buildReply", () => {
-  it("echoes the received text in a deterministic stub", () => {
-    expect(buildReply("hi")).toBe('🏓 pong — you said: "hi"');
-  });
-});
-
 describe("handleIncomingMessage", () => {
-  it("JIT-provisions the owner, opens a chat conversation, stores the inbound message", async () => {
-    const deps = makeDeps();
+  it("JIT-provisions the owner, opens a chat conversation, stores the inbound message, and returns the agent reply", async () => {
+    const deps = makeDeps(["Hi — what can I do for you?"]);
     const result = await handleIncomingMessage(deps, incoming());
 
-    expect(result.reply).toBe('🏓 pong — you said: "hello there"');
+    expect(result.reply).toBe("Hi — what can I do for you?");
 
     const user = await deps.users.findByDiscordId(OWNER_ID);
     expect(user?.is_owner).toBe(true);
 
     const stored = await deps.messages.listByConversation(result.conversationId);
-    expect(stored).toHaveLength(1);
     expect(stored[0]?.role).toBe("user");
     expect(stored[0]?.content).toBe("hello there");
     expect(stored[0]?.discord_message_id).toBe("msg-1");
   });
 
   it("flags non-owner authors as is_owner=false", async () => {
-    const deps = makeDeps();
+    const deps = makeDeps(["ok"]);
     await handleIncomingMessage(deps, incoming({ authorId: "someone-else" }));
     const user = await deps.users.findByDiscordId("someone-else");
     expect(user?.is_owner).toBe(false);
   });
 
   it("records the assistant reply with its discord message id (full round-trip)", async () => {
-    const deps = makeDeps();
+    const deps = makeDeps(["the answer"]);
     const result = await handleIncomingMessage(deps, incoming());
     await recordAssistantReply(deps, result.conversationId, result.reply, "reply-99");
 
     const stored = await deps.messages.listByConversation(result.conversationId);
-    expect(stored.map((m) => m.role)).toEqual(["user", "assistant"]);
-    expect(stored[1]?.discord_message_id).toBe("reply-99");
-    expect(stored[1]?.content).toBe(result.reply);
+    const assistant = stored.filter((m) => m.role === "assistant");
+    expect(assistant.at(-1)?.discord_message_id).toBe("reply-99");
+    expect(assistant.at(-1)?.content).toBe(result.reply);
   });
 
   it("reuses one conversation across multiple messages from the same user", async () => {
-    const deps = makeDeps();
+    const deps = makeDeps(["one-reply", "two-reply"]);
     const a = await handleIncomingMessage(deps, incoming({ id: "m1", content: "one" }));
     const b = await handleIncomingMessage(deps, incoming({ id: "m2", content: "two" }));
     expect(b.conversationId).toBe(a.conversationId);
     const stored = await deps.messages.listByConversation(a.conversationId);
-    expect(stored).toHaveLength(2);
+    expect(stored.filter((m) => m.role === "user")).toHaveLength(2);
   });
 });

@@ -22,6 +22,8 @@ export default defineConfig({
       DISCORD_GUILD_ID: "test-guild",
       OWNER_DISCORD_USER_ID: "test-owner",
       DISCORD_HOME_CHANNEL_ID: "test-home-channel",
+      LLM_API_KEY: "test-llm-key",
+      LLM_BASE_URL: "https://api.scaleway.ai/v1",
     },
     coverage: {
       provider: "v8",

@@ -8,6 +8,8 @@ const validEnv = {
   DISCORD_GUILD_ID: "guild",
   OWNER_DISCORD_USER_ID: "owner",
   DISCORD_HOME_CHANNEL_ID: "home",
+  LLM_API_KEY: "llm-key",
+  LLM_BASE_URL: "https://api.scaleway.ai/v1",
 };
 
 describe("loadEnv", () => {
@@ -50,5 +52,23 @@ describe("loadEnv", () => {
     expect(loadEnv(validEnv as NodeJS.ProcessEnv).OFFLINE_ACK_THRESHOLD_MINUTES).toBe(15);
     const env = loadEnv({ ...validEnv, OFFLINE_ACK_THRESHOLD_MINUTES: "30" } as NodeJS.ProcessEnv);
     expect(env.OFFLINE_ACK_THRESHOLD_MINUTES).toBe(30);
+  });
+
+  it("throws when LLM_API_KEY is missing", () => {
+    const { LLM_API_KEY, ...missing } = validEnv;
+    void LLM_API_KEY;
+    expect(() => loadEnv(missing as NodeJS.ProcessEnv)).toThrow();
+  });
+
+  it("throws when LLM_BASE_URL is not a URL", () => {
+    expect(() => loadEnv({ ...validEnv, LLM_BASE_URL: "not-a-url" } as NodeJS.ProcessEnv)).toThrow();
+  });
+
+  it("applies LLM/agent defaults", () => {
+    const env = loadEnv(validEnv as NodeJS.ProcessEnv);
+    expect(env.LLM_MAX_OUTPUT_TOKENS).toBe(1024);
+    expect(env.AGENT_MAX_TOOL_ITERATIONS).toBe(5);
+    expect(env.AGENT_CONTEXT_MESSAGE_LIMIT).toBe(30);
+    expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });
 });

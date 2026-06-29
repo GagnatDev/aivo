@@ -1,5 +1,11 @@
-import type { Message } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type Message,
+} from "discord.js";
 import { env } from "../config/env.js";
+import { resumeApprovedAgent } from "../agent/agent.js";
 import {
   handleIncomingMessage,
   recordAssistantReply,
@@ -67,7 +73,19 @@ export async function processAndReply(
 ): Promise<void> {
   const result = await handleIncomingMessage(deps, normalize(message));
 
+  // Gated turn: post the confirmation with Approve/Cancel buttons and wait — the
+  // button handler (discord/client.ts) resumes the turn. No assistant reply yet.
+  if (result.pendingApprovalId) {
+    const sent = await message.reply({
+      content: result.reply,
+      components: [approvalButtons(result.pendingApprovalId)],
+    });
+    await deps.pendingApprovals.setPromptMessageId(result.pendingApprovalId, sent.id);
+    return;
+  }
+
   let reply = result.reply;
+  if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
   if (opts.acknowledgeIfStale) {
     const ageMs = Date.now() - message.createdTimestamp;
     if (ageMs >= env.OFFLINE_ACK_THRESHOLD_MINUTES * 60_000) {
@@ -77,6 +95,67 @@ export async function processAndReply(
 
   const sent = await message.reply(reply);
   await recordAssistantReply(deps, result.conversationId, reply, sent.id);
+}
+
+/** The Approve/Cancel button row attached to an approval-gate prompt. */
+export function approvalButtons(approvalId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`approve:${approvalId}`).setLabel("Approve").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`cancel:${approvalId}`).setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function budgetAlert(pct: number): string {
+  return `*(Budget: you've used about ${pct}% of this month's ceiling.)*`;
+}
+
+/** The result of acting on an Approve/Cancel button click. */
+export type ApprovalOutcome =
+  | { type: "denied"; ephemeral: string }
+  | { type: "expired"; promptUpdate: string }
+  | { type: "cancelled"; promptUpdate: string }
+  | { type: "approved"; promptUpdate: string; followUpReply: string; conversationId: string };
+
+/**
+ * Resolve an Approve/Cancel button click against the durable pending-approval row.
+ * Discord-thin (no interaction object) so it can be unit-tested: the caller applies
+ * the returned outcome to the interaction. Only the original requester may respond;
+ * a row that is no longer pending (double-click / swept-expired) reports `expired`.
+ */
+export async function resolveApproval(
+  deps: HandleMessageDeps,
+  params: { action: "approve" | "cancel"; approvalId: string; clickerDiscordId: string },
+): Promise<ApprovalOutcome> {
+  const approval = await deps.pendingApprovals.findById(params.approvalId);
+  if (!approval) return { type: "expired", promptUpdate: "This request is no longer available." };
+
+  const requester = await deps.users.findById(approval.user_id);
+  if (requester?.discord_user_id !== params.clickerDiscordId) {
+    return { type: "denied", ephemeral: "Only the person who made this request can respond to it." };
+  }
+
+  if (params.action === "cancel") {
+    const cancelled = await deps.pendingApprovals.resolveIfPending(params.approvalId, "cancelled");
+    if (!cancelled) return { type: "expired", promptUpdate: "This request already expired." };
+    return { type: "cancelled", promptUpdate: "Cancelled — I didn't run it." };
+  }
+
+  const approved = await deps.pendingApprovals.resolveIfPending(params.approvalId, "approved");
+  if (!approved) return { type: "expired", promptUpdate: "This request expired — just ask again." };
+
+  const result = await resumeApprovedAgent(deps, params.approvalId);
+  if (!result) return { type: "expired", promptUpdate: "I couldn't pick that request back up — ask again." };
+  // A gated turn is the likeliest to push spend over a threshold, so fold any alert
+  // it crossed into the follow-up rather than dropping it.
+  const followUpReply = result.alertPct
+    ? `${result.reply}\n\n${budgetAlert(result.alertPct)}`
+    : result.reply;
+  return {
+    type: "approved",
+    promptUpdate: "Approved.",
+    followUpReply,
+    conversationId: result.conversationId,
+  };
 }
 
 /** A short, dry note prefixed to late replies so the delay is explained. */

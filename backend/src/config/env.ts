@@ -24,6 +24,22 @@ const EnvSchema = z.object({
   // it prefixes the reply with a short note that it was offline so the delay is
   // explained. Set to 0 to acknowledge every caught-up message.
   OFFLINE_ACK_THRESHOLD_MINUTES: z.coerce.number().int().nonnegative().default(15),
+
+  // LLM provider: the official OpenAI SDK pointed at an OpenAI-compatible endpoint
+  // (Scaleway's generative API). Model ids and prices deliberately do NOT live here —
+  // they're in the model_pricing table so the owner can swap models / refresh prices
+  // from chat without a redeploy.
+  LLM_API_KEY: z.string().min(1, "LLM_API_KEY is required"),
+  LLM_BASE_URL: z.string().url("LLM_BASE_URL must be a URL"),
+  // Upper bound on completion tokens per call; also the worst-case the approval-gate
+  // cost estimate assumes for output.
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+  // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
+  AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
+  // How many recent messages of conversation history to include as context.
+  AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
+  // A pending approval-gate prompt older than this is swept to `expired`.
+  APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
