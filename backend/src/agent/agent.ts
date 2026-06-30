@@ -4,7 +4,17 @@ import type { ChatMessage, ToolSchema } from "../llm/provider.js";
 import { computeCostCents, preCallCheck, recordUsageAndAlert, type Tier } from "./budget.js";
 import { buildContext } from "./context.js";
 import type { AgentDeps } from "./deps.js";
-import { buildToolRegistry, resolveTier, type AgentTool, type ToolContext } from "./tools.js";
+import {
+  buildToolRegistry,
+  resolveTier,
+  selectToolSchemas,
+  type AgentTool,
+  type ToolContext,
+} from "./tools.js";
+
+// How many recent user/assistant messages to scan when deciding which tools to
+// advertise — enough to catch an immediate follow-up that omits the keyword.
+const TOOL_GATING_LOOKBACK = 4;
 
 const TASK_TYPE = "chat";
 // When over the monthly ceiling we still answer, but keep it short.
@@ -94,7 +104,6 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
   }
 
   const registry = buildToolRegistry();
-  const tools = registry.map((t) => t.schema);
   const messages = await buildContext(deps, {
     userId: input.userId,
     conversationId: input.conversationId,
@@ -102,6 +111,17 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
     historyLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
     memoryLimit: env.AGENT_MEMORY_INJECT_LIMIT,
   });
+
+  // Advertise only the tools the recent conversation looks like it needs (the 4 schemas
+  // are ~1.1k tokens, re-sent on every call). `memory` is always on; the management
+  // tools are keyword-gated. The full registry still backs execution, so a tool the
+  // model somehow calls without it being advertised is handled, not lost.
+  const recentText = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-TOOL_GATING_LOOKBACK)
+    .map((m) => m.content ?? "")
+    .join("\n");
+  const tools = selectToolSchemas(registry, recentText);
 
   const maxTokens = decision.overBudgetNote
     ? Math.min(env.LLM_MAX_OUTPUT_TOKENS, OVER_BUDGET_MAX_TOKENS)

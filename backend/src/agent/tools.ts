@@ -319,6 +319,45 @@ export function buildToolRegistry(): AgentTool[] {
   return [memoryTool, budgetTool, modelsTool, settingsTool];
 }
 
+/**
+ * Tools advertised on every call regardless of message content. `memory` is always on:
+ * aivo is meant to capture facts the user drops in ordinary conversation ("I'm
+ * vegetarian") without a trigger word, so gating it out would silently lose recall.
+ */
+const ALWAYS_ON = new Set<string>(["memory"]);
+
+/**
+ * Keyword gates for the management tools. These surfaces are used only when the user is
+ * explicitly talking about them, so we pay their schema tokens (~700 combined) only when
+ * the recent conversation looks relevant. Matching is deliberately broad and biased
+ * toward inclusion — a false positive just wastes tokens, a false negative loses a
+ * capability for that turn. A tool with no gate here defaults to always-advertised.
+ */
+const TOOL_GATES: Record<string, RegExp> = {
+  budget:
+    /[$€]|\b(budget|spend|spent|spending|cost|costs|cap|caps|ceiling|cents?|dollars?|euros?|money|bill|billing|afford|expensive|threshold|approval|tier|premium|cheap)\b/i,
+  models: /\b(models?|prices?|pricing|scaleway|llama|mtok|per[- ]?token|tier|premium|cheap)\b/i,
+  settings: /\b(settings?|time ?zones?|digest|persona|preferences?|tier|member|editable)\b/i,
+};
+
+/**
+ * Pick which tool schemas to advertise this turn from the recent conversation text. The
+ * full registry is still used to *execute* whatever the model calls; this only controls
+ * what the model is shown, to keep the per-call prompt small (the 4 schemas are ~1.1k
+ * tokens sent on every call). Scanning a few recent messages — not just the latest —
+ * keeps a tool on across an immediate follow-up ("actually make it $30").
+ */
+export function selectToolSchemas(registry: AgentTool[], recentText: string): ToolSchema[] {
+  return registry
+    .filter((t) => {
+      const name = t.schema.name;
+      if (ALWAYS_ON.has(name)) return true;
+      const gate = TOOL_GATES[name];
+      return gate ? gate.test(recentText) : true; // unknown tool → advertise (safe default)
+    })
+    .map((t) => t.schema);
+}
+
 /** Resolve a tier setting/string to a concrete cheap|premium tier. `auto` → premium. */
 export function resolveTier(modelTier: string): Tier {
   if (modelTier === "cheap") return "cheap";
