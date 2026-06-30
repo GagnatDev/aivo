@@ -68,7 +68,8 @@ describe("loadEnv", () => {
     const env = loadEnv(validEnv as NodeJS.ProcessEnv);
     expect(env.LLM_MAX_OUTPUT_TOKENS).toBe(1024);
     expect(env.AGENT_MAX_TOOL_ITERATIONS).toBe(5);
-    expect(env.AGENT_CONTEXT_MESSAGE_LIMIT).toBe(30);
+    expect(env.AGENT_CONTEXT_MESSAGE_LIMIT).toBe(15);
+    expect(env.AGENT_MEMORY_INJECT_LIMIT).toBe(20);
     expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });
 });

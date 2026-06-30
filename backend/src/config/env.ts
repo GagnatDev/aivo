@@ -37,7 +37,13 @@ const EnvSchema = z.object({
   // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
   AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
   // How many recent messages of conversation history to include as context.
-  AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
+  // Re-sent on every LLM call (and on every tool-loop round-trip), so this is a
+  // direct input-token lever — keep it as low as context quality allows.
+  AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(15),
+  // How many remembered facts to inject into the system prompt each turn (pinned
+  // first, then newest). The rest stay reachable on demand via the memory tool;
+  // this caps unbounded growth of the per-call prompt.
+  AGENT_MEMORY_INJECT_LIMIT: z.coerce.number().int().positive().default(20),
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 });

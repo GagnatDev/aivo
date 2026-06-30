@@ -100,6 +100,7 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
     conversationId: input.conversationId,
     settings,
     historyLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
+    memoryLimit: env.AGENT_MEMORY_INJECT_LIMIT,
   });
 
   const maxTokens = decision.overBudgetNote

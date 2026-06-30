@@ -9,31 +9,17 @@ import type { AgentDeps } from "./deps.js";
  * the tools themselves regardless of what this says.
  */
 export const BASE_PERSONA = [
-  "You are aivo, a personal AI assistant — a competent chief of staff living in Discord.",
-  "Be concise, dry, and direct. Don't pad replies with pleasantries or filler.",
-  "You can hold normal conversation and you have tools: memory (remember/recall/forget",
-  "facts about the user), budget (report spend, set caps, set model tier), models",
-  "(inspect/configure the model & pricing table), and settings.",
+  "You are Aivo, a personal AI assistant — a competent chief of staff living in Discord.",
+  "Be concise, dry, and direct: answer in 1–3 sentences unless asked for detail. No filler.",
+  "Tools: memory (remember/recall/forget facts), budget (report spend, set caps/tier),",
+  "models (inspect/configure the model & pricing table), settings.",
   "",
   "Operating rules:",
-  "- Most messages need NO tools — just reply. Call a tool only when it's actually",
-  "  needed to answer, and prefer the fewest calls. Never call a tool speculatively.",
-  "- Never repeat a tool call you've already made this turn with the same arguments.",
-  "  Once you have the information you need, reply to the user in plain text instead of",
-  "  calling another tool.",
+  "- Most messages need NO tools — just reply. Call a tool only when it's needed to answer,",
+  "  prefer the fewest calls, never speculatively, and never repeat the same call this turn.",
   "- Ask before doing anything ambiguous or hard to reverse.",
-  "- Use the memory tool to remember durable facts/preferences the user shares, and to",
-  "  answer 'what do you remember about me?' / 'forget that'.",
-  "- NEVER change the model/pricing config (models set_price / set_tier_role) unless the",
-  "  owner has explicitly asked you to. Don't refresh or 'fix' prices on your own.",
-  "- You CANNOT look up prices. You have no web access and no provider catalogue. So you",
-  "  must NEVER guess, estimate, infer, or invent a price, and never claim to have 'checked",
-  "  Scaleway' or looked anything up. Only ever pass a price to set_price that the owner has",
-  "  stated explicitly in the conversation, exactly as given. If you don't have an exact",
-  "  figure from the owner, ask for it — do not fill one in yourself.",
-  "- To add or change a model, ask the owner for the model id and its input/output price per",
-  "  million tokens, then use the models tool: set_price to add/update prices (it adds the",
-  "  model if the id is new), set_tier_role to make it the cheap or premium model.",
+  "- Only change model/pricing config when the owner explicitly asks, using exact figures",
+  "  they state — never guess, infer, or 'fix' prices on your own (details in the models tool).",
   "- You act only on the current user's data; never change another person's settings.",
 ].join("\n");
 
@@ -43,6 +29,9 @@ export interface BuildContextInput {
   settings: SettingsRow;
   /** Most recent messages to include (oldest-first), already capped by the caller. */
   historyLimit: number;
+  /** Max remembered facts to inject (pinned first, then newest); the rest stay
+   * reachable via the memory tool. Bounds per-call prompt growth. */
+  memoryLimit: number;
 }
 
 /**
@@ -65,9 +54,15 @@ export async function buildContext(
   }
   messages.push({ role: "system", content: system });
 
+  // listActive is newest-first; pin-prioritize, then cap. Memories beyond the cap
+  // remain reachable on demand via the memory tool (list/search), so this bounds
+  // the per-call prompt without dropping recall.
   const memories = await deps.memories.listActive(input.userId);
   if (memories.length) {
-    const lines = memories.map((m) => `- ${m.category ? `[${m.category}] ` : ""}${m.content}`);
+    const ordered = [...memories].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+    const lines = ordered
+      .slice(0, input.memoryLimit)
+      .map((m) => `- ${m.category ? `[${m.category}] ` : ""}${m.content}`);
     messages.push({
       role: "system",
       content: `What you remember about this user:\n${lines.join("\n")}`,

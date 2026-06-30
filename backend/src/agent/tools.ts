@@ -106,11 +106,10 @@ const budgetTool: AgentTool = {
   schema: {
     name: "budget",
     description:
-      "Report spend or change budget settings. action 'report' shows today's and " +
-      "month-to-date spend vs the monthly ceiling plus the biggest drivers (anyone). " +
-      "'set_caps' updates caps in whole cents (e.g. $15/month = 1500) and the per-request " +
-      "approval threshold (owner only). 'set_tier' forces the model tier auto|cheap|premium " +
-      "(owner only).",
+      "Report spend or change budget settings. 'report' shows today's and month-to-date spend " +
+      "vs the monthly ceiling plus top drivers (anyone). 'set_caps' updates caps and the " +
+      "per-request approval threshold in whole cents ($15/mo = 1500); 'set_tier' forces the " +
+      "model tier auto|cheap|premium. set_caps and set_tier are owner-only.",
     parameters: {
       type: "object",
       properties: {
@@ -173,15 +172,12 @@ const modelsTool: AgentTool = {
   schema: {
     name: "models",
     description:
-      "Inspect or configure the model/pricing table. action 'list' shows the configured " +
-      "models, their cheap/premium role, and prices in cents per 1,000,000 tokens (anyone). " +
-      "'set_price' ADDS a new model when model_id is not yet in the table, or updates an " +
-      "existing model's prices. 'set_tier_role' assigns the cheap or premium role to a model " +
-      "(a model is only used for chat once it holds a role). You cannot browse the provider's " +
-      "catalogue and you must NEVER guess, estimate, or invent prices: only pass figures the " +
-      "owner stated explicitly, exactly as given, and ask for them if you don't have them. " +
-      "IMPORTANT: set_price and set_tier_role are OWNER-ONLY and you must only call them when " +
-      "the owner has explicitly asked you to change model config — never on your own.",
+      "Inspect or configure the model/pricing table. 'list' shows models, their cheap/premium " +
+      "role, and prices in cents per 1,000,000 tokens (anyone). 'set_price' adds a model (new " +
+      "model_id) or updates its prices; 'set_tier_role' assigns the cheap/premium role (a model " +
+      "is used for chat only once it holds a role). set_price and set_tier_role are OWNER-ONLY: " +
+      "call them only when the owner explicitly asks. You cannot look up prices — never guess or " +
+      "invent them; pass only figures the owner stated exactly, and ask if you don't have them.",
     parameters: {
       type: "object",
       properties: {
