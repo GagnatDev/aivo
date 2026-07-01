@@ -2,8 +2,9 @@ import { Client, Events, GatewayIntentBits, type Interaction, type Message } fro
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
+import { isCommand, runCommand } from "./commands.js";
 import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
-import { processAndReply, resolveApproval, shouldRespond } from "./router.js";
+import { normalize, processAndReply, resolveApproval, shouldRespond } from "./router.js";
 
 export interface DiscordGateway {
   client: Client;
@@ -60,6 +61,12 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
 async function onMessage(deps: HandleMessageDeps, message: Message): Promise<void> {
   if (!(await shouldRespond(message))) return;
   try {
+    // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
+    if (isCommand(message.content)) {
+      const reply = await runCommand(deps, normalize(message));
+      await message.reply(reply);
+      return;
+    }
     await processAndReply(deps, message);
   } catch (err) {
     logger.error(err, "failed to handle discord message");

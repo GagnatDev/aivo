@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
+import { isCommand } from "./commands.js";
 import type { HandleMessageDeps } from "./handleMessage.js";
 import { processAndReply, shouldRespond } from "./router.js";
 
@@ -57,6 +58,9 @@ async function catchUpChannel(
   for (const message of await missedSince(channel, watermark)) {
     // Skip anything already recorded (e.g. handled live during startup).
     if (await deps.messages.existsByDiscordMessageId(message.id)) continue;
+    // Commands are immediate instructions — a missed one is stale, so don't replay it
+    // (and never send a command through the agent loop).
+    if (isCommand(message.content)) continue;
     if (!(await shouldRespond(message))) continue;
     await processAndReply(deps, message, { acknowledgeIfStale: true });
     handled += 1;
