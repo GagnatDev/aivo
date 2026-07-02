@@ -10,7 +10,7 @@ import { logger } from "../logger.js";
 import type { DiscordConfig } from "./config.js";
 import { isCommand } from "./commands.js";
 import type { HandleMessageDeps } from "./handleMessage.js";
-import { processAndReply, shouldRespond } from "./router.js";
+import { processAndReply, resolveMessageMeta, shouldRespond } from "./router.js";
 
 /** Discord's max messages per fetch request. */
 const FETCH_LIMIT = 100;
@@ -63,7 +63,7 @@ async function catchUpChannel(
     // Commands are immediate instructions — a missed one is stale, so don't replay it
     // (and never send a command through the agent loop).
     if (isCommand(message.content)) continue;
-    if (!(await shouldRespond(message, cfg))) continue;
+    if (!shouldRespond(await resolveMessageMeta(message), cfg)) continue;
     await processAndReply(deps, message, cfg, { acknowledgeIfStale: true });
     handled += 1;
   }

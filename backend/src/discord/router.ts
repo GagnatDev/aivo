@@ -19,6 +19,26 @@ export function normalize(message: Message): IncomingMessage {
   };
 }
 
+/**
+ * The routing facts {@link shouldRespond} needs, extracted from a discord.js `Message`
+ * so the policy itself stays a pure, synchronous function. Resolving these (including
+ * the async referenced-message fetch) is the gateway's job — see
+ * {@link resolveMessageMeta} — which keeps the subtle routing rules unit-testable with
+ * plain objects and zero discord.js mocks.
+ */
+export interface MessageMeta {
+  /** True for messages authored by any bot (including Aivo itself). */
+  isBot: boolean;
+  /** The guild the message was sent in, or null for DMs. */
+  guildId: string | null;
+  /** The channel the message was sent in. */
+  channelId: string;
+  /** True when the message mentions Aivo. */
+  mentionsMe: boolean;
+  /** True when the message is a reply to one of Aivo's own messages. */
+  referencedMessageAuthorIsMe: boolean;
+}
+
 async function isReplyToAivo(message: Message): Promise<boolean> {
   const refId = message.reference?.messageId;
   if (!refId) return false;
@@ -31,19 +51,34 @@ async function isReplyToAivo(message: Message): Promise<boolean> {
 }
 
 /**
+ * Extract the routing facts from a discord.js message, performing the async
+ * referenced-message fetch. This is the only transport-coupled part of the routing
+ * decision; the policy in {@link shouldRespond} runs on the plain result.
+ */
+export async function resolveMessageMeta(message: Message): Promise<MessageMeta> {
+  const me = message.client.user;
+  return {
+    isBot: message.author.bot,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    mentionsMe: me ? message.mentions.has(me) : false,
+    referencedMessageAuthorIsMe: await isReplyToAivo(message),
+  };
+}
+
+/**
  * Whether Aivo should reply to a message. Bots and other guilds are ignored. In
  * the home channel Aivo answers everything; elsewhere only when mentioned or when
- * the message replies to one of Aivo's own messages. Shared by the live gateway
- * (discord/client.ts) and the offline catch-up (discord/catchup.ts) so both apply
- * identical rules.
+ * the message replies to one of Aivo's own messages. A pure function of the
+ * normalized {@link MessageMeta}, shared by the live gateway (discord/client.ts) and
+ * the offline catch-up (discord/catchup.ts) so both apply identical rules.
  */
-export async function shouldRespond(message: Message, cfg: DiscordConfig): Promise<boolean> {
-  if (message.author.bot) return false;
-  if (message.guildId !== cfg.guildId) return false;
+export function shouldRespond(meta: MessageMeta, cfg: DiscordConfig): boolean {
+  if (meta.isBot) return false;
+  if (meta.guildId !== cfg.guildId) return false;
 
-  if (message.channelId !== cfg.homeChannelId) {
-    const mentioned = message.mentions.has(message.client.user!);
-    if (!mentioned && !(await isReplyToAivo(message))) return false;
+  if (meta.channelId !== cfg.homeChannelId) {
+    if (!meta.mentionsMe && !meta.referencedMessageAuthorIsMe) return false;
   }
   return true;
 }
