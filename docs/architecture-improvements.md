@@ -218,7 +218,27 @@ adding a tool touches one new file plus one registry line.
 
 **Effort.** Small; pure file moves plus one interface field.
 
-### 1.6 Split `runAgent` policy from the tool loop
+### 1.6 Split `runAgent` policy from the tool loop — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** `agent/agent.ts` is now a thin orchestrator
+> (~80 lines): it calls `prepareTurn`, acts on the returned plan, and — when the turn is
+> cleared — hands off to `runToolLoop`. The pre-flight policy moved into
+> **`agent/prepareTurn.ts`** as `prepareTurn(deps, input): Promise<TurnPlan>`, a
+> value-returning function that makes no LLM call and drives no loop. `TurnPlan` is a
+> discriminated union of `PreparedTurn` (`{ model, messages, tools, maxTokens,
+> overBudgetNote, ctx, registry }`), `GatedTurn` (`{ estimatedCostCents,
+> approvalThresholdCents }` — the gate *decision*, no side effect), and `EarlyReply`
+> (the no-model-configured short-circuit). `runAgent` owns the one side effect the gate
+> needs — creating the pending-approval row and composing the confirmation reply — so
+> `prepareTurn` stays pure-returning and its boundaries are asserted directly. The
+> tool-calling loop plus `forceFinalAnswer` and the tool-dispatch/`executeToolCall`
+> helpers moved into **`agent/toolLoop.ts`**; `runToolLoop` is the single entry point
+> reused by both the fresh-turn and approval-resume paths. New **`prepareTurn.test.ts`**
+> exercises the payoff directly — tier coercion, over-budget token capping, and the
+> approval-gate fires/doesn't-fire boundary — without running a whole turn. Behavior is
+> unchanged; the existing `agent.test.ts` end-to-end cases still pass through `runAgent`.
+> The shared `"chat"` task type is defined in `toolLoop.ts` (metering) and mirrored in
+> `prepareTurn.ts` (the gate), each with a comment pointing at the other.
 
 **Problem.** `agent/agent.ts` (378 lines) interleaves four concerns: turn policy
 (tier resolution → budget pre-check → context build → tool gating → approval gate),
@@ -396,8 +416,8 @@ agents to find and safely edit than large multi-concern ones.
 
 ### 2.4 Name the magic numbers, keep them near their owner
 
-`CHEAP_MODELS_PCT = 80` (`budget.ts`), `TOOL_GATING_LOOKBACK = 4` (`agent.ts`),
-`OVER_BUDGET_MAX_TOKENS = 256` (`agent.ts`) are fine as named constants — but they are
+`CHEAP_MODELS_PCT = 80` (`budget.ts`), `TOOL_GATING_LOOKBACK = 4` (`prepareTurn.ts`),
+`OVER_BUDGET_MAX_TOKENS = 256` (`prepareTurn.ts`) are fine as named constants — but they are
 policy knobs, and two of them silently interact with the DB-stored
 `alert_thresholds`. Give each a one-line comment stating its unit and its relationship
 to neighbors (e.g. "must match an alert threshold or degradation happens un-alerted"),
@@ -437,7 +457,7 @@ and llm calls) gets built.
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
 | 7 | Pure `shouldRespond` (§1.4) — ✅ done | S–M | Med | Opportunistic |
 | 8 | Error taxonomy (§1.9) — ✅ done | S | Med | Opportunistic |
-| 9 | Split `runAgent` policy/loop (§1.6) | M | Med | Before a second loop caller exists |
+| 9 | Split `runAgent` policy/loop (§1.6) — ✅ done | M | Med | Before a second loop caller exists |
 | 10 | Schema codegen (§1.10) | S–M | Med | With the next migration batch |
 | 11 | Parallel tests (§1.7) | S–M | Med (grows) | When suite passes ~30s |
 
