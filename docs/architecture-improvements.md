@@ -348,7 +348,16 @@ committed") or as the source of the committed file. Hand-authored enums/aliases 
 These changes are cheap and specifically target how well AI coding agents (and new
 humans) can orient, trust, and safely modify the codebase.
 
-### 2.1 Add a `CLAUDE.md` / `AGENTS.md` at the repo root
+### 2.1 Add a `CLAUDE.md` / `AGENTS.md` at the repo root — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** [`AGENTS.md`](../AGENTS.md) now lives at the
+> repo root, covering all the points below tersely: what Aivo is (pointing at
+> `docs/concept.md`), the `pnpm --filter @aivo/backend run …` commands (with the Docker +
+> serial-tests caveat), a one-line-per-directory layout map, the non-obvious conventions
+> (DI through `AgentDeps`; layering `discord/ → agent/ → (storage/, llm/)` with no
+> discord.js in `agent/`; new table ⇒ repository + `.test.ts`; append-only migrations run
+> at boot; money in fractional **cents**, prices per **Mtok**; `is_owner` enforced in tool
+> execute functions), and a doc-status pointer (§2.2).
 
 The single most effective navigability artifact is missing. It should contain, tersely:
 
@@ -420,7 +429,7 @@ and llm calls) gets built.
 
 | # | Change | Effort | Payoff | When |
 |---|--------|--------|--------|------|
-| 1 | CLAUDE.md + doc status fix (§2.1, §2.2) | XS | High | Now |
+| 1 | CLAUDE.md (§2.1) — ✅ done + doc status fix (§2.2) | XS | High | Now |
 | 2 | Linter/formatter + CI steps (§1.8) — ✅ done | S | High | Now |
 | 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
 | 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
