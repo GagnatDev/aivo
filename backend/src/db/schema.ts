@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, MessageRole, ModelTierRole } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelTierRole, ProfileKind, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -32,6 +32,37 @@ export interface Conversations {
   discord_channel_id: string | null;
   id: Generated<string>;
   last_message_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface DigestItems {
+  confidence: number | null;
+  digest_id: string;
+  id: Generated<string>;
+  kind: DigestItemKind;
+  rank: number | null;
+  reason: string | null;
+  video_id: string;
+}
+
+export interface Digests {
+  cost_cents: Generated<Numeric>;
+  covers_since: Timestamp;
+  created_at: Generated<Timestamp>;
+  delivered_at: Timestamp | null;
+  id: Generated<string>;
+  run_date: Timestamp;
+  status: ColumnType<DigestStatus, string | undefined, string>;
+  user_id: string;
+}
+
+export interface Feedback {
+  applied: Generated<boolean>;
+  created_at: Generated<Timestamp>;
+  digest_item_id: string | null;
+  freeform_text: string | null;
+  id: Generated<string>;
+  signal: FeedbackSignal;
   user_id: string;
 }
 
@@ -93,10 +124,21 @@ export interface PendingApprovals {
   user_id: string;
 }
 
+export interface Profiles {
+  body: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  is_current: Generated<boolean>;
+  kind: ProfileKind;
+  user_id: string;
+  version: Generated<number>;
+}
+
 export interface Settings {
   created_at: Generated<Timestamp>;
   digest_cap: Generated<number>;
   digest_hour: Generated<number>;
+  digest_interval_days: Generated<number>;
   model_tier: Generated<string>;
   persona_prompt: string | null;
   proactivity: ColumnType<Record<string, unknown>, string | undefined, string>;
@@ -121,15 +163,61 @@ export interface Users {
   updated_at: Generated<Timestamp>;
 }
 
+export interface Videos {
+  channel_id: string;
+  created_at: Generated<Timestamp>;
+  description: Generated<string>;
+  duration_seconds: number | null;
+  id: string;
+  published_at: Timestamp;
+  stage1_at: Timestamp | null;
+  stage1_score: number | null;
+  stage2_decision: Stage2Decision | null;
+  summary: string | null;
+  thumbnail_url: string | null;
+  title: string;
+  transcript_status: ColumnType<TranscriptStatus, string | undefined, string>;
+  why: string | null;
+}
+
+export interface YoutubeAccount {
+  connected_by_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  subscriptions_synced_at: Timestamp | null;
+  title: string | null;
+  updated_at: Generated<Timestamp>;
+  videos_polled_at: Timestamp | null;
+  youtube_channel_id: string | null;
+}
+
+export interface YoutubeChannels {
+  id: string;
+  last_seen_at: Generated<Timestamp>;
+  muted: Generated<boolean>;
+  subscribed: Generated<boolean>;
+  subscribed_at: Generated<Timestamp>;
+  thumbnail_url: string | null;
+  title: string;
+  unsubscribed_at: Timestamp | null;
+}
+
 export interface DB {
   budget_config: BudgetConfig;
   conversations: Conversations;
+  digest_items: DigestItems;
+  digests: Digests;
+  feedback: Feedback;
   llm_usage: LlmUsage;
   memories: Memories;
   messages: Messages;
   model_pricing: ModelPricing;
   pending_approvals: PendingApprovals;
+  profiles: Profiles;
   settings: Settings;
   settings_permissions: SettingsPermissions;
   users: Users;
+  videos: Videos;
+  youtube_account: YoutubeAccount;
+  youtube_channels: YoutubeChannels;
 }

@@ -27,6 +27,7 @@
     "discord.js": "^14.26.4",
     "express": "^5.1.0",
     "kysely": "^0.27.4",
+    "node-cron": "^4.5.0",
     "node-pg-migrate": "^7.9.0",
     "openai": "^6.45.0",
     "pg": "^8.13.1",

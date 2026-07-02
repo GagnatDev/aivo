@@ -15,8 +15,10 @@ export interface BudgetDeps {
 }
 
 // App-config thresholds for the behavior state machine (NOT stored per-row, per
-// docs/data-model.md). The upper alert threshold doubles as the degrade trigger.
+// docs/data-model.md). The upper alert threshold doubles as the degrade trigger;
+// proactive work (digests) pauses on the last stretch before the hard ceiling.
 const CHEAP_MODELS_PCT = 80;
+const PROACTIVE_PAUSED_PCT = 90;
 
 export interface BudgetSnapshot {
   monthlyCeilingCents: number;
@@ -69,9 +71,11 @@ export function deriveState(snap: {
   }
   const pct =
     snap.monthlyCeilingCents > 0 ? (snap.monthToDateCents / snap.monthlyCeilingCents) * 100 : 0;
+  // Stage 2 of the concept's graceful degradation: on the last stretch before the hard
+  // ceiling, proactive work (the digest) pauses while direct chat keeps answering
+  // (on the cheap tier — preCallCheck coerces proactive_paused like cheap_models).
+  if (pct >= PROACTIVE_PAUSED_PCT) return "proactive_paused";
   if (pct >= CHEAP_MODELS_PCT) return "cheap_models";
-  // `proactive_paused` is in the enum for the digest slice but unreachable here:
-  // there is no proactive work to pause yet.
   return "normal";
 }
 
@@ -150,6 +154,8 @@ function crossedThreshold(thresholds: number[], pct: number): number {
 export interface UsageRecord {
   /** Set when a new alert threshold (50/80/100%) was crossed this call. */
   alertPct?: number;
+  /** The exact fractional-cent cost written to the ledger for this call. */
+  costCents: number;
 }
 
 /**
@@ -188,18 +194,18 @@ export async function recordUsageAndAlert(
   });
 
   const config = await deps.budgetConfig.getOrCreate(userId);
-  if (config.monthly_ceiling_cents <= 0) return {};
+  if (config.monthly_ceiling_cents <= 0) return { costCents };
   const mtd = await deps.llmUsage.monthToDateCents(userId);
   const pct = (mtd / config.monthly_ceiling_cents) * 100;
   const crossed = crossedThreshold(config.alert_thresholds, pct);
 
   if (crossed > config.last_alerted_pct) {
     await deps.budgetConfig.recordAlert(userId, crossed);
-    return { alertPct: crossed };
+    return { alertPct: crossed, costCents };
   }
   if (crossed < config.last_alerted_pct) {
     // Month rolled over (spend reset) — lower the watermark so future climbs re-fire.
     await deps.budgetConfig.recordAlert(userId, crossed);
   }
-  return {};
+  return { costCents };
 }

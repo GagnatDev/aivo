@@ -17,3 +17,15 @@ export type ModelTierRole = "cheap" | "premium";
 export type DegradationState = "normal" | "cheap_models" | "proactive_paused" | "over_ceiling";
 /** Lifecycle of an interactive approval-gate prompt. */
 export type ApprovalStatus = "pending" | "approved" | "cancelled" | "expired";
+/** Which natural-language profile a `profiles` row holds (mail_importance is phase 2). */
+export type ProfileKind = "youtube_interest" | "mail_importance";
+/** Whether a video's caption track was fetched for stage 2 (see docs/data-model.md). */
+export type TranscriptStatus = "none" | "fetched" | "unavailable";
+/** The SYSTEM's stage-2 relevance verdict — distinct from the user's keep/drop feedback. */
+export type Stage2Decision = "pick" | "reject";
+/** Lifecycle of a digest run. */
+export type DigestStatus = "pending" | "delivered" | "skipped_budget";
+/** Whether a digest entry is a ranked pick or a rejected-list row. */
+export type DigestItemKind = "pick" | "reject";
+/** The USER's feedback vocabulary on delivered items (buttons + freeform replies). */
+export type FeedbackSignal = "keep" | "drop" | "too_long" | "wrong_topic" | "freeform";

@@ -12,6 +12,10 @@ export interface DiscordConfig {
   guildId: string;
   /** In this channel Aivo answers everything; elsewhere only on mention/reply. `DISCORD_HOME_CHANNEL_ID`. */
   homeChannelId: string;
+  /** The #youtube channel: digest delivery + feedback; Aivo answers everything here
+   * too. Null until configured — the digest then falls back to the home channel.
+   * `DISCORD_YOUTUBE_CHANNEL_ID`. */
+  youtubeChannelId: string | null;
   /** A caught-up reply to a message older than this many minutes is prefixed with an
    * offline note. `OFFLINE_ACK_THRESHOLD_MINUTES`. */
   offlineAckThresholdMinutes: number;

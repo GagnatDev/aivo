@@ -19,11 +19,24 @@ const EnvSchema = z.object({
   // If set, Aivo responds freely only in this channel; elsewhere only on mention
   // or reply to one of Aivo's messages.
   DISCORD_HOME_CHANNEL_ID: z.string().min(1, "DISCORD_HOME_CHANNEL_ID is required"),
+  // The #youtube channel for digest delivery + feedback (Aivo answers everything
+  // there, like the home channel). Optional: unset falls back to the home channel.
+  DISCORD_YOUTUBE_CHANNEL_ID: z.string().min(1).optional(),
   // On startup Aivo catches up on messages it missed while offline (see
   // discord/catchup.ts). When it answers a message older than this many minutes,
   // it prefixes the reply with a short note that it was offline so the delay is
   // explained. Set to 0 to acknowledge every caught-up message.
   OFFLINE_ACK_THRESHOLD_MINUTES: z.coerce.number().int().nonnegative().default(15),
+
+  // YouTube Data API OAuth (the single owner-connected account whose subscriptions
+  // feed the digest). All three must be set for the digest to run; until then the
+  // scheduler stays idle and the rest of Aivo works normally. The refresh token is
+  // minted once via /youtube/oauth/start (see routes/youtubeOauth.ts), which also
+  // needs YOUTUBE_OAUTH_REDIRECT_URL (e.g. https://aivo.homectl.no/youtube/oauth/callback).
+  YOUTUBE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  YOUTUBE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  YOUTUBE_OAUTH_REFRESH_TOKEN: z.string().min(1).optional(),
+  YOUTUBE_OAUTH_REDIRECT_URL: z.string().url().optional(),
 
   // LLM provider: the official OpenAI SDK pointed at an OpenAI-compatible endpoint
   // (Scaleway's generative API). Model ids and prices deliberately do NOT live here —

@@ -19,6 +19,9 @@ importers:
       kysely:
         specifier: ^0.27.4
         version: 0.27.6
+      node-cron:
+        specifier: ^4.5.0
+        version: 4.5.0
       node-pg-migrate:
         specifier: ^7.9.0
         version: 7.9.1(@types/pg@8.20.0)(pg@8.22.0)
@@ -1712,6 +1715,10 @@ packages:
   negotiator@1.0.0:
     resolution: {integrity: sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==}
     engines: {node: '>= 0.6'}
+
+  node-cron@4.5.0:
+    resolution: {integrity: sha512-4Trh+kjvbXokyJkwQumvD5YAgeJfgHLR/sKyu71uSmxfCR5QMO1hldpvmFZOICN5pLgNY+J5Y8+ar3XKo5/4tQ==}
+    engines: {node: '>=20'}
 
   node-pg-migrate@7.9.1:
     resolution: {integrity: sha512-6z4OSN27ye8aYdX9ZU7NN2PTI5pOp34hTr+22Ej12djIYECq++gT7LPLZVOQXEeVCBOZQLqf87kC3Y36G434OQ==}
@@ -3901,6 +3908,8 @@ snapshots:
   nanoid@3.3.15: {}
 
   negotiator@1.0.0: {}
+
+  node-cron@4.5.0: {}
 
   node-pg-migrate@7.9.1(@types/pg@8.20.0)(pg@8.22.0):
     dependencies:

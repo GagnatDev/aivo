@@ -118,7 +118,14 @@ clock past 07:00 instead of running node-cron in tests.
 
 **Effort.** Small. Do it before the scheduler is built, not after.
 
-### 1.3 Define the scheduler as an injectable port *before* building it
+### 1.3 Define the scheduler as an injectable port *before* building it — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02, digest slice).** `scheduler/tick.ts` holds
+> `runDueWork(deps, yt, deliverer, now)` — the stale-approval sweep (moved out of
+> `bootstrap.ts`, now periodic) plus the digest due-check/dispatch — unit-tested against
+> the test DB with a `FakeClock` (`tick.test.ts`). `scheduler/cron.ts` is the thin
+> node-cron minutely wrapper, excluded from coverage like the other wiring. Delivery is
+> a `DigestDeliverer` port implemented by `discord/digestDelivery.ts`.
 
 **Problem (preemptive).** The scheduler is the next roadmap slice and is the classic
 place where testability is lost: `node-cron` callbacks capturing module globals are
@@ -472,7 +479,7 @@ and llm calls) gets built.
 | 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
 | 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
 | 5 | Tools → one file per tool (§1.5) — ✅ done | S | Med–High | Before digest/reminder tools land |
-| 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
+| 6 | Scheduler as testable port (§1.3) — ✅ done | S* | High | As part of the scheduler slice |
 | 7 | Pure `shouldRespond` (§1.4) — ✅ done | S–M | Med | Opportunistic |
 | 8 | Error taxonomy (§1.9) — ✅ done | S | Med | Opportunistic |
 | 9 | Split `runAgent` policy/loop (§1.6) — ✅ done | M | Med | Before a second loop caller exists |

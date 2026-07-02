@@ -6,6 +6,7 @@ import { memoryTool } from "./memory.js";
 import { budgetTool } from "./budget.js";
 import { modelsTool } from "./models.js";
 import { settingsTool } from "./settings.js";
+import { youtubeDigestTool } from "./youtubeDigest.js";
 
 /** The execution context handed to every tool. `isOwner` is the security boundary. */
 export interface ToolContext {
@@ -44,9 +45,9 @@ export function parse<T>(
   };
 }
 
-/** Build the tool registry the agent exposes (memory, budget, models, settings). */
+/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest). */
 export function buildToolRegistry(): AgentTool[] {
-  return [memoryTool, budgetTool, modelsTool, settingsTool];
+  return [memoryTool, budgetTool, modelsTool, settingsTool, youtubeDigestTool];
 }
 
 /**

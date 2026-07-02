@@ -84,8 +84,9 @@ async function estimateTurnCost(
  * Resolve the model id for a tier, falling back to the other tier if unconfigured.
  * Throws {@link ConfigError} when neither tier has a model — the config boundary is
  * where that fact is known, so it's raised as a typed error rather than a bare null.
+ * Exported for the digest pipeline, which resolves its own stage tiers.
  */
-async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
+export async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
   const row = await deps.modelPricing.getByTier(tier);
   if (row) return row.model_id;
   const fallback = await deps.modelPricing.getByTier(tier === "cheap" ? "premium" : "cheap");

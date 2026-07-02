@@ -3,14 +3,21 @@ import type { AgentConfig, AgentDeps } from "../agent/deps.js";
 import { systemClock, type Clock } from "../agent/clock.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import { ConversationRepository } from "../storage/conversationRepository.js";
+import { DigestItemRepository } from "../storage/digestItemRepository.js";
+import { DigestRepository } from "../storage/digestRepository.js";
+import { FeedbackRepository } from "../storage/feedbackRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import { MemoryRepository } from "../storage/memoryRepository.js";
 import { MessageRepository } from "../storage/messageRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import { PendingApprovalRepository } from "../storage/pendingApprovalRepository.js";
+import { ProfileRepository } from "../storage/profileRepository.js";
 import { SettingsPermissionsRepository } from "../storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
+import { VideoRepository } from "../storage/videoRepository.js";
+import { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
+import { YoutubeChannelRepository } from "../storage/youtubeChannelRepository.js";
 import { makeFakeLlm } from "./fakeLlm.js";
 import { testDb } from "./db.js";
 
@@ -22,6 +29,7 @@ export const TEST_AGENT_CONFIG: AgentConfig = {
   llmMaxOutputTokens: 1024,
   contextMessageLimit: 15,
   memoryInjectLimit: 20,
+  approvalTtlMinutes: 60,
 };
 
 /**
@@ -69,6 +77,13 @@ export function makeAgentDeps(
     llmUsage: new LlmUsageRepository(db),
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
+    profiles: new ProfileRepository(db),
+    youtubeAccount: new YoutubeAccountRepository(db),
+    youtubeChannels: new YoutubeChannelRepository(db),
+    videos: new VideoRepository(db),
+    digests: new DigestRepository(db),
+    digestItems: new DigestItemRepository(db),
+    feedback: new FeedbackRepository(db),
     llm,
     clock,
     ownerDiscordUserId: OWNER_ID,

@@ -1,23 +1,35 @@
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { buildApp } from "./app.js";
+import { buildApp, type AppOptions } from "./app.js";
 import type { AgentDeps } from "./agent/deps.js";
 import { systemClock } from "./agent/clock.js";
 import { createDb } from "./db/kysely.js";
 import { createPool } from "./db/pool.js";
+import type { YoutubeIntegrations } from "./digest/pipeline.js";
 import { createDiscordGateway, type DiscordGateway } from "./discord/client.js";
+import { createDigestDeliverer } from "./discord/digestDelivery.js";
 import { createOpenAiProvider } from "./llm/openaiProvider.js";
+import { startScheduler } from "./scheduler/cron.js";
 import { BudgetConfigRepository } from "./storage/budgetConfigRepository.js";
 import { ConversationRepository } from "./storage/conversationRepository.js";
+import { DigestItemRepository } from "./storage/digestItemRepository.js";
+import { DigestRepository } from "./storage/digestRepository.js";
+import { FeedbackRepository } from "./storage/feedbackRepository.js";
 import { LlmUsageRepository } from "./storage/llmUsageRepository.js";
 import { MemoryRepository } from "./storage/memoryRepository.js";
 import { MessageRepository } from "./storage/messageRepository.js";
 import { ModelPricingRepository } from "./storage/modelPricingRepository.js";
 import { PendingApprovalRepository } from "./storage/pendingApprovalRepository.js";
+import { ProfileRepository } from "./storage/profileRepository.js";
 import { SettingsPermissionsRepository } from "./storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "./storage/settingsRepository.js";
 import { UserRepository } from "./storage/userRepository.js";
-import { loadEnv } from "./config/env.js";
+import { VideoRepository } from "./storage/videoRepository.js";
+import { YoutubeAccountRepository } from "./storage/youtubeAccountRepository.js";
+import { YoutubeChannelRepository } from "./storage/youtubeChannelRepository.js";
+import { createYoutubeDataApi } from "./youtube/api.js";
+import { createWatchPageTranscriptSource } from "./youtube/transcripts.js";
+import { loadEnv, type Env } from "./config/env.js";
 import type { DiscordConfig } from "./discord/config.js";
 import { logger } from "./logger.js";
 
@@ -25,6 +37,20 @@ export interface StartedServer {
   server: Server;
   pool: Pool;
   gateway: DiscordGateway;
+}
+
+/** The digest's YouTube integrations, or null until the OAuth secrets are configured. */
+function buildYoutubeIntegrations(env: Env): YoutubeIntegrations | null {
+  if (!env.YOUTUBE_OAUTH_CLIENT_ID || !env.YOUTUBE_OAUTH_CLIENT_SECRET) return null;
+  if (!env.YOUTUBE_OAUTH_REFRESH_TOKEN) return null;
+  return {
+    api: createYoutubeDataApi({
+      clientId: env.YOUTUBE_OAUTH_CLIENT_ID,
+      clientSecret: env.YOUTUBE_OAUTH_CLIENT_SECRET,
+      refreshToken: env.YOUTUBE_OAUTH_REFRESH_TOKEN,
+    }),
+    transcripts: createWatchPageTranscriptSource(),
+  };
 }
 
 /**
@@ -51,6 +77,13 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     llmUsage: new LlmUsageRepository(db),
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
+    profiles: new ProfileRepository(db),
+    youtubeAccount: new YoutubeAccountRepository(db),
+    youtubeChannels: new YoutubeChannelRepository(db),
+    videos: new VideoRepository(db),
+    digests: new DigestRepository(db),
+    digestItems: new DigestItemRepository(db),
+    feedback: new FeedbackRepository(db),
     llm: createOpenAiProvider({ apiKey: env.LLM_API_KEY, baseURL: env.LLM_BASE_URL }),
     clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
@@ -59,6 +92,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
       llmMaxOutputTokens: env.LLM_MAX_OUTPUT_TOKENS,
       contextMessageLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
       memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+      approvalTtlMinutes: env.APPROVAL_TTL_MINUTES,
     },
   };
 
@@ -66,15 +100,26 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     botToken: env.DISCORD_BOT_TOKEN,
     guildId: env.DISCORD_GUILD_ID,
     homeChannelId: env.DISCORD_HOME_CHANNEL_ID,
+    youtubeChannelId: env.DISCORD_YOUTUBE_CHANNEL_ID ?? null,
     offlineAckThresholdMinutes: env.OFFLINE_ACK_THRESHOLD_MINUTES,
   };
 
-  // Sweep any approval prompts left pending across a restart so stale buttons resolve.
-  void deps.pendingApprovals
-    .expireOlderThan(new Date(deps.clock.now().getTime() - env.APPROVAL_TTL_MINUTES * 60_000))
-    .catch((err: unknown) => logger.error(err, "failed to sweep stale approvals"));
+  // Stale approval prompts are swept by the scheduler's minutely tick (scheduler/tick.ts).
 
-  const app = buildApp();
+  // Mount the one-time YouTube OAuth handshake only when the client is configured.
+  const appOptions: AppOptions = {};
+  if (
+    env.YOUTUBE_OAUTH_CLIENT_ID &&
+    env.YOUTUBE_OAUTH_CLIENT_SECRET &&
+    env.YOUTUBE_OAUTH_REDIRECT_URL
+  ) {
+    appOptions.youtubeOauth = {
+      clientId: env.YOUTUBE_OAUTH_CLIENT_ID,
+      clientSecret: env.YOUTUBE_OAUTH_CLIENT_SECRET,
+      redirectUrl: env.YOUTUBE_OAUTH_REDIRECT_URL,
+    };
+  }
+  const app = buildApp(appOptions);
   const server = await new Promise<Server>((resolve) => {
     const s = app.listen(env.PORT, () => {
       logger.info({ port: env.PORT }, "backend listening");
@@ -85,17 +130,31 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   const gateway = createDiscordGateway(deps, discordConfig);
   await gateway.login();
 
-  registerShutdown(server, pool, gateway);
+  // Proactive work: the in-process scheduler polls for due digests every minute and
+  // delivers them through the gateway (docs/technical-overview.md).
+  const scheduler = startScheduler(
+    deps,
+    buildYoutubeIntegrations(env),
+    createDigestDeliverer(gateway.client, deps, discordConfig),
+  );
+
+  registerShutdown(server, pool, gateway, () => void scheduler.stop());
   return { server, pool, gateway };
 }
 
-/** Graceful shutdown: stop the gateway and HTTP server, then close the pool. */
-function registerShutdown(server: Server, pool: Pool, gateway: DiscordGateway): void {
+/** Graceful shutdown: stop the scheduler, gateway, and HTTP server, then the pool. */
+function registerShutdown(
+  server: Server,
+  pool: Pool,
+  gateway: DiscordGateway,
+  stopScheduler: () => void,
+): void {
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, "shutting down");
+    stopScheduler();
     void gateway.destroy().finally(() => {
       server.close(() => {
         void pool.end().finally(() => process.exit(0));

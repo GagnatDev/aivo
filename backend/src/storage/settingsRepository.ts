@@ -6,8 +6,12 @@ export interface SettingsRow {
   digest_hour: number;
   timezone: string;
   digest_cap: number;
+  digest_interval_days: number;
   model_tier: string;
   persona_prompt: string | null;
+  /** The per-lane proactivity state (digest on/off, pause, run-now request) — an
+   * opaque JSON object here; the digest lane's shape is owned by digest/proactivity.ts. */
+  proactivity: Record<string, unknown>;
 }
 
 const SETTINGS_COLUMNS = [
@@ -15,18 +19,21 @@ const SETTINGS_COLUMNS = [
   "digest_hour",
   "timezone",
   "digest_cap",
+  "digest_interval_days",
   "model_tier",
   "persona_prompt",
+  "proactivity",
 ] as const;
 
-/** The columns the settings tool may patch (the reserved digest/proactivity knobs
- * are not editable in this slice). */
+/** The columns the settings/digest tools may patch. */
 export interface SettingsPatch {
   digest_hour?: number;
   timezone?: string;
   digest_cap?: number;
+  digest_interval_days?: number;
   model_tier?: string;
   persona_prompt?: string | null;
+  proactivity?: Record<string, unknown>;
 }
 
 /** Per-user, chat-editable knobs, provisioned just-in-time on first use. */
@@ -50,9 +57,15 @@ export class SettingsRepository {
   /** Apply a partial update, bumping updated_at. Returns the updated row. */
   async update(userId: string, patch: SettingsPatch): Promise<SettingsRow> {
     await this.getOrCreate(userId);
+    const { proactivity, ...columns } = patch;
     const row = await this.db
       .updateTable("settings")
-      .set({ ...patch, updated_at: sql`now()` })
+      .set({
+        ...columns,
+        // JSONB crosses the wire as a JSON string (see the ColumnType in db/schema.ts).
+        ...(proactivity !== undefined ? { proactivity: JSON.stringify(proactivity) } : {}),
+        updated_at: sql`now()`,
+      })
       .where("user_id", "=", userId)
       .returning(SETTINGS_COLUMNS)
       .executeTakeFirstOrThrow();

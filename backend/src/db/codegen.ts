@@ -25,6 +25,12 @@ const OVERRIDES = {
     "budget_config.alert_thresholds": "ColumnType<number[], string | undefined, string>",
     "settings_permissions.member_editable_keys": "ColumnType<string[], string | undefined, string>",
     "settings.proactivity": "ColumnType<Record<string, unknown>, string | undefined, string>",
+    "profiles.kind": "ProfileKind",
+    "videos.transcript_status": "ColumnType<TranscriptStatus, string | undefined, string>",
+    "videos.stage2_decision": "Stage2Decision | null",
+    "digests.status": "ColumnType<DigestStatus, string | undefined, string>",
+    "digest_items.kind": "DigestItemKind",
+    "feedback.signal": "FeedbackSignal",
   },
 } as const;
 
@@ -36,6 +42,12 @@ const CUSTOM_IMPORTS = {
   ModelTierRole: "./schema.enums.js",
   DegradationState: "./schema.enums.js",
   ApprovalStatus: "./schema.enums.js",
+  ProfileKind: "./schema.enums.js",
+  TranscriptStatus: "./schema.enums.js",
+  Stage2Decision: "./schema.enums.js",
+  DigestStatus: "./schema.enums.js",
+  DigestItemKind: "./schema.enums.js",
+  FeedbackSignal: "./schema.enums.js",
 } as const;
 
 /**
