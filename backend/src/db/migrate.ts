@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runner as migrationRunner } from "node-pg-migrate";
 
-const MIGRATIONS_TABLE = "pgmigrations";
+/** node-pg-migrate's bookkeeping table. Exported so codegen can exclude it (§1.10). */
+export const MIGRATIONS_TABLE = "pgmigrations";
 
 /**
  * Locate the plain-SQL migrations directory in both layouts:

@@ -32,6 +32,8 @@ export default defineConfig({
         "src/db/pool.ts",
         "src/db/kysely.ts",
         "src/db/schema.ts",
+        "src/db/schema.enums.ts",
+        "src/db/codegen.ts",
         "src/db/migrate.ts",
         "src/logger.ts",
         "src/discord/client.ts",

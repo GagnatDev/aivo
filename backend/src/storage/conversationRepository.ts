@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { Channel } from "../db/schema.js";
+import type { Channel } from "../db/schema.enums.js";
 
 export interface ConversationRow {
   id: string;
