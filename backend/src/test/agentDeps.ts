@@ -1,5 +1,6 @@
 import type { LlmProvider } from "../llm/provider.js";
 import type { AgentConfig, AgentDeps } from "../agent/deps.js";
+import { systemClock, type Clock } from "../agent/clock.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import { ConversationRepository } from "../storage/conversationRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
@@ -24,13 +25,37 @@ export const TEST_AGENT_CONFIG: AgentConfig = {
 };
 
 /**
+ * A settable fake clock for deterministic time-dependent tests. `set()` moves "now"
+ * to a fixed instant and `advance()` ticks it forward, so rollover/expiry/staleness
+ * can be exercised without touching the wall clock. Defaults to the Unix epoch.
+ */
+export class FakeClock implements Clock {
+  private current: Date;
+  constructor(initial: Date = new Date(0)) {
+    this.current = initial;
+  }
+  now(): Date {
+    return this.current;
+  }
+  set(when: Date): void {
+    this.current = when;
+  }
+  advance(ms: number): void {
+    this.current = new Date(this.current.getTime() + ms);
+  }
+}
+
+/**
  * Assemble a full AgentDeps over the Testcontainers DB with the given LLM provider.
  * Config defaults to {@link TEST_AGENT_CONFIG}; pass an override to vary a single knob
  * for a case (e.g. a lower `agentMaxToolIterations`) without touching module state.
+ * `clock` defaults to the real {@link systemClock}; pass a {@link FakeClock} to make a
+ * time-dependent case deterministic.
  */
 export function makeAgentDeps(
   llm: LlmProvider = makeFakeLlm([]),
   config: Partial<AgentConfig> = {},
+  clock: Clock = systemClock,
 ): AgentDeps {
   const db = testDb();
   return {
@@ -45,6 +70,7 @@ export function makeAgentDeps(
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
     llm,
+    clock,
     ownerDiscordUserId: OWNER_ID,
     config: { ...TEST_AGENT_CONFIG, ...config },
   };

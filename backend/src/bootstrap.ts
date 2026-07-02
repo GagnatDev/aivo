@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { Pool } from "pg";
 import { buildApp } from "./app.js";
 import type { AgentDeps } from "./agent/deps.js";
+import { systemClock } from "./agent/clock.js";
 import { createDb } from "./db/kysely.js";
 import { createPool } from "./db/pool.js";
 import { createDiscordGateway, type DiscordGateway } from "./discord/client.js";
@@ -51,6 +52,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
     llm: createOpenAiProvider({ apiKey: env.LLM_API_KEY, baseURL: env.LLM_BASE_URL }),
+    clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
     config: {
       agentMaxToolIterations: env.AGENT_MAX_TOOL_ITERATIONS,
@@ -69,7 +71,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
 
   // Sweep any approval prompts left pending across a restart so stale buttons resolve.
   void deps.pendingApprovals
-    .expireOlderThan(new Date(Date.now() - env.APPROVAL_TTL_MINUTES * 60_000))
+    .expireOlderThan(new Date(deps.clock.now().getTime() - env.APPROVAL_TTL_MINUTES * 60_000))
     .catch((err: unknown) => logger.error(err, "failed to sweep stale approvals"));
 
   const app = buildApp();
