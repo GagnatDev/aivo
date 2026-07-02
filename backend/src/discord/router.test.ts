@@ -22,7 +22,11 @@ async function setupPending() {
 describe("resolveApproval", () => {
   it("approves and resumes the turn for the original requester", async () => {
     const { deps, approvalId } = await setupPending();
-    const outcome = await resolveApproval(deps, { action: "approve", approvalId, clickerDiscordId: OWNER_ID });
+    const outcome = await resolveApproval(deps, {
+      action: "approve",
+      approvalId,
+      clickerDiscordId: OWNER_ID,
+    });
     expect(outcome.type).toBe("approved");
     if (outcome.type === "approved") expect(outcome.followUpReply).toBe("the resumed answer");
     expect((await deps.pendingApprovals.findById(approvalId))?.status).toBe("approved");
@@ -30,14 +34,22 @@ describe("resolveApproval", () => {
 
   it("cancels without running the turn", async () => {
     const { deps, approvalId } = await setupPending();
-    const outcome = await resolveApproval(deps, { action: "cancel", approvalId, clickerDiscordId: OWNER_ID });
+    const outcome = await resolveApproval(deps, {
+      action: "cancel",
+      approvalId,
+      clickerDiscordId: OWNER_ID,
+    });
     expect(outcome.type).toBe("cancelled");
     expect((await deps.pendingApprovals.findById(approvalId))?.status).toBe("cancelled");
   });
 
   it("denies a click from someone other than the requester", async () => {
     const { deps, approvalId } = await setupPending();
-    const outcome = await resolveApproval(deps, { action: "approve", approvalId, clickerDiscordId: "intruder" });
+    const outcome = await resolveApproval(deps, {
+      action: "approve",
+      approvalId,
+      clickerDiscordId: "intruder",
+    });
     expect(outcome.type).toBe("denied");
     // Still pending — the intruder's click changed nothing.
     expect((await deps.pendingApprovals.findById(approvalId))?.status).toBe("pending");
@@ -46,7 +58,11 @@ describe("resolveApproval", () => {
   it("reports expired on a second resolution of the same approval", async () => {
     const { deps, approvalId } = await setupPending();
     await resolveApproval(deps, { action: "cancel", approvalId, clickerDiscordId: OWNER_ID });
-    const second = await resolveApproval(deps, { action: "approve", approvalId, clickerDiscordId: OWNER_ID });
+    const second = await resolveApproval(deps, {
+      action: "approve",
+      approvalId,
+      clickerDiscordId: OWNER_ID,
+    });
     expect(second.type).toBe("expired");
   });
 });

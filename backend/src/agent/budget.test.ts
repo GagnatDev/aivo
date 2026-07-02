@@ -42,7 +42,12 @@ describe("computeCostCents", () => {
 });
 
 describe("deriveState", () => {
-  const base = { monthlyCeilingCents: 1000, monthToDateCents: 0, dailyCents: 0, dailySoftCapCents: null };
+  const base = {
+    monthlyCeilingCents: 1000,
+    monthToDateCents: 0,
+    dailyCents: 0,
+    dailySoftCapCents: null,
+  };
   it("is normal under 80%", () => {
     expect(deriveState({ ...base, monthToDateCents: 700 })).toBe("normal");
   });
@@ -68,7 +73,14 @@ describe("preCallCheck", () => {
   it("coerces to cheap and adds a note when over the ceiling", async () => {
     const { deps, userId } = await setup();
     await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
-    await deps.llmUsage.insert({ userId, taskType: "chat", model: "m", tokensIn: 1, tokensOut: 1, costCents: 120 });
+    await deps.llmUsage.insert({
+      userId,
+      taskType: "chat",
+      model: "m",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 120,
+    });
     const decision = await preCallCheck(deps, userId, "premium");
     expect(decision.coercedTier).toBe("cheap");
     expect(decision.overBudgetNote).toBeTruthy();
@@ -92,11 +104,24 @@ describe("recordUsageAndAlert", () => {
     const { deps, userId } = await setup();
     await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
     // First call pushes month-to-date to 60% (crosses the 50 threshold).
-    await deps.llmUsage.insert({ userId, taskType: "chat", model: "x", tokensIn: 0, tokensOut: 0, costCents: 60 });
-    const first = await recordUsageAndAlert(deps, userId, "chat", "x", { tokensIn: 0, tokensOut: 0 });
+    await deps.llmUsage.insert({
+      userId,
+      taskType: "chat",
+      model: "x",
+      tokensIn: 0,
+      tokensOut: 0,
+      costCents: 60,
+    });
+    const first = await recordUsageAndAlert(deps, userId, "chat", "x", {
+      tokensIn: 0,
+      tokensOut: 0,
+    });
     expect(first.alertPct).toBe(50);
     // Next small call stays in the 50–80 band: no new alert.
-    const second = await recordUsageAndAlert(deps, userId, "chat", "x", { tokensIn: 0, tokensOut: 0 });
+    const second = await recordUsageAndAlert(deps, userId, "chat", "x", {
+      tokensIn: 0,
+      tokensOut: 0,
+    });
     expect(second.alertPct).toBeUndefined();
   });
 });

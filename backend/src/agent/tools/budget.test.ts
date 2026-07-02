@@ -29,13 +29,19 @@ describe("budget tool", () => {
 
   it("refuses a non-owner setting caps", async () => {
     const ctx = await ctxFor("member-6");
-    const res = await tool("budget").execute({ action: "set_caps", monthly_ceiling_cents: 5000 }, ctx);
+    const res = await tool("budget").execute(
+      { action: "set_caps", monthly_ceiling_cents: 5000 },
+      ctx,
+    );
     expect(res).toMatch(/Refused/);
   });
 
   it("lets the owner set caps", async () => {
     const ctx = await ctxFor(OWNER_ID);
-    const res = await tool("budget").execute({ action: "set_caps", monthly_ceiling_cents: 5000 }, ctx);
+    const res = await tool("budget").execute(
+      { action: "set_caps", monthly_ceiling_cents: 5000 },
+      ctx,
+    );
     expect(res).toMatch(/5000/);
   });
 

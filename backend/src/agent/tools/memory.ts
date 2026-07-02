@@ -44,12 +44,16 @@ export const memoryTool: AgentTool = {
     switch (p.value.action) {
       case "list": {
         const rows = await memories.listActive(ctx.userId);
-        return JSON.stringify(rows.map((m) => ({ id: m.id, category: m.category, content: m.content })));
+        return JSON.stringify(
+          rows.map((m) => ({ id: m.id, category: m.category, content: m.content })),
+        );
       }
       case "search": {
         if (!p.value.term) return "Provide a 'term' to search.";
         const rows = await memories.search(ctx.userId, p.value.term);
-        return JSON.stringify(rows.map((m) => ({ id: m.id, category: m.category, content: m.content })));
+        return JSON.stringify(
+          rows.map((m) => ({ id: m.id, category: m.category, content: m.content })),
+        );
       }
       case "write": {
         if (!p.value.content) return "Provide 'content' to remember.";

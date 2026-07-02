@@ -13,6 +13,9 @@
     "dev": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.development src/server.ts",
     "build": "tsc --noEmit && tsup",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
     "start": "node dist/server.js",
     "migrate": "node-pg-migrate",
     "test": "vitest run",
@@ -30,6 +33,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
     "@testcontainers/postgresql": "^10.16.0",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",

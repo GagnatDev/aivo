@@ -243,7 +243,24 @@ round-trips, and the feedback loop will degrade exactly when the project needs i
 
 **Effort.** Small–medium, contained entirely in `src/test/`.
 
-### 1.8 Add a linter/formatter and a real CI typecheck step
+### 1.8 Add a linter/formatter and a real CI typecheck step — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** Adopted **Biome** (single dev dependency,
+> `@biomejs/biome`) as the combined formatter + linter — config in `backend/biome.json`.
+> The formatter matches the existing house style (2-space indent, double quotes, always
+> semicolons, trailing commas, 100-col width); the whole `src/` tree was normalized once
+> so the baseline is clean. Linting runs Biome's recommended rules plus the nursery
+> `noFloatingPromises` rule at **error** — directly the "unawaited async" guard called for
+> here, and a good fit because the Discord layer's deliberate `void promise`
+> fire-and-forget calls satisfy it explicitly. The one stylistic rule that conflicts with
+> intentional patterns, `noNonNullAssertion`, is turned off. New backend scripts:
+> `lint` (`biome check src` — format + lint, the CI gate), `lint:fix`
+> (`biome check --write src`), and `format` (`biome format --write src`). CI
+> (`.github/workflows/ci.yaml`) now runs two explicit static steps **before** the tests —
+> `Backend typecheck` (`pnpm --filter @aivo/backend run typecheck`, i.e. `tsc --noEmit`,
+> no longer hidden inside `pnpm build`) and `Backend lint & format check` (`… run lint`) —
+> so a type or lint failure is reported distinctly from, and fails faster than, a test
+> failure. No behavior change.
 
 **Problem.** There is no ESLint/Biome/Prettier config anywhere in the repo, and CI's
 only static check is the `tsc --noEmit` hidden inside `pnpm build`. Style is currently
@@ -374,7 +391,7 @@ and llm calls) gets built.
 | # | Change | Effort | Payoff | When |
 |---|--------|--------|--------|------|
 | 1 | CLAUDE.md + doc status fix (§2.1, §2.2) | XS | High | Now |
-| 2 | Linter/formatter + CI steps (§1.8) | S | High | Now |
+| 2 | Linter/formatter + CI steps (§1.8) — ✅ done | S | High | Now |
 | 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
 | 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
 | 5 | Tools → one file per tool (§1.5) — ✅ done | S | Med–High | Before digest/reminder tools land |

@@ -12,7 +12,12 @@ describe("runAgent", () => {
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.reply).toBe("Noted.");
     expect(llm.calls).toHaveLength(1);
@@ -26,15 +31,27 @@ describe("runAgent", () => {
     const llm = makeFakeLlm([]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
     expect(result.reply).toMatch(/couldn't reach the language model/i);
   });
 
   it("never returns an empty reply when the model gives no content", async () => {
-    const llm = makeFakeLlm([{ content: null, toolCalls: [], usage: { tokensIn: 5, tokensOut: 0 } }]);
+    const llm = makeFakeLlm([
+      { content: null, toolCalls: [], usage: { tokensIn: 5, tokensOut: 0 } },
+    ]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
     expect(result.reply.trim().length).toBeGreaterThan(0);
   });
 
@@ -46,7 +63,12 @@ describe("runAgent", () => {
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.reply).toMatch(/remember/i);
     // The memory was written.
@@ -67,7 +89,12 @@ describe("runAgent", () => {
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.reply).toBe("Here's what I found.");
     expect(llm.calls).toHaveLength(3);
@@ -77,13 +104,20 @@ describe("runAgent", () => {
 
   it("forces an answer after the iteration cap with distinct tool calls", async () => {
     const llm = makeFakeLlm([
-      ...Array.from({ length: 5 }, (_, n) => toolCallResult("memory", { action: "search", term: `t${n}` })),
+      ...Array.from({ length: 5 }, (_, n) =>
+        toolCallResult("memory", { action: "search", term: `t${n}` }),
+      ),
       textResult("Final synthesized answer."),
     ]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.reply).toBe("Final synthesized answer.");
     expect(llm.calls).toHaveLength(6); // 5 capped iterations + 1 forced answer
@@ -94,9 +128,21 @@ describe("runAgent", () => {
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
     await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
-    await deps.llmUsage.insert({ userId, taskType: "chat", model: "x", tokensIn: 0, tokensOut: 0, costCents: 150 });
+    await deps.llmUsage.insert({
+      userId,
+      taskType: "chat",
+      model: "x",
+      tokensIn: 0,
+      tokensOut: 0,
+      costCents: 150,
+    });
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.reply).toMatch(/over this month's budget/i);
     expect(llm.calls[0]?.model).toBe("llama-3.1-8b-instruct"); // cheap seed
@@ -110,7 +156,12 @@ describe("runAgent", () => {
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
     await deps.budgetConfig.update(userId, { approval_threshold_cents: 50 });
 
-    const result = await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
 
     expect(result.pendingApprovalId).toBeTruthy();
     expect(result.reply).toMatch(/approve/i);

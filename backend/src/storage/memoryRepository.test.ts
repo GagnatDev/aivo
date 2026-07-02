@@ -9,8 +9,16 @@ async function setup() {
   const db = testDb();
   const memories = new MemoryRepository(db);
   const users = new UserRepository(db);
-  const user = await users.upsertByDiscordId({ discordUserId: "u1", displayName: null, isOwner: true });
-  const other = await users.upsertByDiscordId({ discordUserId: "u2", displayName: null, isOwner: false });
+  const user = await users.upsertByDiscordId({
+    discordUserId: "u1",
+    displayName: null,
+    isOwner: true,
+  });
+  const other = await users.upsertByDiscordId({
+    discordUserId: "u2",
+    displayName: null,
+    isOwner: false,
+  });
   return { memories, userId: user.id, otherId: other.id };
 }
 

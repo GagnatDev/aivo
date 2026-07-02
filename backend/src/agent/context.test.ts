@@ -8,8 +8,10 @@ useCleanDb();
 
 /** The injected "What you remember…" system block, or undefined if none. */
 function memoryBlock(messages: { role: string; content: string | null }[]): string | undefined {
-  return messages.find((m) => m.role === "system" && m.content?.startsWith("What you remember"))
-    ?.content ?? undefined;
+  return (
+    messages.find((m) => m.role === "system" && m.content?.startsWith("What you remember"))
+      ?.content ?? undefined
+  );
 }
 
 describe("buildContext", () => {

@@ -68,9 +68,7 @@ export function deriveState(snap: {
     return "cheap_models";
   }
   const pct =
-    snap.monthlyCeilingCents > 0
-      ? (snap.monthToDateCents / snap.monthlyCeilingCents) * 100
-      : 0;
+    snap.monthlyCeilingCents > 0 ? (snap.monthToDateCents / snap.monthlyCeilingCents) * 100 : 0;
   if (pct >= CHEAP_MODELS_PCT) return "cheap_models";
   // `proactive_paused` is in the enum for the digest slice but unreachable here:
   // there is no proactive work to pause yet.
@@ -88,9 +86,7 @@ export async function loadBudgetSnapshot(
     deps.llmUsage.todayCents(userId),
   ]);
   const pctOfCeiling =
-    config.monthly_ceiling_cents > 0
-      ? (monthToDateCents / config.monthly_ceiling_cents) * 100
-      : 0;
+    config.monthly_ceiling_cents > 0 ? (monthToDateCents / config.monthly_ceiling_cents) * 100 : 0;
   const state = deriveState({
     monthlyCeilingCents: config.monthly_ceiling_cents,
     monthToDateCents,
@@ -132,9 +128,17 @@ export async function preCallCheck(
     };
   }
   if (snap.state === "cheap_models" || snap.state === "proactive_paused") {
-    return { allowed: true, coercedTier: "cheap", approvalThresholdCents: snap.approvalThresholdCents };
+    return {
+      allowed: true,
+      coercedTier: "cheap",
+      approvalThresholdCents: snap.approvalThresholdCents,
+    };
   }
-  return { allowed: true, coercedTier: requestedTier, approvalThresholdCents: snap.approvalThresholdCents };
+  return {
+    allowed: true,
+    coercedTier: requestedTier,
+    approvalThresholdCents: snap.approvalThresholdCents,
+  };
 }
 
 /** The highest configured alert threshold the current pct has reached, or 0. */

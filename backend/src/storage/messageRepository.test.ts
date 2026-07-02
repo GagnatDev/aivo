@@ -29,17 +29,42 @@ describe("MessageRepository.getLatestDiscordMessageId", () => {
     const chat = await conversations.getOrCreate(userId, "chat", "chan-1");
     const yt = await conversations.getOrCreate(userId, "youtube", "chan-2");
     // Insert out of snowflake order to prove ordering is by id, not insertion time.
-    await messages.insert({ conversationId: chat.id, role: "user", content: "a", discordMessageId: "100" });
-    await messages.insert({ conversationId: yt.id, role: "user", content: "b", discordMessageId: "305" });
-    await messages.insert({ conversationId: chat.id, role: "user", content: "c", discordMessageId: "207" });
+    await messages.insert({
+      conversationId: chat.id,
+      role: "user",
+      content: "a",
+      discordMessageId: "100",
+    });
+    await messages.insert({
+      conversationId: yt.id,
+      role: "user",
+      content: "b",
+      discordMessageId: "305",
+    });
+    await messages.insert({
+      conversationId: chat.id,
+      role: "user",
+      content: "c",
+      discordMessageId: "207",
+    });
     expect(await messages.getLatestDiscordMessageId()).toBe("305");
   });
 
   it("ignores messages with no discord id", async () => {
     const { conversations, messages, userId } = await setup();
     const convo = await conversations.getOrCreate(userId, "chat", "chan-1");
-    await messages.insert({ conversationId: convo.id, role: "user", content: "a", discordMessageId: "100" });
-    await messages.insert({ conversationId: convo.id, role: "system", content: "note", discordMessageId: null });
+    await messages.insert({
+      conversationId: convo.id,
+      role: "user",
+      content: "a",
+      discordMessageId: "100",
+    });
+    await messages.insert({
+      conversationId: convo.id,
+      role: "system",
+      content: "note",
+      discordMessageId: null,
+    });
     expect(await messages.getLatestDiscordMessageId()).toBe("100");
   });
 });
@@ -49,7 +74,12 @@ describe("MessageRepository.existsByDiscordMessageId", () => {
     const { conversations, messages, userId } = await setup();
     const convo = await conversations.getOrCreate(userId, "chat", "chan-1");
     expect(await messages.existsByDiscordMessageId("777")).toBe(false);
-    await messages.insert({ conversationId: convo.id, role: "user", content: "a", discordMessageId: "777" });
+    await messages.insert({
+      conversationId: convo.id,
+      role: "user",
+      content: "a",
+      discordMessageId: "777",
+    });
     expect(await messages.existsByDiscordMessageId("777")).toBe(true);
   });
 });

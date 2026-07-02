@@ -10,13 +10,7 @@ export interface MessageRow {
   content: string | null;
 }
 
-const MESSAGE_COLUMNS = [
-  "id",
-  "conversation_id",
-  "role",
-  "discord_message_id",
-  "content",
-] as const;
+const MESSAGE_COLUMNS = ["id", "conversation_id", "role", "discord_message_id", "content"] as const;
 
 export interface InsertMessageInput {
   conversationId: string;

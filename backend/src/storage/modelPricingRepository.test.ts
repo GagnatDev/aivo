@@ -8,8 +8,16 @@ useCleanDb();
 // Restore the migration-seeded state after each test that mutates it.
 afterEach(async () => {
   const repo = new ModelPricingRepository(testDb());
-  await repo.upsertModel({ modelId: "llama-3.1-8b-instruct", inputCostPerMtokCents: 20, outputCostPerMtokCents: 20 });
-  await repo.upsertModel({ modelId: "llama-3.3-70b-instruct", inputCostPerMtokCents: 90, outputCostPerMtokCents: 90 });
+  await repo.upsertModel({
+    modelId: "llama-3.1-8b-instruct",
+    inputCostPerMtokCents: 20,
+    outputCostPerMtokCents: 20,
+  });
+  await repo.upsertModel({
+    modelId: "llama-3.3-70b-instruct",
+    inputCostPerMtokCents: 90,
+    outputCostPerMtokCents: 90,
+  });
   await repo.setTierRole("llama-3.1-8b-instruct", "cheap");
   await repo.setTierRole("llama-3.3-70b-instruct", "premium");
 });
@@ -41,13 +49,21 @@ describe("ModelPricingRepository", () => {
   it("updatePricing / set_price preserves an existing tier_role", async () => {
     const repo = new ModelPricingRepository(testDb());
     // upsertModel is what the 'set_price' tool calls; it must not clear the role.
-    await repo.upsertModel({ modelId: "llama-3.3-70b-instruct", inputCostPerMtokCents: 81, outputCostPerMtokCents: 81 });
+    await repo.upsertModel({
+      modelId: "llama-3.3-70b-instruct",
+      inputCostPerMtokCents: 81,
+      outputCostPerMtokCents: 81,
+    });
     expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
   });
 
   it("setTierRole moves the role and clears it from the previous holder", async () => {
     const repo = new ModelPricingRepository(testDb());
-    await repo.upsertModel({ modelId: "new-cheap", inputCostPerMtokCents: 10, outputCostPerMtokCents: 10 });
+    await repo.upsertModel({
+      modelId: "new-cheap",
+      inputCostPerMtokCents: 10,
+      outputCostPerMtokCents: 10,
+    });
     await repo.setTierRole("new-cheap", "cheap");
     expect((await repo.getByTier("cheap"))?.model_id).toBe("new-cheap");
     // The old cheap model no longer holds the role.
