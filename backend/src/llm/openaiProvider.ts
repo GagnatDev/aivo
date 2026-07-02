@@ -4,6 +4,7 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
 import { logger } from "../logger.js";
+import { toLlmProviderError } from "./errors.js";
 import type {
   ChatMessage,
   ChatRequest,
@@ -63,14 +64,22 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
 
   return {
     async chat(req: ChatRequest): Promise<ChatResult> {
-      const res = await client.chat.completions.create({
-        model: req.model,
-        messages: req.messages.map(toOpenAiMessage),
-        ...(req.tools?.length
-          ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
-          : {}),
-        max_tokens: req.maxTokens,
-      });
+      // This is the only place that sees the SDK's error shapes, so it's where they get
+      // classified into the taxonomy (auth/rate_limit/server/network); the agent then
+      // reasons over `kind` rather than re-inspecting SDK internals.
+      let res: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        res = await client.chat.completions.create({
+          model: req.model,
+          messages: req.messages.map(toOpenAiMessage),
+          ...(req.tools?.length
+            ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
+            : {}),
+          max_tokens: req.maxTokens,
+        });
+      } catch (err) {
+        throw toLlmProviderError(err);
+      }
 
       const choice = res.choices[0];
       const rawToolCalls = choice?.message.tool_calls ?? [];

@@ -291,7 +291,23 @@ failure.
 
 **Effort.** Small.
 
-### 1.9 Introduce a tiny error taxonomy at the boundaries
+### 1.9 Introduce a tiny error taxonomy at the boundaries — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** The three named error classes now live in
+> `backend/src/llm/errors.ts`: `LlmProviderError { kind: 'auth' | 'rate_limit' |
+> 'server' | 'network' }`, `ToolExecutionError { tool }`, and `ConfigError`.
+> `toLlmProviderError()` — also in that file — is the single place that classifies an
+> OpenAI SDK error into a `kind` (401/403 → `auth`, 429 → `rate_limit`, connection
+> failure → `network`, everything else → `server`), and `openaiProvider.ts` wraps its
+> one `chat.completions.create` call so every provider failure leaves the seam already
+> tagged. In `agent.ts` the LLM catch block routes on `kind` via `llmErrorReply()` to
+> pick the user-facing message (auth points at the config, rate-limit says "busy",
+> server/network says "try again"); `executeToolCall` wraps a throwing tool in
+> `ToolExecutionError` before feeding the failure back to the model; and `resolveModel`
+> throws `ConfigError` when no tier has a model. Tests assert the taxonomy, not log
+> strings: `llm/errors.test.ts` covers the SDK→`kind` mapping and `agent.test.ts`
+> asserts the reply chosen per `kind` (the scripted fake LLM can now throw a
+> `LlmProviderError`). The section below is preserved as the original proposal.
 
 **Problem.** Every failure collapses to a generic string: `LLM_ERROR_FALLBACK` in the
 agent, "Sorry — I ran into a problem handling that" in `client.ts`, "The X tool failed
@@ -411,7 +427,7 @@ and llm calls) gets built.
 | 5 | Tools → one file per tool (§1.5) — ✅ done | S | Med–High | Before digest/reminder tools land |
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
 | 7 | Pure `shouldRespond` (§1.4) — ✅ done | S–M | Med | Opportunistic |
-| 8 | Error taxonomy (§1.9) | S | Med | Opportunistic |
+| 8 | Error taxonomy (§1.9) — ✅ done | S | Med | Opportunistic |
 | 9 | Split `runAgent` policy/loop (§1.6) | M | Med | Before a second loop caller exists |
 | 10 | Schema codegen (§1.10) | S–M | Med | With the next migration batch |
 | 11 | Parallel tests (§1.7) | S–M | Med (grows) | When suite passes ~30s |
