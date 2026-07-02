@@ -1,65 +1,8 @@
-import { logger } from "../logger.js";
-import { ConfigError, LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
-import { computeCostCents, preCallCheck, recordUsageAndAlert, type Tier } from "./budget.js";
-import { buildContext } from "./context.js";
 import type { AgentDeps } from "./deps.js";
-import {
-  buildToolRegistry,
-  resolveTier,
-  selectToolSchemas,
-  type AgentTool,
-  type ToolContext,
-} from "./tools/index.js";
+import { prepareTurn, TASK_TYPE, type RunAgentInput } from "./prepareTurn.js";
+import { runToolLoop } from "./toolLoop.js";
 
-// How many recent user/assistant messages to scan when deciding which tools to
-// advertise — enough to catch an immediate follow-up that omits the keyword.
-const TOOL_GATING_LOOKBACK = 4;
-
-const TASK_TYPE = "chat";
-// When over the monthly ceiling we still answer, but keep it short.
-const OVER_BUDGET_MAX_TOKENS = 256;
-// Discord rejects empty message bodies, so never return "" to the caller.
-const EMPTY_REPLY_FALLBACK = "I don't have anything to add to that.";
-// Shown when the LLM provider call fails, chosen by the failure's taxonomy `kind` so
-// the reply matches the cause instead of collapsing every failure to one string.
-// server/network (transient outage) → retry hint; rate_limit → busy hint; auth
-// (permanent, needs the owner) → point at the config.
-const LLM_ERROR_FALLBACK =
-  "Sorry — I couldn't reach the language model just now. Please try again in a moment.";
-const LLM_RATE_LIMIT_FALLBACK =
-  "Sorry — the language model is busy right now. Please try again in a moment.";
-const LLM_AUTH_FALLBACK =
-  "Sorry — I can't reach the language model because of a credentials problem. " +
-  "The owner needs to check the API configuration.";
-// Last-resort reply when even the tools-disabled final answer yields nothing.
-const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
-
-/** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
-function llmErrorReply(err: unknown): string {
-  if (err instanceof LlmProviderError) {
-    switch (err.kind) {
-      case "auth":
-        return LLM_AUTH_FALLBACK;
-      case "rate_limit":
-        return LLM_RATE_LIMIT_FALLBACK;
-      case "server":
-      case "network":
-        return LLM_ERROR_FALLBACK;
-    }
-  }
-  return LLM_ERROR_FALLBACK;
-}
-
-export interface RunAgentInput {
-  userId: string;
-  isOwner: boolean;
-  conversationId: string;
-  /** Discord id of the message that triggered this turn (for the approval gate). */
-  triggerMessageId: string;
-  /** Skip the approval gate — set when resuming an already-approved turn. */
-  bypassApprovalGate?: boolean;
-}
+export type { RunAgentInput } from "./prepareTurn.js";
 
 export interface AgentResult {
   reply: string;
@@ -70,278 +13,50 @@ export interface AgentResult {
   alertPct?: number;
 }
 
-/** Conservative pre-call cost estimate for the approval gate (in fractional cents). */
-async function estimateTurnCost(
-  deps: AgentDeps,
-  model: string,
-  messages: ChatMessage[],
-  tools: ToolSchema[],
-  maxTokens: number,
-): Promise<number> {
-  const pricing = await deps.modelPricing.getByModelId(model);
-  if (!pricing) return 0;
-  const tokensIn = deps.llm.countTokens(messages, tools);
-  return computeCostCents(
-    {
-      inputCostPerMtokCents: Number(pricing.input_cost_per_mtok_cents),
-      outputCostPerMtokCents: Number(pricing.output_cost_per_mtok_cents),
-    },
-    { tokensIn, tokensOut: maxTokens },
-  );
-}
-
 /**
- * Resolve the model id for a tier, falling back to the other tier if unconfigured.
- * Throws {@link ConfigError} when neither tier has a model — the config boundary is
- * where that fact is known, so it's raised as a typed error rather than a bare null.
- */
-async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
-  const row = await deps.modelPricing.getByTier(tier);
-  if (row) return row.model_id;
-  const fallback = await deps.modelPricing.getByTier(tier === "cheap" ? "premium" : "cheap");
-  if (fallback) {
-    // No model holds the requested role — running on the wrong tier degrades quality
-    // silently, so make it loud. Usually means a tier_role was never (re)assigned.
-    logger.warn(
-      { requestedTier: tier, fallbackModel: fallback.model_id, fallbackRole: fallback.tier_role },
-      "no model configured for requested tier; falling back",
-    );
-    return fallback.model_id;
-  }
-  throw new ConfigError("no model configured for any tier");
-}
-
-/**
- * The conversational agent. Builds context, applies the budget pre-check (degrading
- * the tier if needed), and runs the in-house tool-calling loop. The final user-facing
- * text is returned for the caller to send + persist with its Discord id; intermediate
- * assistant-with-tool-calls and tool rows are persisted in-loop for audit.
+ * The conversational agent. Delegates the turn policy (tier resolution, budget
+ * pre-check, context build, tool gating, approval-gate decision) to {@link prepareTurn}
+ * and, when the turn is cleared to run, the in-house tool-calling loop to
+ * {@link runToolLoop}. This function owns only the wiring between them and the
+ * approval-gate side effect. The final user-facing text is returned for the caller to
+ * send + persist with its Discord id; intermediate assistant-with-tool-calls and tool
+ * rows are persisted in-loop for audit.
  */
 export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<AgentResult> {
-  const settings = await deps.settings.getOrCreate(input.userId);
-  const requestedTier = resolveTier(settings.model_tier);
-  const decision = await preCallCheck(deps, input.userId, requestedTier);
+  const plan = await prepareTurn(deps, input);
 
-  let model: string;
-  try {
-    model = await resolveModel(deps, decision.coercedTier);
-  } catch (err) {
-    if (err instanceof ConfigError) {
-      logger.error({ err }, "no model configured");
-      return {
-        reply: "I have no model configured yet — ask the owner to set up the model/pricing config.",
-        conversationId: input.conversationId,
-      };
-    }
-    throw err;
+  if (plan.kind === "reply") {
+    return { reply: plan.reply, conversationId: input.conversationId };
   }
 
-  const registry = buildToolRegistry();
-  const messages = await buildContext(deps, {
-    userId: input.userId,
-    conversationId: input.conversationId,
-    settings,
-    historyLimit: deps.config.contextMessageLimit,
-    memoryLimit: deps.config.memoryInjectLimit,
+  if (plan.kind === "gated") {
+    const approval = await deps.pendingApprovals.create({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      triggerMessageId: input.triggerMessageId,
+      estimatedCostCents: plan.estimatedCostCents,
+      taskType: TASK_TYPE,
+    });
+    return {
+      // Round the displayed estimate up so it never reads as equal to (or below)
+      // the threshold it just exceeded.
+      reply:
+        `This looks like it'll cost about ${Math.ceil(plan.estimatedCostCents)}¢, over your ` +
+        `${plan.approvalThresholdCents}¢ approval threshold. Approve to go ahead?`,
+      conversationId: input.conversationId,
+      pendingApprovalId: approval.id,
+    };
+  }
+
+  const loop = await runToolLoop(deps, plan.ctx, plan.registry, {
+    model: plan.model,
+    messages: plan.messages,
+    tools: plan.tools,
+    maxTokens: plan.maxTokens,
   });
 
-  // Advertise only the tools the recent conversation looks like it needs (the 4 schemas
-  // are ~1.1k tokens, re-sent on every call). `memory` is always on; the management
-  // tools are keyword-gated. The full registry still backs execution, so a tool the
-  // model somehow calls without it being advertised is handled, not lost.
-  const recentText = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .slice(-TOOL_GATING_LOOKBACK)
-    .map((m) => m.content ?? "")
-    .join("\n");
-  const tools = selectToolSchemas(registry, recentText);
-
-  const maxTokens = decision.overBudgetNote
-    ? Math.min(deps.config.llmMaxOutputTokens, OVER_BUDGET_MAX_TOKENS)
-    : deps.config.llmMaxOutputTokens;
-
-  // Approval gate: if the estimated cost of this turn's first call exceeds the user's
-  // threshold, don't run it — post a confirmation prompt and wait. The estimate is
-  // conservative (heuristic input tokens + worst-case output = maxTokens), so it
-  // over-asks rather than under-asks. Resumed turns bypass this (approval is the
-  // decision).
-  if (!input.bypassApprovalGate && decision.approvalThresholdCents != null) {
-    const estimatedCost = await estimateTurnCost(deps, model, messages, tools, maxTokens);
-    if (estimatedCost > decision.approvalThresholdCents) {
-      const approval = await deps.pendingApprovals.create({
-        userId: input.userId,
-        conversationId: input.conversationId,
-        triggerMessageId: input.triggerMessageId,
-        estimatedCostCents: estimatedCost,
-        taskType: TASK_TYPE,
-      });
-      return {
-        // Round the displayed estimate up so it never reads as equal to (or below)
-        // the threshold it just exceeded.
-        reply:
-          `This looks like it'll cost about ${Math.ceil(estimatedCost)}¢, over your ` +
-          `${decision.approvalThresholdCents}¢ approval threshold. Approve to go ahead?`,
-        conversationId: input.conversationId,
-        pendingApprovalId: approval.id,
-      };
-    }
-  }
-
-  const ctx: ToolContext = {
-    deps,
-    userId: input.userId,
-    isOwner: input.isOwner,
-    conversationId: input.conversationId,
-  };
-
-  logger.debug(
-    {
-      userId: input.userId,
-      model,
-      requestedTier,
-      coercedTier: decision.coercedTier,
-      overBudget: Boolean(decision.overBudgetNote),
-      maxTokens,
-      historyMessages: messages.length,
-      tools: tools.map((t) => t.name),
-    },
-    "agent turn starting",
-  );
-
-  const loop = await runToolLoop(deps, ctx, registry, { model, messages, tools, maxTokens });
-
-  const reply = decision.overBudgetNote
-    ? `${decision.overBudgetNote}\n\n${loop.reply}`
-    : loop.reply;
+  const reply = plan.overBudgetNote ? `${plan.overBudgetNote}\n\n${loop.reply}` : loop.reply;
   return { reply, conversationId: input.conversationId, alertPct: loop.alertPct };
-}
-
-interface LoopParams {
-  model: string;
-  messages: ChatMessage[];
-  tools: ToolSchema[];
-  maxTokens: number;
-}
-
-interface LoopResult {
-  reply: string;
-  alertPct?: number;
-}
-
-/**
- * The in-house tool-calling loop. Each model round-trip is metered; tool calls are
- * executed and their results fed back until the model returns a final text answer or
- * the iteration cap is hit (runaway backstop). Exported so the approval-gate resume
- * path can reuse it.
- */
-export async function runToolLoop(
-  deps: AgentDeps,
-  ctx: ToolContext,
-  registry: AgentTool[],
-  params: LoopParams,
-): Promise<LoopResult> {
-  const messages = params.messages;
-  let alertPct: number | undefined;
-  // Signatures (name+args) of tool calls already executed this turn — used to detect
-  // a model stuck re-issuing the same calls (a common open-model failure mode).
-  const executed = new Set<string>();
-
-  for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
-    let result: ChatResult;
-    try {
-      result = await deps.llm.chat({
-        model: params.model,
-        messages,
-        tools: params.tools,
-        maxTokens: params.maxTokens,
-      });
-    } catch (err) {
-      // Provider failure (auth/403, rate limit, outage). Surface a reply matched to the
-      // cause rather than letting the turn throw and leave the user with no response.
-      const kind = err instanceof LlmProviderError ? err.kind : "unknown";
-      logger.error({ err, kind }, "llm chat call failed");
-      return { reply: llmErrorReply(err), alertPct };
-    }
-
-    const record = await recordUsageAndAlert(
-      deps,
-      ctx.userId,
-      TASK_TYPE,
-      params.model,
-      result.usage,
-    );
-    if (record.alertPct) alertPct = Math.max(alertPct ?? 0, record.alertPct);
-
-    logger.debug(
-      {
-        userId: ctx.userId,
-        iteration: i,
-        tokensIn: result.usage.tokensIn,
-        tokensOut: result.usage.tokensOut,
-        toolCalls: result.toolCalls.map((c) => ({
-          id: c.id,
-          name: c.name,
-          arguments: c.arguments,
-        })),
-        contentPreview: preview(result.content),
-      },
-      "agent llm round-trip",
-    );
-
-    if (result.toolCalls.length === 0) {
-      logger.debug({ userId: ctx.userId, iterations: i + 1 }, "agent final reply");
-      return { reply: (result.content ?? "").trim() || EMPTY_REPLY_FALLBACK, alertPct };
-    }
-
-    // Persist + replay the assistant message that requested the tools.
-    messages.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
-    await deps.messages.insert({
-      conversationId: ctx.conversationId,
-      role: "assistant",
-      content: result.content,
-      discordMessageId: null,
-    });
-
-    let allRepeats = true;
-    for (const call of result.toolCalls) {
-      const signature = `${call.name}:${call.arguments}`;
-      if (!executed.has(signature)) allRepeats = false;
-      executed.add(signature);
-      const toolResult = await executeToolCall(registry, call.name, call.arguments, ctx);
-      logger.debug(
-        {
-          userId: ctx.userId,
-          tool: call.name,
-          arguments: call.arguments,
-          resultPreview: preview(toolResult),
-        },
-        "agent tool executed",
-      );
-      await deps.messages.insert({
-        conversationId: ctx.conversationId,
-        role: "tool",
-        content: toolResult,
-        discordMessageId: null,
-      });
-      messages.push({ role: "tool", content: toolResult, tool_call_id: call.id, name: call.name });
-    }
-
-    // The model re-issued only tool calls it had already made this turn — it's stuck.
-    // Stop looping and force a plain-text answer from what it already has.
-    if (allRepeats) {
-      logger.warn(
-        { userId: ctx.userId, model: params.model, iteration: i },
-        "agent repeated tool calls; forcing answer",
-      );
-      return forceFinalAnswer(deps, ctx, params, messages, alertPct);
-    }
-  }
-
-  logger.warn(
-    { userId: ctx.userId, model: params.model, iterations: deps.config.agentMaxToolIterations },
-    "agent hit tool-iteration cap; forcing answer",
-  );
-  return forceFinalAnswer(deps, ctx, params, messages, alertPct);
 }
 
 /**
@@ -364,81 +79,4 @@ export async function resumeApprovedAgent(
     triggerMessageId: approval.trigger_message_id,
     bypassApprovalGate: true,
   });
-}
-
-/**
- * Make one final completion with tools disabled so the model must answer in plain
- * text from the context it already has. Used when the loop is stuck (repeated tool
- * calls) or hit the iteration cap, turning a dead-end into a useful reply. The nudge
- * is not persisted; the resulting text is returned for the caller to send + record.
- */
-async function forceFinalAnswer(
-  deps: AgentDeps,
-  ctx: ToolContext,
-  params: LoopParams,
-  messages: ChatMessage[],
-  alertPct: number | undefined,
-): Promise<LoopResult> {
-  const nudged: ChatMessage[] = [
-    ...messages,
-    {
-      role: "system",
-      content:
-        "Answer the user now in plain text, using the information you already have. " +
-        "Do not call any tools.",
-    },
-  ];
-  try {
-    const result = await deps.llm.chat({
-      model: params.model,
-      messages: nudged,
-      maxTokens: params.maxTokens,
-    });
-    const record = await recordUsageAndAlert(
-      deps,
-      ctx.userId,
-      TASK_TYPE,
-      params.model,
-      result.usage,
-    );
-    const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;
-    const text = (result.content ?? "").trim();
-    if (text) return { reply: text, alertPct: nextAlert };
-    return { reply: STUCK_FALLBACK, alertPct: nextAlert };
-  } catch (err) {
-    logger.error(err, "forced final answer failed");
-    return { reply: STUCK_FALLBACK, alertPct };
-  }
-}
-
-/** Truncate a possibly-null string for log lines. */
-function preview(text: string | null, max = 200): string {
-  if (!text) return "(none)";
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-async function executeToolCall(
-  registry: AgentTool[],
-  name: string,
-  rawArgs: string,
-  ctx: ToolContext,
-): Promise<string> {
-  const tool = registry.find((t) => t.schema.name === name);
-  if (!tool) return `Unknown tool: ${name}`;
-  let args: unknown = {};
-  try {
-    args = rawArgs ? JSON.parse(rawArgs) : {};
-  } catch {
-    return "Could not parse tool arguments as JSON.";
-  }
-  try {
-    return await tool.execute(args, ctx);
-  } catch (err) {
-    // Wrap at the seam so the tool name and cause are captured as structured data, then
-    // feed the failure back to the model (as a tool result) so it can recover, rather
-    // than aborting the whole turn.
-    const toolErr = new ToolExecutionError(name, { cause: err });
-    logger.error({ err, tool: name }, toolErr.message);
-    return `${toolErr.message}.`;
-  }
 }
