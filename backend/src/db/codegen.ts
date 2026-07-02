@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generate, getDialect } from "kysely-codegen";
+import { MIGRATIONS_TABLE } from "./migrate.js";
 
 // Single source of truth for how `db/schema.ts` is generated. Both the
 // regenerate script (scripts/codegen.ts) and the drift-check test
@@ -56,6 +57,9 @@ export async function runSchemaCodegen(
       db,
       dialect,
       outFile: SCHEMA_OUT_FILE,
+      // Skip node-pg-migrate's bookkeeping table — it's created by runMigrations, not
+      // part of the app schema, and never queried through Kysely.
+      excludePattern: MIGRATIONS_TABLE,
       overrides: OVERRIDES,
       customImports: CUSTOM_IMPORTS,
       typeOnlyImports: true,
