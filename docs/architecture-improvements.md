@@ -77,7 +77,22 @@ agent needs. This is the single highest-leverage change in this document.
 
 **Effort.** Medium (mechanical, ~9 files), no behavior change.
 
-### 1.2 Inject a clock
+### 1.2 Inject a clock — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** A one-method `Clock` (`agent/clock.ts`,
+> `now(): Date`) is threaded through `AgentDeps.clock`. Production wires `systemClock`
+> (`{ now: () => new Date() }`) at the composition root in `bootstrap.ts`; tests wire a
+> settable `FakeClock` (`test/agentDeps.ts`, `set()`/`advance()`), which `makeAgentDeps`
+> accepts as an optional third argument (defaults to `systemClock`). The direct
+> process-side time reads in business logic now go through the clock: `monthStart()` in
+> `agent/tools.ts` takes `deps.clock.now()`, the offline-ack age in `discord/router.ts`
+> uses `deps.clock.now()`, and the boot-time stale-approval sweep in `bootstrap.ts` uses
+> `deps.clock.now()`. Logging is left on real time. DB-side date bucketing
+> (`date_trunc('month'|'day', now())` in `llmUsageRepository`) deliberately keeps using
+> the **database** server's clock — one authoritative source for calendar spend windows —
+> rather than the process clock; the budget month-rollover watermark rides on that. A new
+> `tools.test.ts` case drives a `FakeClock` across a month boundary to show the
+> month-to-date driver window is now deterministic. No behavior change.
 
 **Problem.** Time is read ambiently all over: `monthStart()` in `agent/tools.ts`,
 `Date.now()` in `discord/router.ts` (offline-ack age) and `bootstrap.ts` (approval TTL
@@ -348,7 +363,7 @@ and llm calls) gets built.
 | 1 | CLAUDE.md + doc status fix (§2.1, §2.2) | XS | High | Now |
 | 2 | Linter/formatter + CI steps (§1.8) | S | High | Now |
 | 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
-| 4 | Injectable clock (§1.2) | S | High | Before scheduler slice |
+| 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
 | 5 | Tools → one file per tool (§1.5) | S | Med–High | Before digest/reminder tools land |
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
 | 7 | Pure `shouldRespond` (§1.4) | S–M | Med | Opportunistic |

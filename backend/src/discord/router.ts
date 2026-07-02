@@ -88,7 +88,7 @@ export async function processAndReply(
   let reply = result.reply;
   if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
   if (opts.acknowledgeIfStale) {
-    const ageMs = Date.now() - message.createdTimestamp;
+    const ageMs = deps.clock.now().getTime() - message.createdTimestamp;
     if (ageMs >= cfg.offlineAckThresholdMinutes * 60_000) {
       reply = `${offlineAck(ageMs)}\n\n${reply}`;
     }

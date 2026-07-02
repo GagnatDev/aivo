@@ -129,7 +129,7 @@ const budgetTool: AgentTool = {
     switch (p.value.action) {
       case "report": {
         const snap = await loadBudgetSnapshot(deps, ctx.userId);
-        const drivers = await deps.llmUsage.topDrivers(ctx.userId, monthStart());
+        const drivers = await deps.llmUsage.topDrivers(ctx.userId, monthStart(deps.clock.now()));
         return JSON.stringify({
           today_cents: round(snap.dailyCents),
           month_to_date_cents: round(snap.monthToDateCents),
@@ -369,8 +369,8 @@ function round(cents: number): number {
   return Math.round(cents * 10_000) / 10_000;
 }
 
-function monthStart(): Date {
-  const now = new Date();
+/** UTC start-of-month for `now` — the window for month-to-date spend drivers. */
+function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 

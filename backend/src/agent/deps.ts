@@ -1,4 +1,5 @@
 import type { LlmProvider } from "../llm/provider.js";
+import type { Clock } from "./clock.js";
 import type { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import type { ConversationRepository } from "../storage/conversationRepository.js";
 import type { LlmUsageRepository } from "../storage/llmUsageRepository.js";
@@ -45,6 +46,8 @@ export interface AgentDeps {
   budgetConfig: BudgetConfigRepository;
   pendingApprovals: PendingApprovalRepository;
   llm: LlmProvider;
+  /** Reads "now" for time-dependent business logic (rollover, expiry, staleness). */
+  clock: Clock;
   /** Discord id of the owner; flags is_owner on JIT provisioning. */
   ownerDiscordUserId: string;
   /** Config knobs threaded from `loadEnv()` at the composition root. */
