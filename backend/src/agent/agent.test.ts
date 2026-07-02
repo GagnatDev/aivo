@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
+import { LlmProviderError } from "../llm/errors.js";
 import { makeFakeLlm, textResult, toolCallResult } from "../test/fakeLlm.js";
 import { makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
@@ -27,7 +28,7 @@ describe("runAgent", () => {
   });
 
   it("returns a friendly reply when the LLM call fails", async () => {
-    // An empty script makes the fake LLM throw on the first call (simulates a 403).
+    // An empty script makes the fake LLM throw on the first call (simulates an outage).
     const llm = makeFakeLlm([]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
@@ -38,6 +39,27 @@ describe("runAgent", () => {
       triggerMessageId: "m1",
     });
     expect(result.reply).toMatch(/couldn't reach the language model/i);
+  });
+
+  it("picks the reply from the LLM error taxonomy kind", async () => {
+    const cases: Array<{ kind: "auth" | "rate_limit" | "server" | "network"; match: RegExp }> = [
+      { kind: "auth", match: /credentials problem/i },
+      { kind: "rate_limit", match: /busy right now/i },
+      { kind: "server", match: /couldn't reach the language model/i },
+      { kind: "network", match: /couldn't reach the language model/i },
+    ];
+    for (const { kind, match } of cases) {
+      const llm = makeFakeLlm([new LlmProviderError(kind, `simulated ${kind}`)]);
+      const deps = makeAgentDeps(llm);
+      const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+      const result = await runAgent(deps, {
+        userId,
+        isOwner,
+        conversationId,
+        triggerMessageId: "m1",
+      });
+      expect(result.reply, `kind=${kind}`).toMatch(match);
+    }
   });
 
   it("never returns an empty reply when the model gives no content", async () => {

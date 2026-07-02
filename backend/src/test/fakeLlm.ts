@@ -15,12 +15,13 @@ export interface FakeLlm extends LlmProvider {
 /**
  * A scripted LlmProvider for tests. `chat()` returns the next pre-baked result in
  * sequence, so a test can drive an exact tool-calling path (e.g. first a tool call,
- * then a final answer). `countTokens` uses the real heuristic so estimates are
- * deterministic. If `fixedInputTokens` is given, countTokens returns it instead —
- * handy for forcing the approval gate.
+ * then a final answer). A scripted `Error` is thrown instead of returned, so a test can
+ * simulate a provider failure of a specific taxonomy `kind`. `countTokens` uses the
+ * real heuristic so estimates are deterministic. If `fixedInputTokens` is given,
+ * countTokens returns it instead — handy for forcing the approval gate.
  */
 export function makeFakeLlm(
-  script: ChatResult[],
+  script: (ChatResult | Error)[],
   opts: { fixedInputTokens?: number } = {},
 ): FakeLlm {
   const calls: ChatRequest[] = [];
@@ -31,6 +32,7 @@ export function makeFakeLlm(
       calls.push(req);
       const next = script[i++];
       if (!next) throw new Error(`fakeLlm: no scripted result for call #${i}`);
+      if (next instanceof Error) throw next;
       return next;
     },
     countTokens(messages: ChatMessage[], tools?: ToolSchema[]): number {

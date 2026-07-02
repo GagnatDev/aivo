@@ -1,4 +1,5 @@
 import { logger } from "../logger.js";
+import { ConfigError, LlmProviderError, ToolExecutionError } from "../llm/errors.js";
 import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
 import { computeCostCents, preCallCheck, recordUsageAndAlert, type Tier } from "./budget.js";
 import { buildContext } from "./context.js";
@@ -20,12 +21,35 @@ const TASK_TYPE = "chat";
 const OVER_BUDGET_MAX_TOKENS = 256;
 // Discord rejects empty message bodies, so never return "" to the caller.
 const EMPTY_REPLY_FALLBACK = "I don't have anything to add to that.";
-// Shown when the LLM provider call fails (auth, rate limit, outage, …) so the user
-// gets an answer instead of silence.
+// Shown when the LLM provider call fails, chosen by the failure's taxonomy `kind` so
+// the reply matches the cause instead of collapsing every failure to one string.
+// server/network (transient outage) → retry hint; rate_limit → busy hint; auth
+// (permanent, needs the owner) → point at the config.
 const LLM_ERROR_FALLBACK =
   "Sorry — I couldn't reach the language model just now. Please try again in a moment.";
+const LLM_RATE_LIMIT_FALLBACK =
+  "Sorry — the language model is busy right now. Please try again in a moment.";
+const LLM_AUTH_FALLBACK =
+  "Sorry — I can't reach the language model because of a credentials problem. " +
+  "The owner needs to check the API configuration.";
 // Last-resort reply when even the tools-disabled final answer yields nothing.
 const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
+
+/** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
+function llmErrorReply(err: unknown): string {
+  if (err instanceof LlmProviderError) {
+    switch (err.kind) {
+      case "auth":
+        return LLM_AUTH_FALLBACK;
+      case "rate_limit":
+        return LLM_RATE_LIMIT_FALLBACK;
+      case "server":
+      case "network":
+        return LLM_ERROR_FALLBACK;
+    }
+  }
+  return LLM_ERROR_FALLBACK;
+}
 
 export interface RunAgentInput {
   userId: string;
@@ -66,8 +90,12 @@ async function estimateTurnCost(
   );
 }
 
-/** Resolve the model id for a tier, falling back to the other tier if unconfigured. */
-async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string | null> {
+/**
+ * Resolve the model id for a tier, falling back to the other tier if unconfigured.
+ * Throws {@link ConfigError} when neither tier has a model — the config boundary is
+ * where that fact is known, so it's raised as a typed error rather than a bare null.
+ */
+async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
   const row = await deps.modelPricing.getByTier(tier);
   if (row) return row.model_id;
   const fallback = await deps.modelPricing.getByTier(tier === "cheap" ? "premium" : "cheap");
@@ -80,7 +108,7 @@ async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string | null>
     );
     return fallback.model_id;
   }
-  return null;
+  throw new ConfigError("no model configured for any tier");
 }
 
 /**
@@ -94,12 +122,18 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
   const requestedTier = resolveTier(settings.model_tier);
   const decision = await preCallCheck(deps, input.userId, requestedTier);
 
-  const model = await resolveModel(deps, decision.coercedTier);
-  if (!model) {
-    return {
-      reply: "I have no model configured yet — ask the owner to set up the model/pricing config.",
-      conversationId: input.conversationId,
-    };
+  let model: string;
+  try {
+    model = await resolveModel(deps, decision.coercedTier);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      logger.error({ err }, "no model configured");
+      return {
+        reply: "I have no model configured yet — ask the owner to set up the model/pricing config.",
+        conversationId: input.conversationId,
+      };
+    }
+    throw err;
   }
 
   const registry = buildToolRegistry();
@@ -222,10 +256,11 @@ export async function runToolLoop(
         maxTokens: params.maxTokens,
       });
     } catch (err) {
-      // Provider failure (auth/403, rate limit, outage). Surface a friendly reply
-      // rather than letting the turn throw and leave the user with no response.
-      logger.error(err, "llm chat call failed");
-      return { reply: LLM_ERROR_FALLBACK, alertPct };
+      // Provider failure (auth/403, rate limit, outage). Surface a reply matched to the
+      // cause rather than letting the turn throw and leave the user with no response.
+      const kind = err instanceof LlmProviderError ? err.kind : "unknown";
+      logger.error({ err, kind }, "llm chat call failed");
+      return { reply: llmErrorReply(err), alertPct };
     }
 
     const record = await recordUsageAndAlert(
@@ -399,7 +434,11 @@ async function executeToolCall(
   try {
     return await tool.execute(args, ctx);
   } catch (err) {
-    logger.error(err, `tool ${name} failed`);
-    return `The ${name} tool failed to run.`;
+    // Wrap at the seam so the tool name and cause are captured as structured data, then
+    // feed the failure back to the model (as a tool result) so it can recover, rather
+    // than aborting the whole turn.
+    const toolErr = new ToolExecutionError(name, { cause: err });
+    logger.error({ err, tool: name }, toolErr.message);
+    return `${toolErr.message}.`;
   }
 }
