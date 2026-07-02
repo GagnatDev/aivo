@@ -1,10 +1,11 @@
 import { startServer } from "./bootstrap.js";
 import { runMigrations } from "./db/migrate.js";
-import { env } from "./config/env.js";
+import { loadEnv } from "./config/env.js";
 import { logger } from "./logger.js";
 
 // Production entry point: migrate at boot (before listening), then start.
 async function main(): Promise<void> {
+  const env = loadEnv();
   await runMigrations(env.DATABASE_URL, { log: (msg) => logger.info(msg) });
   await startServer();
 }

@@ -16,7 +16,8 @@ import { PendingApprovalRepository } from "./storage/pendingApprovalRepository.j
 import { SettingsPermissionsRepository } from "./storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "./storage/settingsRepository.js";
 import { UserRepository } from "./storage/userRepository.js";
-import { env } from "./config/env.js";
+import { loadEnv } from "./config/env.js";
+import type { DiscordConfig } from "./discord/config.js";
 import { logger } from "./logger.js";
 
 export interface StartedServer {
@@ -31,7 +32,11 @@ export interface StartedServer {
  * this.
  */
 export async function startServer(connectionString?: string): Promise<StartedServer> {
-  const pool = createPool(connectionString);
+  // The composition root: validate the environment once, then thread the values through
+  // the DI seams (AgentConfig on AgentDeps, DiscordConfig on the gateway) so no module
+  // downstream imports an env singleton.
+  const env = loadEnv();
+  const pool = createPool(connectionString ?? env.DATABASE_URL);
   const db = createDb(pool);
 
   const deps: AgentDeps = {
@@ -47,6 +52,19 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     pendingApprovals: new PendingApprovalRepository(db),
     llm: createOpenAiProvider({ apiKey: env.LLM_API_KEY, baseURL: env.LLM_BASE_URL }),
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
+    config: {
+      agentMaxToolIterations: env.AGENT_MAX_TOOL_ITERATIONS,
+      llmMaxOutputTokens: env.LLM_MAX_OUTPUT_TOKENS,
+      contextMessageLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
+      memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+    },
+  };
+
+  const discordConfig: DiscordConfig = {
+    botToken: env.DISCORD_BOT_TOKEN,
+    guildId: env.DISCORD_GUILD_ID,
+    homeChannelId: env.DISCORD_HOME_CHANNEL_ID,
+    offlineAckThresholdMinutes: env.OFFLINE_ACK_THRESHOLD_MINUTES,
   };
 
   // Sweep any approval prompts left pending across a restart so stale buttons resolve.
@@ -62,7 +80,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     });
   });
 
-  const gateway = createDiscordGateway(deps);
+  const gateway = createDiscordGateway(deps, discordConfig);
   await gateway.login();
 
   registerShutdown(server, pool, gateway);

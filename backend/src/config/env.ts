@@ -50,9 +50,13 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
-/** Validate the environment. Throws (fail fast) on misconfiguration. */
+/**
+ * Validate the environment. Throws (fail fast) on misconfiguration. Called once at
+ * the composition root (`server.ts`/`bootstrap.ts`); the resulting values are threaded
+ * through the DI seams ({@link AgentConfig} on `AgentDeps`, {@link DiscordConfig} on the
+ * gateway) rather than imported as a module singleton, so core logic never reaches for
+ * `process.env` and tests can vary config per-case without mutating shared module state.
+ */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return EnvSchema.parse(source);
 }
-
-export const env: Env = loadEnv();

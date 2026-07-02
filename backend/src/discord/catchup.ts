@@ -6,8 +6,8 @@ import {
   type GuildTextBasedChannel,
   type Message,
 } from "discord.js";
-import { env } from "../config/env.js";
 import { logger } from "../logger.js";
+import type { DiscordConfig } from "./config.js";
 import { isCommand } from "./commands.js";
 import type { HandleMessageDeps } from "./handleMessage.js";
 import { processAndReply, shouldRespond } from "./router.js";
@@ -29,18 +29,19 @@ const MAX_PAGES = 10;
 export async function catchUpOnMissedMessages(
   deps: HandleMessageDeps,
   client: Client<true>,
+  cfg: DiscordConfig,
 ): Promise<void> {
   const watermark = await deps.messages.getLatestDiscordMessageId();
   if (!watermark) return;
 
-  const guild = await client.guilds.fetch(env.DISCORD_GUILD_ID);
+  const guild = await client.guilds.fetch(cfg.guildId);
   const me = await guild.members.fetchMe();
   const channels = await readableTextChannels(guild, me);
 
   let handled = 0;
   for (const channel of channels) {
     try {
-      handled += await catchUpChannel(deps, channel, watermark);
+      handled += await catchUpChannel(deps, channel, watermark, cfg);
     } catch (err) {
       logger.error({ err, channelId: channel.id }, "catch-up failed for channel");
     }
@@ -53,6 +54,7 @@ async function catchUpChannel(
   deps: HandleMessageDeps,
   channel: GuildTextBasedChannel,
   watermark: string,
+  cfg: DiscordConfig,
 ): Promise<number> {
   let handled = 0;
   for (const message of await missedSince(channel, watermark)) {
@@ -61,8 +63,8 @@ async function catchUpChannel(
     // Commands are immediate instructions — a missed one is stale, so don't replay it
     // (and never send a command through the agent loop).
     if (isCommand(message.content)) continue;
-    if (!(await shouldRespond(message))) continue;
-    await processAndReply(deps, message, { acknowledgeIfStale: true });
+    if (!(await shouldRespond(message, cfg))) continue;
+    await processAndReply(deps, message, cfg, { acknowledgeIfStale: true });
     handled += 1;
   }
   return handled;

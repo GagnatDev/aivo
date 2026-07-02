@@ -1,5 +1,5 @@
 import type { LlmProvider } from "../llm/provider.js";
-import type { AgentDeps } from "../agent/deps.js";
+import type { AgentConfig, AgentDeps } from "../agent/deps.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import { ConversationRepository } from "../storage/conversationRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
@@ -15,8 +15,23 @@ import { testDb } from "./db.js";
 
 export const OWNER_ID = "owner-discord-id";
 
-/** Assemble a full AgentDeps over the Testcontainers DB with the given LLM provider. */
-export function makeAgentDeps(llm: LlmProvider = makeFakeLlm([])): AgentDeps {
+/** The `loadEnv()` defaults, so tests match production unless a case overrides them. */
+export const TEST_AGENT_CONFIG: AgentConfig = {
+  agentMaxToolIterations: 5,
+  llmMaxOutputTokens: 1024,
+  contextMessageLimit: 15,
+  memoryInjectLimit: 20,
+};
+
+/**
+ * Assemble a full AgentDeps over the Testcontainers DB with the given LLM provider.
+ * Config defaults to {@link TEST_AGENT_CONFIG}; pass an override to vary a single knob
+ * for a case (e.g. a lower `agentMaxToolIterations`) without touching module state.
+ */
+export function makeAgentDeps(
+  llm: LlmProvider = makeFakeLlm([]),
+  config: Partial<AgentConfig> = {},
+): AgentDeps {
   const db = testDb();
   return {
     users: new UserRepository(db),
@@ -31,6 +46,7 @@ export function makeAgentDeps(llm: LlmProvider = makeFakeLlm([])): AgentDeps {
     pendingApprovals: new PendingApprovalRepository(db),
     llm,
     ownerDiscordUserId: OWNER_ID,
+    config: { ...TEST_AGENT_CONFIG, ...config },
   };
 }
 
