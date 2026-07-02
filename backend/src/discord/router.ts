@@ -4,8 +4,8 @@ import {
   ButtonStyle,
   type Message,
 } from "discord.js";
-import { env } from "../config/env.js";
 import { resumeApprovedAgent } from "../agent/agent.js";
+import type { DiscordConfig } from "./config.js";
 import {
   handleIncomingMessage,
   recordAssistantReply,
@@ -42,11 +42,11 @@ async function isReplyToAivo(message: Message): Promise<boolean> {
  * (discord/client.ts) and the offline catch-up (discord/catchup.ts) so both apply
  * identical rules.
  */
-export async function shouldRespond(message: Message): Promise<boolean> {
+export async function shouldRespond(message: Message, cfg: DiscordConfig): Promise<boolean> {
   if (message.author.bot) return false;
-  if (message.guildId !== env.DISCORD_GUILD_ID) return false;
+  if (message.guildId !== cfg.guildId) return false;
 
-  if (message.channelId !== env.DISCORD_HOME_CHANNEL_ID) {
+  if (message.channelId !== cfg.homeChannelId) {
     const mentioned = message.mentions.has(message.client.user!);
     if (!mentioned && !(await isReplyToAivo(message))) return false;
   }
@@ -69,6 +69,7 @@ export interface ProcessOptions {
 export async function processAndReply(
   deps: HandleMessageDeps,
   message: Message,
+  cfg: DiscordConfig,
   opts: ProcessOptions = {},
 ): Promise<void> {
   const result = await handleIncomingMessage(deps, normalize(message));
@@ -88,7 +89,7 @@ export async function processAndReply(
   if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
   if (opts.acknowledgeIfStale) {
     const ageMs = Date.now() - message.createdTimestamp;
-    if (ageMs >= env.OFFLINE_ACK_THRESHOLD_MINUTES * 60_000) {
+    if (ageMs >= cfg.offlineAckThresholdMinutes * 60_000) {
       reply = `${offlineAck(ageMs)}\n\n${reply}`;
     }
   }

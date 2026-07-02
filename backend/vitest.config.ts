@@ -11,19 +11,13 @@ export default defineConfig({
     // Test files share that single database and reset via TRUNCATE between tests,
     // so they must not run concurrently or they'd truncate each other's data.
     fileParallelism: false,
-    // Default so unit tests can import modules that read config at load time
-    // without a real database. Integration tests override DATABASE_URL via the
-    // Testcontainers global setup. Discord vars are dummy-but-present so env.ts
-    // (which validates them at import) loads in tests.
+    // Core logic no longer imports the `env` singleton (config is injected via
+    // AgentDeps/DiscordConfig), so modules load in tests without a full env. The DB
+    // connection string is the one value still read directly; the Testcontainers
+    // global setup provides the real one (see test/db.ts), this is just a placeholder
+    // for anything that reads it before that.
     env: {
       DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/test",
-      DISCORD_BOT_TOKEN: "test-token",
-      DISCORD_APP_ID: "test-app",
-      DISCORD_GUILD_ID: "test-guild",
-      OWNER_DISCORD_USER_ID: "test-owner",
-      DISCORD_HOME_CHANNEL_ID: "test-home-channel",
-      LLM_API_KEY: "test-llm-key",
-      LLM_BASE_URL: "https://api.scaleway.ai/v1",
     },
     coverage: {
       provider: "v8",

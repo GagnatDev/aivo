@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, type Interaction, type Message } from "discord.js";
-import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
+import type { DiscordConfig } from "./config.js";
 import { isCommand, runCommand } from "./commands.js";
 import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
 import { normalize, processAndReply, resolveApproval, shouldRespond } from "./router.js";
@@ -20,7 +20,7 @@ export interface DiscordGateway {
  * bots or from outside the configured guild are ignored. On connect we also catch
  * up on anything sent while the process was offline (see discord/catchup.ts).
  */
-export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
+export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig): DiscordGateway {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -31,13 +31,13 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
 
   client.once(Events.ClientReady, (ready) => {
     logger.info({ tag: ready.user.tag }, "discord gateway ready");
-    void catchUpOnMissedMessages(deps, ready).catch((err) => {
+    void catchUpOnMissedMessages(deps, ready, cfg).catch((err) => {
       logger.error(err, "catch-up on missed messages failed");
     });
   });
 
   client.on(Events.MessageCreate, (message) => {
-    void onMessage(deps, message);
+    void onMessage(deps, message, cfg);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
@@ -51,15 +51,15 @@ export function createDiscordGateway(deps: HandleMessageDeps): DiscordGateway {
   return {
     client,
     login: async () => {
-      await client.login(env.DISCORD_BOT_TOKEN);
+      await client.login(cfg.botToken);
     },
     destroy: () => client.destroy(),
     isReady: () => client.isReady(),
   };
 }
 
-async function onMessage(deps: HandleMessageDeps, message: Message): Promise<void> {
-  if (!(await shouldRespond(message))) return;
+async function onMessage(deps: HandleMessageDeps, message: Message, cfg: DiscordConfig): Promise<void> {
+  if (!(await shouldRespond(message, cfg))) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
     if (isCommand(message.content)) {
@@ -67,7 +67,7 @@ async function onMessage(deps: HandleMessageDeps, message: Message): Promise<voi
       await message.reply(reply);
       return;
     }
-    await processAndReply(deps, message);
+    await processAndReply(deps, message, cfg);
   } catch (err) {
     logger.error(err, "failed to handle discord message");
     // Last resort: the agent already turns LLM failures into a friendly reply, so

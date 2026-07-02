@@ -33,7 +33,19 @@ The improvements below sharpen these seams rather than replace them.
 
 ## Part 1 — Testability
 
-### 1.1 Make config injectable (stop importing the `env` singleton from core logic)
+### 1.1 Make config injectable (stop importing the `env` singleton from core logic) — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** `config/env.ts` no longer exports an
+> eagerly-evaluated `env` singleton — it exports only `loadEnv()` + the Zod schema.
+> Agent config is threaded through `AgentDeps.config` (`AgentConfig`:
+> `agentMaxToolIterations`, `llmMaxOutputTokens`, `contextMessageLimit`,
+> `memoryInjectLimit`); the Discord layer takes its own `DiscordConfig` (`botToken`,
+> `guildId`, `homeChannelId`, `offlineAckThresholdMinutes`) passed into
+> `createDiscordGateway()`, `shouldRespond()`, `processAndReply()`, and
+> `catchUpOnMissedMessages()`. `bootstrap.ts` and `server.ts` are the only callers of
+> `loadEnv()`. `logger.ts` reads `NODE_ENV`/`LOG_LEVEL` from `process.env` directly, as
+> the one piece of infra that lives beneath the DI graph. The vitest `env:` block is now
+> just `DATABASE_URL`. No behavior change.
 
 **Problem.** `config/env.ts` validates `process.env` **at import time** and exports a
 singleton (`export const env: Env = loadEnv()`). Nine files import it directly,
@@ -335,7 +347,7 @@ and llm calls) gets built.
 |---|--------|--------|--------|------|
 | 1 | CLAUDE.md + doc status fix (§2.1, §2.2) | XS | High | Now |
 | 2 | Linter/formatter + CI steps (§1.8) | S | High | Now |
-| 3 | Injectable config (§1.1) | M | High | Now, before more `env` imports accrete |
+| 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
 | 4 | Injectable clock (§1.2) | S | High | Before scheduler slice |
 | 5 | Tools → one file per tool (§1.5) | S | Med–High | Before digest/reminder tools land |
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |

@@ -11,6 +11,24 @@ import type { SettingsRepository } from "../storage/settingsRepository.js";
 import type { UserRepository } from "../storage/userRepository.js";
 
 /**
+ * The agent-relevant config knobs, populated once from `loadEnv()` at the composition
+ * root and injected via {@link AgentDeps}. Threading these through DI (rather than
+ * importing the `env` singleton) keeps the agent core free of `process.env` and lets
+ * tests vary config per-case without mutating shared module state — so `AgentDeps` is
+ * the honest, complete contract of what a turn needs.
+ */
+export interface AgentConfig {
+  /** Hard cap on tool round-trips per turn (runaway backstop). `AGENT_MAX_TOOL_ITERATIONS`. */
+  agentMaxToolIterations: number;
+  /** Upper bound on completion tokens per LLM call. `LLM_MAX_OUTPUT_TOKENS`. */
+  llmMaxOutputTokens: number;
+  /** Recent conversation messages to replay as context. `AGENT_CONTEXT_MESSAGE_LIMIT`. */
+  contextMessageLimit: number;
+  /** Remembered facts injected into the system prompt each turn. `AGENT_MEMORY_INJECT_LIMIT`. */
+  memoryInjectLimit: number;
+}
+
+/**
  * Everything the agent core and its tools need, injected so the agent stays free of
  * discord.js and is unit-testable against a real database + a fake LlmProvider. This
  * is the superset that replaces the original HandleMessageDeps.
@@ -29,4 +47,6 @@ export interface AgentDeps {
   llm: LlmProvider;
   /** Discord id of the owner; flags is_owner on JIT provisioning. */
   ownerDiscordUserId: string;
+  /** Config knobs threaded from `loadEnv()` at the composition root. */
+  config: AgentConfig;
 }

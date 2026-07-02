@@ -1,4 +1,3 @@
-import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 import type { ChatMessage, ToolSchema } from "../llm/provider.js";
 import { computeCostCents, preCallCheck, recordUsageAndAlert, type Tier } from "./budget.js";
@@ -108,8 +107,8 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
     userId: input.userId,
     conversationId: input.conversationId,
     settings,
-    historyLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
-    memoryLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+    historyLimit: deps.config.contextMessageLimit,
+    memoryLimit: deps.config.memoryInjectLimit,
   });
 
   // Advertise only the tools the recent conversation looks like it needs (the 4 schemas
@@ -124,8 +123,8 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
   const tools = selectToolSchemas(registry, recentText);
 
   const maxTokens = decision.overBudgetNote
-    ? Math.min(env.LLM_MAX_OUTPUT_TOKENS, OVER_BUDGET_MAX_TOKENS)
-    : env.LLM_MAX_OUTPUT_TOKENS;
+    ? Math.min(deps.config.llmMaxOutputTokens, OVER_BUDGET_MAX_TOKENS)
+    : deps.config.llmMaxOutputTokens;
 
   // Approval gate: if the estimated cost of this turn's first call exceeds the user's
   // threshold, don't run it — post a confirmation prompt and wait. The estimate is
@@ -213,7 +212,7 @@ export async function runToolLoop(
   // a model stuck re-issuing the same calls (a common open-model failure mode).
   const executed = new Set<string>();
 
-  for (let i = 0; i < env.AGENT_MAX_TOOL_ITERATIONS; i++) {
+  for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
     let result;
     try {
       result = await deps.llm.chat({
@@ -286,7 +285,7 @@ export async function runToolLoop(
   }
 
   logger.warn(
-    { userId: ctx.userId, model: params.model, iterations: env.AGENT_MAX_TOOL_ITERATIONS },
+    { userId: ctx.userId, model: params.model, iterations: deps.config.agentMaxToolIterations },
     "agent hit tool-iteration cap; forcing answer",
   );
   return forceFinalAnswer(deps, ctx, params, messages, alertPct);
