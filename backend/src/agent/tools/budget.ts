@@ -25,7 +25,10 @@ export const budgetTool: AgentTool = {
         action: { type: "string", enum: ["report", "set_caps", "set_tier"] },
         monthly_ceiling_cents: { type: "integer", description: "whole cents (set_caps)" },
         daily_soft_cap_cents: { type: "integer", description: "whole cents or null (set_caps)" },
-        approval_threshold_cents: { type: "integer", description: "whole cents or null (set_caps)" },
+        approval_threshold_cents: {
+          type: "integer",
+          description: "whole cents or null (set_caps)",
+        },
         tier: { type: "string", enum: ["auto", "cheap", "premium"], description: "set_tier" },
       },
       required: ["action"],
@@ -45,14 +48,23 @@ export const budgetTool: AgentTool = {
           monthly_ceiling_cents: snap.monthlyCeilingCents,
           pct_of_ceiling: Math.round(snap.pctOfCeiling),
           degradation_state: snap.state,
-          top_drivers: drivers.map((d) => ({ model: d.model, task: d.taskType, cents: round(d.costCents), calls: d.calls })),
+          top_drivers: drivers.map((d) => ({
+            model: d.model,
+            task: d.taskType,
+            cents: round(d.costCents),
+            calls: d.calls,
+          })),
         });
       }
       case "set_caps": {
         if (!ctx.isOwner) return OWNER_ONLY;
         const row = await deps.budgetConfig.update(ctx.userId, {
-          ...(p.value.monthly_ceiling_cents !== undefined ? { monthly_ceiling_cents: p.value.monthly_ceiling_cents } : {}),
-          ...(p.value.daily_soft_cap_cents !== undefined ? { daily_soft_cap_cents: p.value.daily_soft_cap_cents } : {}),
+          ...(p.value.monthly_ceiling_cents !== undefined
+            ? { monthly_ceiling_cents: p.value.monthly_ceiling_cents }
+            : {}),
+          ...(p.value.daily_soft_cap_cents !== undefined
+            ? { daily_soft_cap_cents: p.value.daily_soft_cap_cents }
+            : {}),
           ...(p.value.approval_threshold_cents !== undefined
             ? { approval_threshold_cents: p.value.approval_threshold_cents }
             : {}),

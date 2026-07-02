@@ -32,6 +32,14 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      # Static checks run before tests so a type or lint failure is reported
+      # distinctly from a test failure (and fails fast without spinning up Docker).
+      - name: Backend typecheck
+        run: pnpm --filter @aivo/backend run typecheck
+
+      - name: Backend lint & format check
+        run: pnpm --filter @aivo/backend run lint
+
       # Backend tests spin up Postgres via Testcontainers (no external services).
       - name: Backend tests
         run: pnpm --filter @aivo/backend run test

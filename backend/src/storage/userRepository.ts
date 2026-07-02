@@ -9,13 +9,7 @@ export interface UserRow {
   is_owner: boolean;
 }
 
-const USER_COLUMNS = [
-  "id",
-  "discord_user_id",
-  "auth_sub",
-  "display_name",
-  "is_owner",
-] as const;
+const USER_COLUMNS = ["id", "discord_user_id", "auth_sub", "display_name", "is_owner"] as const;
 
 export interface UpsertUserInput {
   discordUserId: string;
@@ -36,11 +30,7 @@ export class UserRepository {
   }
 
   findById(id: string): Promise<UserRow | undefined> {
-    return this.db
-      .selectFrom("users")
-      .select(USER_COLUMNS)
-      .where("id", "=", id)
-      .executeTakeFirst();
+    return this.db.selectFrom("users").select(USER_COLUMNS).where("id", "=", id).executeTakeFirst();
   }
 
   async count(): Promise<number> {

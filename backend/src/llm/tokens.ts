@@ -16,10 +16,7 @@ export function estimateTokens(text: string): number {
 }
 
 /** Approximate input tokens for a prepared request (messages + tool schemas). */
-export function estimateRequestTokens(
-  messages: ChatMessage[],
-  tools?: ToolSchema[],
-): number {
+export function estimateRequestTokens(messages: ChatMessage[], tools?: ToolSchema[]): number {
   let total = 0;
   for (const m of messages) {
     total += PER_MESSAGE_OVERHEAD + estimateTokens(m.content ?? "");

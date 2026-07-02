@@ -3,7 +3,13 @@ import { OWNER_ONLY, parse, type AgentTool } from "./index.js";
 
 // Columns a non-owner could be permitted to edit (the rest are reserved). The
 // allow-list in settings_permissions intersects with this set.
-const SETTINGS_PATCH_KEYS = ["timezone", "digest_hour", "digest_cap", "model_tier", "persona_prompt"] as const;
+const SETTINGS_PATCH_KEYS = [
+  "timezone",
+  "digest_hour",
+  "digest_cap",
+  "model_tier",
+  "persona_prompt",
+] as const;
 
 const settingsArgs = z.object({
   action: z.enum(["get", "update", "set_member_editable_keys"]),

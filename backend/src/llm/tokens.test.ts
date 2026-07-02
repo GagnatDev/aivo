@@ -24,9 +24,10 @@ describe("estimateRequestTokens", () => {
 
   it("adds overhead for tool schemas", () => {
     const withoutTools = estimateRequestTokens([{ role: "user", content: "hi" }]);
-    const withTools = estimateRequestTokens([{ role: "user", content: "hi" }], [
-      { name: "memory", description: "read and write memories", parameters: { type: "object" } },
-    ]);
+    const withTools = estimateRequestTokens(
+      [{ role: "user", content: "hi" }],
+      [{ name: "memory", description: "read and write memories", parameters: { type: "object" } }],
+    );
     expect(withTools).toBeGreaterThan(withoutTools);
   });
 });

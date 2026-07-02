@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import type { ToolSchema } from "../../llm/provider.js";
 import type { Tier } from "../budget.js";
 import type { AgentDeps } from "../deps.js";
@@ -38,7 +38,10 @@ export function parse<T>(
 ): { ok: true; value: T } | { ok: false; error: string } {
   const result = schema.safeParse(args);
   if (result.success) return { ok: true, value: result.data };
-  return { ok: false, error: `Invalid arguments: ${result.error.issues.map((i) => i.message).join("; ")}` };
+  return {
+    ok: false,
+    error: `Invalid arguments: ${result.error.issues.map((i) => i.message).join("; ")}`,
+  };
 }
 
 /** Build the tool registry the agent exposes (memory, budget, models, settings). */

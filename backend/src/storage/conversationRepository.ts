@@ -9,12 +9,7 @@ export interface ConversationRow {
   discord_channel_id: string | null;
 }
 
-const CONVERSATION_COLUMNS = [
-  "id",
-  "user_id",
-  "channel",
-  "discord_channel_id",
-] as const;
+const CONVERSATION_COLUMNS = ["id", "user_id", "channel", "discord_channel_id"] as const;
 
 export class ConversationRepository {
   constructor(private readonly db: Db) {}

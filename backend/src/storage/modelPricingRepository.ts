@@ -112,10 +112,7 @@ export class ModelPricingRepository {
    * holds it — done in a transaction so the swap is atomic. Returns the updated row,
    * or undefined if the model id is unknown.
    */
-  async setTierRole(
-    modelId: string,
-    role: ModelTierRole,
-  ): Promise<ModelPricingRow | undefined> {
+  async setTierRole(modelId: string, role: ModelTierRole): Promise<ModelPricingRow | undefined> {
     return this.db.transaction().execute(async (tx) => {
       await tx
         .updateTable("model_pricing")

@@ -1,5 +1,5 @@
 import { logger } from "../logger.js";
-import type { ChatMessage, ToolSchema } from "../llm/provider.js";
+import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
 import { computeCostCents, preCallCheck, recordUsageAndAlert, type Tier } from "./budget.js";
 import { buildContext } from "./context.js";
 import type { AgentDeps } from "./deps.js";
@@ -213,7 +213,7 @@ export async function runToolLoop(
   const executed = new Set<string>();
 
   for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
-    let result;
+    let result: ChatResult;
     try {
       result = await deps.llm.chat({
         model: params.model,
@@ -228,7 +228,13 @@ export async function runToolLoop(
       return { reply: LLM_ERROR_FALLBACK, alertPct };
     }
 
-    const record = await recordUsageAndAlert(deps, ctx.userId, TASK_TYPE, params.model, result.usage);
+    const record = await recordUsageAndAlert(
+      deps,
+      ctx.userId,
+      TASK_TYPE,
+      params.model,
+      result.usage,
+    );
     if (record.alertPct) alertPct = Math.max(alertPct ?? 0, record.alertPct);
 
     logger.debug(
@@ -237,7 +243,11 @@ export async function runToolLoop(
         iteration: i,
         tokensIn: result.usage.tokensIn,
         tokensOut: result.usage.tokensOut,
-        toolCalls: result.toolCalls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments })),
+        toolCalls: result.toolCalls.map((c) => ({
+          id: c.id,
+          name: c.name,
+          arguments: c.arguments,
+        })),
         contentPreview: preview(result.content),
       },
       "agent llm round-trip",
@@ -264,7 +274,12 @@ export async function runToolLoop(
       executed.add(signature);
       const toolResult = await executeToolCall(registry, call.name, call.arguments, ctx);
       logger.debug(
-        { userId: ctx.userId, tool: call.name, arguments: call.arguments, resultPreview: preview(toolResult) },
+        {
+          userId: ctx.userId,
+          tool: call.name,
+          arguments: call.arguments,
+          resultPreview: preview(toolResult),
+        },
         "agent tool executed",
       );
       await deps.messages.insert({
@@ -279,7 +294,10 @@ export async function runToolLoop(
     // The model re-issued only tool calls it had already made this turn — it's stuck.
     // Stop looping and force a plain-text answer from what it already has.
     if (allRepeats) {
-      logger.warn({ userId: ctx.userId, model: params.model, iteration: i }, "agent repeated tool calls; forcing answer");
+      logger.warn(
+        { userId: ctx.userId, model: params.model, iteration: i },
+        "agent repeated tool calls; forcing answer",
+      );
       return forceFinalAnswer(deps, ctx, params, messages, alertPct);
     }
   }
@@ -336,8 +354,18 @@ async function forceFinalAnswer(
     },
   ];
   try {
-    const result = await deps.llm.chat({ model: params.model, messages: nudged, maxTokens: params.maxTokens });
-    const record = await recordUsageAndAlert(deps, ctx.userId, TASK_TYPE, params.model, result.usage);
+    const result = await deps.llm.chat({
+      model: params.model,
+      messages: nudged,
+      maxTokens: params.maxTokens,
+    });
+    const record = await recordUsageAndAlert(
+      deps,
+      ctx.userId,
+      TASK_TYPE,
+      params.model,
+      result.usage,
+    );
     const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;
     const text = (result.content ?? "").trim();
     if (text) return { reply: text, alertPct: nextAlert };

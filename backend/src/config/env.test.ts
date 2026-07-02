@@ -61,7 +61,9 @@ describe("loadEnv", () => {
   });
 
   it("throws when LLM_BASE_URL is not a URL", () => {
-    expect(() => loadEnv({ ...validEnv, LLM_BASE_URL: "not-a-url" } as NodeJS.ProcessEnv)).toThrow();
+    expect(() =>
+      loadEnv({ ...validEnv, LLM_BASE_URL: "not-a-url" } as NodeJS.ProcessEnv),
+    ).toThrow();
   });
 
   it("applies LLM/agent defaults", () => {

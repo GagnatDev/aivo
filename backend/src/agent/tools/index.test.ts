@@ -11,7 +11,10 @@ describe("resolveTier", () => {
 
 describe("selectToolSchemas", () => {
   const reg = buildToolRegistry();
-  const names = (text: string) => selectToolSchemas(reg, text).map((s) => s.name).sort();
+  const names = (text: string) =>
+    selectToolSchemas(reg, text)
+      .map((s) => s.name)
+      .sort();
 
   it("always advertises memory and gates the rest out of small talk", () => {
     expect(names("how's it going today?")).toEqual(["memory"]);

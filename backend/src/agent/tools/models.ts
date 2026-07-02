@@ -25,9 +25,19 @@ export const modelsTool: AgentTool = {
       properties: {
         action: { type: "string", enum: ["list", "set_price", "set_tier_role"] },
         model_id: { type: "string", description: "the provider's model id" },
-        input_cost_per_mtok_cents: { type: "number", description: "cents per 1M input tokens (set_price)" },
-        output_cost_per_mtok_cents: { type: "number", description: "cents per 1M output tokens (set_price)" },
-        role: { type: "string", enum: ["cheap", "premium"], description: "tier to assign (set_tier_role)" },
+        input_cost_per_mtok_cents: {
+          type: "number",
+          description: "cents per 1M input tokens (set_price)",
+        },
+        output_cost_per_mtok_cents: {
+          type: "number",
+          description: "cents per 1M output tokens (set_price)",
+        },
+        role: {
+          type: "string",
+          enum: ["cheap", "premium"],
+          description: "tier to assign (set_tier_role)",
+        },
       },
       required: ["action"],
     },

@@ -1,7 +1,4 @@
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { GlobalSetupContext } from "vitest/node";
 import { runMigrations } from "../db/migrate.js";
 

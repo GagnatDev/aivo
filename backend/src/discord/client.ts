@@ -58,7 +58,11 @@ export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig
   };
 }
 
-async function onMessage(deps: HandleMessageDeps, message: Message, cfg: DiscordConfig): Promise<void> {
+async function onMessage(
+  deps: HandleMessageDeps,
+  message: Message,
+  cfg: DiscordConfig,
+): Promise<void> {
   if (!(await shouldRespond(message, cfg))) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.

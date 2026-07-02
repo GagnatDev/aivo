@@ -1,9 +1,4 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  type Message,
-} from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type Message } from "discord.js";
 import { resumeApprovedAgent } from "../agent/agent.js";
 import type { DiscordConfig } from "./config.js";
 import {
@@ -101,8 +96,14 @@ export async function processAndReply(
 /** The Approve/Cancel button row attached to an approval-gate prompt. */
 export function approvalButtons(approvalId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`approve:${approvalId}`).setLabel("Approve").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`cancel:${approvalId}`).setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`approve:${approvalId}`)
+      .setLabel("Approve")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`cancel:${approvalId}`)
+      .setLabel("Cancel")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -132,7 +133,10 @@ export async function resolveApproval(
 
   const requester = await deps.users.findById(approval.user_id);
   if (requester?.discord_user_id !== params.clickerDiscordId) {
-    return { type: "denied", ephemeral: "Only the person who made this request can respond to it." };
+    return {
+      type: "denied",
+      ephemeral: "Only the person who made this request can respond to it.",
+    };
   }
 
   if (params.action === "cancel") {
@@ -145,7 +149,8 @@ export async function resolveApproval(
   if (!approved) return { type: "expired", promptUpdate: "This request expired — just ask again." };
 
   const result = await resumeApprovedAgent(deps, params.approvalId);
-  if (!result) return { type: "expired", promptUpdate: "I couldn't pick that request back up — ask again." };
+  if (!result)
+    return { type: "expired", promptUpdate: "I couldn't pick that request back up — ask again." };
   // A gated turn is the likeliest to push spend over a threshold, so fold any alert
   // it crossed into the follow-up rather than dropping it.
   const followUpReply = result.alertPct

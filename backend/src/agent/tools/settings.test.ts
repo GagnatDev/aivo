@@ -21,7 +21,10 @@ async function ctxFor(discordId: string): Promise<ToolContext> {
 describe("settings tool permissions", () => {
   it("lets the owner change any setting", async () => {
     const ctx = await ctxFor(OWNER_ID);
-    const res = await tool("settings").execute({ action: "update", timezone: "America/New_York" }, ctx);
+    const res = await tool("settings").execute(
+      { action: "update", timezone: "America/New_York" },
+      ctx,
+    );
     expect(res).toMatch(/America\/New_York/);
   });
 
@@ -34,7 +37,10 @@ describe("settings tool permissions", () => {
 
   it("allows a non-owner to change an allow-listed key", async () => {
     const ctx = await ctxFor("member-3");
-    const res = await tool("settings").execute({ action: "update", persona_prompt: "be terse" }, ctx);
+    const res = await tool("settings").execute(
+      { action: "update", persona_prompt: "be terse" },
+      ctx,
+    );
     expect(res).toMatch(/Settings updated/);
   });
 

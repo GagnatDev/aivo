@@ -33,9 +33,7 @@ const usePretty = NODE_ENV === "development";
 export const logger = pino({
   level: resolveLevel(),
   redact,
-  ...(usePretty
-    ? { transport: { target: "pino-pretty", options: { colorize: true } } }
-    : {}),
+  ...(usePretty ? { transport: { target: "pino-pretty", options: { colorize: true } } } : {}),
 });
 
 export const httpLogger = pinoHttp({ logger });

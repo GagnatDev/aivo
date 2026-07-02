@@ -19,8 +19,22 @@ async function setup() {
 describe("LlmUsageRepository", () => {
   it("sums fractional cents across rows without rounding to zero", async () => {
     const { usage, userId } = await setup();
-    await usage.insert({ userId, taskType: "chat", model: "m", tokensIn: 1, tokensOut: 1, costCents: 0.25 });
-    await usage.insert({ userId, taskType: "chat", model: "m", tokensIn: 1, tokensOut: 1, costCents: 0.1 });
+    await usage.insert({
+      userId,
+      taskType: "chat",
+      model: "m",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 0.25,
+    });
+    await usage.insert({
+      userId,
+      taskType: "chat",
+      model: "m",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 0.1,
+    });
     expect(await usage.monthToDateCents(userId)).toBeCloseTo(0.35, 4);
     expect(await usage.todayCents(userId)).toBeCloseTo(0.35, 4);
   });
@@ -32,9 +46,30 @@ describe("LlmUsageRepository", () => {
 
   it("topDrivers groups by model and task_type, biggest first", async () => {
     const { usage, userId } = await setup();
-    await usage.insert({ userId, taskType: "chat", model: "premium", tokensIn: 1, tokensOut: 1, costCents: 5 });
-    await usage.insert({ userId, taskType: "chat", model: "cheap", tokensIn: 1, tokensOut: 1, costCents: 1 });
-    await usage.insert({ userId, taskType: "chat", model: "cheap", tokensIn: 1, tokensOut: 1, costCents: 1 });
+    await usage.insert({
+      userId,
+      taskType: "chat",
+      model: "premium",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 5,
+    });
+    await usage.insert({
+      userId,
+      taskType: "chat",
+      model: "cheap",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 1,
+    });
+    await usage.insert({
+      userId,
+      taskType: "chat",
+      model: "cheap",
+      tokensIn: 1,
+      tokensOut: 1,
+      costCents: 1,
+    });
     const drivers = await usage.topDrivers(userId, new Date(0));
     expect(drivers[0]).toMatchObject({ model: "premium", costCents: 5, calls: 1 });
     expect(drivers[1]).toMatchObject({ model: "cheap", costCents: 2, calls: 2 });
