@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { ModelTierRole } from "../db/schema.js";
+import type { ModelTierRole } from "../db/schema.enums.js";
 
 export interface ModelPricingRow {
   id: string;

@@ -1,4 +1,4 @@
-import type { DegradationState, ModelTierRole } from "../db/schema.js";
+import type { DegradationState, ModelTierRole } from "../db/schema.enums.js";
 import type { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import type { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import type { ModelPricingRepository } from "../storage/modelPricingRepository.js";

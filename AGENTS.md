@@ -27,7 +27,7 @@ Tests need **Docker** — they spin up Postgres via Testcontainers and are curre
 - `storage/` — repositories, one class per table, each with a `.test.ts`.
 - `discord/` — discord.js gateway adapter, routing policy, catch-up, slash commands.
 - `llm/` — provider-agnostic `LlmProvider` interface + `openaiProvider.ts` + error taxonomy.
-- `db/` — Kysely wiring, pool, hand-written `schema.ts`, migration runner.
+- `db/` — Kysely wiring, pool, migration runner, and **generated** `schema.ts` (do not edit — run `pnpm --filter @aivo/backend db:codegen`; hand-authored enums live in `schema.enums.ts`).
 - `config/` — Zod-validated env (`loadEnv()` + schema; no eager singleton).
 - `routes/` — Express health endpoints. `test/` — Testcontainers setup, fakes, helpers.
 - `backend/migrations/` — numbered SQL, append-only, applied at boot.
@@ -40,6 +40,8 @@ Tests need **Docker** — they spin up Postgres via Testcontainers and are curre
 - **Layering: `discord/ → agent/ → (storage/, llm/)`**, with `db/`+`config/` at the edges.
   Nothing imports back up. **discord.js types must not cross into `agent/`.**
 - New table ⇒ a repository **and** its `.test.ts`. Migrations are append-only, never edited.
+  After a migration, regenerate `db/schema.ts` (`pnpm --filter @aivo/backend db:codegen`); a
+  test fails if the committed types drift from the migrations.
 - Money is fractional **cents**; prices are cents per **Mtok**.
 - **`is_owner` is enforced in tool execute functions**, never via prompt text.
 - Keep files single-concern and under ~250 lines.

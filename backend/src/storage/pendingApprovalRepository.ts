@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { ApprovalStatus } from "../db/schema.js";
+import type { ApprovalStatus } from "../db/schema.enums.js";
 
 export interface PendingApprovalRow {
   id: string;

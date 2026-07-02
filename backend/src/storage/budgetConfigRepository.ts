@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { DegradationState } from "../db/schema.js";
+import type { DegradationState } from "../db/schema.enums.js";
 
 export interface BudgetConfigRow {
   user_id: string;
