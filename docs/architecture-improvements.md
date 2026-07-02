@@ -162,7 +162,20 @@ the mechanical "fetch the referenced message" part.
 
 **Effort.** Small–medium.
 
-### 1.5 One directory per tool, registry stays explicit
+### 1.5 One directory per tool, registry stays explicit — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** The single `agent/tools.ts` is gone, replaced
+> by an `agent/tools/` directory — one file per tool, each with its own colocated test:
+> `index.ts` (`buildToolRegistry()`, `selectToolSchemas()`, `resolveTier()`, the
+> `ToolContext`/`AgentTool` interfaces, and the shared `parse()`/`OWNER_ONLY` helpers),
+> `memory.ts`, `budget.ts`, `models.ts`, `settings.ts`, plus `index.test.ts`,
+> `memory.test.ts`, `budget.test.ts`, `models.test.ts`, `settings.test.ts`. Each tool's
+> keyword gate now lives on the tool itself as an optional `gate?: RegExp` field on
+> `AgentTool` — the parallel `TOOL_GATES` record and the `ALWAYS_ON` set are both gone.
+> `selectToolSchemas()` reads `t.gate` directly: a tool with no gate is always advertised,
+> which is exactly how `memory` stays always-on. `agent.ts` imports from
+> `./tools/index.js`; no other importers existed. Pure file moves plus one interface
+> field — no behavior change (verified: registry order and gating are identical).
 
 **Problem.** `agent/tools.ts` is 378 lines holding four tools (memory, budget, models,
 settings), their Zod schemas, their JSON tool schemas, the keyword-gating regexes, and
@@ -364,7 +377,7 @@ and llm calls) gets built.
 | 2 | Linter/formatter + CI steps (§1.8) | S | High | Now |
 | 3 | Injectable config (§1.1) — ✅ done | M | High | Now, before more `env` imports accrete |
 | 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
-| 5 | Tools → one file per tool (§1.5) | S | Med–High | Before digest/reminder tools land |
+| 5 | Tools → one file per tool (§1.5) — ✅ done | S | Med–High | Before digest/reminder tools land |
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
 | 7 | Pure `shouldRespond` (§1.4) | S–M | Med | Opportunistic |
 | 8 | Error taxonomy (§1.9) | S | Med | Opportunistic |
