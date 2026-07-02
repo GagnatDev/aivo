@@ -9,7 +9,7 @@ import {
   selectToolSchemas,
   type AgentTool,
   type ToolContext,
-} from "./tools.js";
+} from "./tools/index.js";
 
 // How many recent user/assistant messages to scan when deciding which tools to
 // advertise — enough to catch an immediate follow-up that omits the keyword.
