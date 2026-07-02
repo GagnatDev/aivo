@@ -139,7 +139,21 @@ Move the approval sweep from `bootstrap.ts` into `runDueWork` so it becomes peri
 
 **Effort.** Free if done as part of the scheduler slice; expensive to retrofit.
 
-### 1.4 Filter messages on the normalized shape, not the discord.js `Message`
+### 1.4 Filter messages on the normalized shape, not the discord.js `Message` — ✅ Implemented
+
+> **Status: ✅ Implemented (2026-07-02).** `shouldRespond()` (`discord/router.ts`) is now a
+> pure, synchronous function of a normalized `MessageMeta`
+> (`{ isBot, guildId, channelId, mentionsMe, referencedMessageAuthorIsMe }`) plus
+> `DiscordConfig` — no discord.js `Message` and no network fetch inside the decision. A new
+> `resolveMessageMeta(message)` in the same file is the one transport-coupled step: it reads
+> the discord.js fields and performs the async referenced-message fetch (`isReplyToAivo`,
+> still private) to build the `MessageMeta`. Both callers — the live gateway
+> (`discord/client.ts` `onMessage`) and the offline catch-up (`discord/catchup.ts`
+> `catchUpChannel`) — now do `shouldRespond(await resolveMessageMeta(message), cfg)`, so they
+> keep applying identical rules while the policy stays mockless. `router.test.ts` gains a
+> table-driven suite that drives the routing matrix (bot / wrong-guild / DM / home-channel /
+> mention / reply-to-Aivo) with plain `MessageMeta` objects and zero discord.js mocks. No
+> behavior change.
 
 **Problem.** `shouldRespond()` and `isReplyToAivo()` (`discord/router.ts`) take the raw
 discord.js `Message` and even perform a network fetch (`message.channel.messages
@@ -396,7 +410,7 @@ and llm calls) gets built.
 | 4 | Injectable clock (§1.2) — ✅ done | S | High | Before scheduler slice |
 | 5 | Tools → one file per tool (§1.5) — ✅ done | S | Med–High | Before digest/reminder tools land |
 | 6 | Scheduler as testable port (§1.3) | S* | High | As part of the scheduler slice |
-| 7 | Pure `shouldRespond` (§1.4) | S–M | Med | Opportunistic |
+| 7 | Pure `shouldRespond` (§1.4) — ✅ done | S–M | Med | Opportunistic |
 | 8 | Error taxonomy (§1.9) | S | Med | Opportunistic |
 | 9 | Split `runAgent` policy/loop (§1.6) | M | Med | Before a second loop caller exists |
 | 10 | Schema codegen (§1.10) | S–M | Med | With the next migration batch |

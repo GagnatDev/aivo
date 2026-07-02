@@ -4,7 +4,13 @@ import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
 import { isCommand, runCommand } from "./commands.js";
 import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
-import { normalize, processAndReply, resolveApproval, shouldRespond } from "./router.js";
+import {
+  normalize,
+  processAndReply,
+  resolveApproval,
+  resolveMessageMeta,
+  shouldRespond,
+} from "./router.js";
 
 export interface DiscordGateway {
   client: Client;
@@ -63,7 +69,7 @@ async function onMessage(
   message: Message,
   cfg: DiscordConfig,
 ): Promise<void> {
-  if (!(await shouldRespond(message, cfg))) return;
+  if (!shouldRespond(await resolveMessageMeta(message), cfg)) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
     if (isCommand(message.content)) {
