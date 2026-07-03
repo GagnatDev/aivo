@@ -43,9 +43,9 @@ the UI. Household member onboarding itself is out of scope here; the dashboard m
   a later phase.
 - No duplication of business logic — API handlers delegate to existing repositories
   in `backend/src/storage/`.
-- Dashboard ships as a separate `frontend/` workspace (homectl pattern); the Aivo
-  backend pod continues to serve Discord + scheduler; HTTP gains dashboard routes
-  behind homectl-auth.
+- Dashboard ships as a separate `frontend/` workspace in the monorepo, but **one Docker
+  image** with the backend (same homectl app pattern as workbench): the backend serves
+  the built SPA, Discord gateway, scheduler, and dashboard API routes behind homectl-auth.
 
 ---
 
@@ -61,13 +61,14 @@ the UI. Household member onboarding itself is out of scope here; the dashboard m
 | G4 | Provide a home overview with key KPIs and system health |
 | G5 | Integrate homectl-auth so only authenticated household users see their data |
 | G6 | Enable a future implementation agent to derive an API + frontend plan from this doc alone |
+| G7 | Dashboard is fully usable on mobile phone browsers, not just desktop |
 
 ### 2.2 Non-goals (Phase 3 dashboard v1)
 
 - Replacing Discord as the primary interface for chat, settings changes, or owner mutations
 - Real-time streaming of agent turns (polling or manual refresh is acceptable)
 - pgvector / semantic memory visualization (v1 memory is keyword/category only)
-- Mobile-native app (responsive web is sufficient)
+- Mobile-native app (responsive web is sufficient — see §5.5 for mobile requirements)
 - Multi-provider LLM routing UI
 - YouTube OAuth flow in the dashboard (stays as one-time HTTP callback)
 - Write paths for model pricing, budget caps, or memory (deferred; see §7.3)
@@ -317,26 +318,44 @@ models. Superset of Discord `!models`.
 flowchart LR
   Browser["Browser (SPA)"]
   Auth["homectl-auth"]
-  API["aivo backend — new /api/dashboard/* routes"]
+  Pod["aivo pod — single image, replicas: 1"]
   Repos["storage/ repositories"]
   PG[("Postgres")]
 
   Browser --> Auth
-  Browser --> API
-  API --> Repos
+  Browser --> Pod
+  Pod --> Repos
   Repos --> PG
 ```
 
-- **Frontend:** new `frontend/` workspace (Vite + React or equivalent homectl stack).
-  Not bundled into the Discord-focused backend image initially; deployed separately per
-  homectl ingress pattern ([`deployment.md`](deployment.md)).
-- **Backend:** add authenticated REST routes under e.g. `/api/dashboard/`. Reuse
-  existing repositories; add query methods only where charts need aggregates not yet
-  exposed.
-- **Layering:** dashboard routes live in `backend/src/routes/` (or `dashboard/` module);
-  they must not import discord.js types into agent code. Auth middleware resolves
-  `user_id` and passes it to handlers.
-- **No business logic in frontend** beyond presentation, filtering, and chart mapping.
+**Repo layout:** separate workspaces, one deployable unit.
+
+- **`frontend/`** — Vite + React (or equivalent homectl stack). Own package, lint, and
+  build. No Discord or DB imports.
+- **`backend/`** — Express server, Discord gateway, scheduler, dashboard API routes.
+  Serves the built SPA as static files (fallback to `index.html` for client routing).
+
+**Deployment:** same as other homectl apps — **one Docker image, one k8s Deployment**.
+The Dockerfile builds both workspaces (frontend static assets copied into the backend
+image, mirroring the workbench two-stage pattern). There is no separate frontend
+deploy or second ingress.
+
+Aivo keeps **`replicas: 1`** and **`strategy: Recreate`** because of the Discord
+gateway and in-process scheduler. That is acceptable for the dashboard too: deploys
+cause brief downtime, which is fine for a personal inspection UI.
+
+**Ingress:** existing `aivo.homectl.no` ingress expands to serve the dashboard SPA,
+dashboard API (`/api/dashboard/*`), homectl-auth callback, YouTube OAuth callback,
+and `/health` — all from the same pod.
+
+**Backend routes:** authenticated REST under e.g. `/api/dashboard/`. Reuse existing
+repositories; add query methods only where charts need aggregates not yet exposed.
+
+**Layering:** dashboard routes live in `backend/src/routes/` (or a `dashboard/` module);
+they must not import discord.js types into agent code. Auth middleware resolves
+`user_id` and passes it to handlers.
+
+**No business logic in frontend** beyond presentation, filtering, and chart mapping.
 
 ### 5.2 Existing code to reuse
 
@@ -388,7 +407,14 @@ flowchart LR
 - Clean, data-dense layout suitable for a personal ops tool (not marketing site).
 - Interactive charts: hover tooltips, legend toggles, date range picker.
 - Empty states with guidance ("No usage yet — start a chat in #chat").
-- Responsive but desktop-first (homectl dashboard use case).
+- **Desktop-first, mobile-usable.** Optimized for desktop/laptop screens, but every
+  page must remain fully usable on a phone browser:
+  - Responsive layouts that reflow on narrow viewports (no horizontal-only layouts).
+  - Touch-friendly tap targets and spacing (min ~44px for interactive controls).
+  - Navigation that works on small screens (e.g. collapsible sidebar or bottom nav).
+  - Charts and tables readable on mobile: scrollable tables, simplified chart legends,
+    or stacked/card layouts where a wide desktop table would not fit.
+  - No hover-only interactions; tooltips accessible via tap where needed.
 - Manual refresh or 60s polling; no WebSocket requirement for v1.
 
 ---
@@ -444,9 +470,9 @@ All writes must reuse existing repository methods and enforce `is_owner` in hand
 
 | ID | Question | Default assumption |
 |----|----------|-------------------|
-| Q1 | Separate frontend deploy vs. serve static from backend? | Separate workspace + ingress (homectl pattern) |
+| Q1 | Monorepo layout vs. single image? | Separate `frontend/` + `backend/` folders; **one Docker image** serves both (workbench pattern) |
 | Q2 | Owner-only gate for entire dashboard in M0? | Yes for first ship; relax for household |
-| Q3 | Chart library choice? | Implementation agent picks (Recharts, Chart.js, etc.) |
+| Q3 | Chart library choice? | Implementation agent picks (Recharts, Chart.js, etc.); must render readably on mobile |
 | Q4 | Timezone for charts: user `settings.timezone` or UTC? | User timezone for display; UTC for API buckets initially |
 | Q5 | Rate limiting on dashboard API? | Standard homectl ingress limits; no special case v1 |
 
@@ -460,7 +486,8 @@ All writes must reuse existing repository methods and enforce `is_owner` in hand
 - [ ] Memory page lists and searches active memories matching agent tool behavior
 - [ ] No write endpoints exposed without explicit owner checks (v1: no writes at all)
 - [ ] All dashboard routes return 401/403 for unauthenticated or unauthorized users
-- [ ] CI includes frontend lint/build; backend typecheck covers new routes
+- [ ] All primary pages are usable on a mobile phone browser (responsive layout, touch targets, readable charts/tables)
+- [ ] CI builds frontend + backend into one Docker image; typecheck/lint covers both workspaces
 - [ ] Documentation updated in [`roadmap.md`](roadmap.md) with link to this PRD
 
 ---
