@@ -29,3 +29,5 @@ export type DigestStatus = "pending" | "delivered" | "skipped_budget";
 export type DigestItemKind = "pick" | "reject";
 /** The USER's feedback vocabulary on delivered items (buttons + freeform replies). */
 export type FeedbackSignal = "keep" | "drop" | "too_long" | "wrong_topic" | "freeform";
+/** Lifecycle of a reminder; a snooze moves a delivered row back to pending. */
+export type ReminderStatus = "pending" | "delivered" | "cancelled";

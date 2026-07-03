@@ -18,7 +18,8 @@ export function testDb(): Db {
 /**
  * Truncate all tables for per-test isolation (schema/migrations are preserved). The
  * CASCADE from `users` clears every user-scoped table (conversations, messages,
- * memories, settings, llm_usage, budget_config, pending_approvals, profiles, digests);
+ * memories, settings, llm_usage, budget_config, pending_approvals, profiles, digests,
+ * reminders);
  * `youtube_account` and `youtube_channels` are account-scoped rather than user-scoped
  * (docs/data-model.md), so they're truncated explicitly — the CASCADE from
  * `youtube_channels` clears `videos` (and any digest_items). It deliberately does NOT

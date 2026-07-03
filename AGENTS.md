@@ -25,7 +25,7 @@ Tests need **Docker** — they spin up Postgres via Testcontainers and are curre
 
 - `agent/` — agent core (`agent.ts` turn loop, `budget.ts`, `context.ts`, `clock.ts`) and `agent/tools/` (one file + colocated `.test.ts` per tool).
 - `storage/` — repositories, one class per table, each with a `.test.ts`.
-- `discord/` — discord.js gateway adapter, routing policy, catch-up, slash commands, digest delivery + feedback buttons.
+- `discord/` — discord.js gateway adapter, routing policy, catch-up, slash commands, digest delivery + feedback buttons, reminder delivery + snooze buttons.
 - `digest/` — the YouTube daily digest pipeline (two-stage filter, due-check, proactivity lane, rejected-list taper, profile folding).
 - `youtube/` — YouTube Data API + transcript ports (network impls behind interfaces; fakes in `test/`).
 - `scheduler/` — `tick.ts` (testable `runDueWork`) + `cron.ts` (thin node-cron wiring).

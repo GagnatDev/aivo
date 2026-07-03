@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DigestOutcome } from "../digest/pipeline.js";
 import { withDigestLane, parseDigestLane } from "../digest/proactivity.js";
+import type { ReminderRow } from "../storage/reminderRepository.js";
 import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
 import { makeFakeLlm } from "../test/fakeLlm.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
-import { runDueWork, type DigestDeliverer } from "./tick.js";
+import { runDueWork, type Deliverers } from "./tick.js";
 
 useCleanDb();
 
@@ -13,13 +14,26 @@ useCleanDb();
 const DUE_TIME = new Date("2026-07-01T05:30:00Z");
 const BEFORE_HOUR = new Date("2026-07-01T03:00:00Z");
 
-function captureDeliveries(): { deliverer: DigestDeliverer; delivered: DigestOutcome[] } {
+function captureDeliveries(): {
+  deliverer: Deliverers;
+  delivered: DigestOutcome[];
+  reminded: ReminderRow[];
+} {
   const delivered: DigestOutcome[] = [];
+  const reminded: ReminderRow[] = [];
   return {
     delivered,
+    reminded,
     deliverer: {
-      async deliver(_userId, outcome) {
-        delivered.push(outcome);
+      digest: {
+        async deliver(_userId, outcome) {
+          delivered.push(outcome);
+        },
+      },
+      reminder: {
+        async deliver(reminder) {
+          reminded.push(reminder);
+        },
       },
     },
   };
@@ -107,6 +121,38 @@ describe("runDueWork", () => {
     // two hours later (TTL is 60 min), no YouTube configured — the sweep still runs.
     await runDueWork(deps, null, deliverer, new Date(Date.now() + 2 * 60 * 60_000));
     expect((await deps.pendingApprovals.findById(approval.id))?.status).toBe("expired");
+  });
+
+  it("delivers due reminders (even without YouTube) and marks them delivered", async () => {
+    const { deps, userId } = await setupOwner(DUE_TIME);
+    const due = await deps.reminders.insert({
+      userId,
+      text: "call the dentist",
+      dueAt: new Date(DUE_TIME.getTime() - 60_000),
+    });
+    await deps.reminders.insert({
+      userId,
+      text: "future",
+      dueAt: new Date(DUE_TIME.getTime() + 60_000),
+    });
+    const { deliverer, reminded } = captureDeliveries();
+
+    await runDueWork(deps, null, deliverer, DUE_TIME);
+    expect(reminded.map((r) => r.text)).toEqual(["call the dentist"]);
+    expect((await deps.reminders.findById(due.id))?.status).toBe("delivered");
+
+    // Delivered — the next tick doesn't re-send it.
+    await runDueWork(deps, null, deliverer, DUE_TIME);
+    expect(reminded).toHaveLength(1);
+  });
+
+  it("does not deliver cancelled reminders", async () => {
+    const { deps, userId } = await setupOwner(DUE_TIME);
+    const r = await deps.reminders.insert({ userId, text: "nope", dueAt: BEFORE_HOUR });
+    await deps.reminders.cancel(r.id, userId);
+    const { deliverer, reminded } = captureDeliveries();
+    await runDueWork(deps, null, deliverer, DUE_TIME);
+    expect(reminded).toHaveLength(0);
   });
 
   it("leaves a budget-skipped run un-delivered so the day is still watermarked", async () => {

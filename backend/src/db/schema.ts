@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelTierRole, ProfileKind, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -134,6 +134,16 @@ export interface Profiles {
   version: Generated<number>;
 }
 
+export interface Reminders {
+  created_at: Generated<Timestamp>;
+  delivered_at: Timestamp | null;
+  due_at: Timestamp;
+  id: Generated<string>;
+  status: ColumnType<ReminderStatus, string | undefined, string>;
+  text: string;
+  user_id: string;
+}
+
 export interface Settings {
   created_at: Generated<Timestamp>;
   digest_cap: Generated<number>;
@@ -214,6 +224,7 @@ export interface DB {
   model_pricing: ModelPricing;
   pending_approvals: PendingApprovals;
   profiles: Profiles;
+  reminders: Reminders;
   settings: Settings;
   settings_permissions: SettingsPermissions;
   users: Users;
