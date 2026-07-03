@@ -33,6 +33,15 @@ export class UserRepository {
     return this.db.selectFrom("users").select(USER_COLUMNS).where("id", "=", id).executeTakeFirst();
   }
 
+  /** The is_owner user (the digest's audience), or undefined before their first message. */
+  findOwner(): Promise<UserRow | undefined> {
+    return this.db
+      .selectFrom("users")
+      .select(USER_COLUMNS)
+      .where("is_owner", "=", true)
+      .executeTakeFirst();
+  }
+
   async count(): Promise<number> {
     const row = await this.db
       .selectFrom("users")

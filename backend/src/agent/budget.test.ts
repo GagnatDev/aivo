@@ -57,6 +57,9 @@ describe("deriveState", () => {
   it("drops to cheap_models when the daily soft cap is hit", () => {
     expect(deriveState({ ...base, dailyCents: 200, dailySoftCapCents: 200 })).toBe("cheap_models");
   });
+  it("pauses proactive work at 90% of ceiling", () => {
+    expect(deriveState({ ...base, monthToDateCents: 900 })).toBe("proactive_paused");
+  });
   it("is over_ceiling at the monthly ceiling", () => {
     expect(deriveState({ ...base, monthToDateCents: 1000 })).toBe("over_ceiling");
   });

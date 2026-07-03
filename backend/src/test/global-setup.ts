@@ -12,8 +12,16 @@ declare module "vitest" {
 let container: StartedPostgreSqlContainer | undefined;
 
 // One real Postgres for the whole test run; migrations applied once. Tests get
-// isolation via TRUNCATE between cases (see test/db.ts).
+// isolation via TRUNCATE between cases (see test/db.ts). Set TEST_DATABASE_URL to
+// point at an already-running Postgres instead (for environments without Docker);
+// the suite TRUNCATEs and migrates it, so never point this at real data.
 export async function setup({ provide }: GlobalSetupContext): Promise<void> {
+  const external = process.env.TEST_DATABASE_URL;
+  if (external) {
+    await runMigrations(external);
+    provide("databaseUrl", external);
+    return;
+  }
   container = await new PostgreSqlContainer("postgres:16-alpine").start();
   const uri = container.getConnectionUri();
   await runMigrations(uri);

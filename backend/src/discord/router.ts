@@ -68,16 +68,19 @@ export async function resolveMessageMeta(message: Message): Promise<MessageMeta>
 
 /**
  * Whether Aivo should reply to a message. Bots and other guilds are ignored. In
- * the home channel Aivo answers everything; elsewhere only when mentioned or when
- * the message replies to one of Aivo's own messages. A pure function of the
- * normalized {@link MessageMeta}, shared by the live gateway (discord/client.ts) and
- * the offline catch-up (discord/catchup.ts) so both apply identical rules.
+ * the home channel and the #youtube channel (digest + feedback) Aivo answers
+ * everything; elsewhere only when mentioned or when the message replies to one of
+ * Aivo's own messages. A pure function of the normalized {@link MessageMeta}, shared
+ * by the live gateway (discord/client.ts) and the offline catch-up
+ * (discord/catchup.ts) so both apply identical rules.
  */
 export function shouldRespond(meta: MessageMeta, cfg: DiscordConfig): boolean {
   if (meta.isBot) return false;
   if (meta.guildId !== cfg.guildId) return false;
 
-  if (meta.channelId !== cfg.homeChannelId) {
+  const openChannel =
+    meta.channelId === cfg.homeChannelId || meta.channelId === cfg.youtubeChannelId;
+  if (!openChannel) {
     if (!meta.mentionsMe && !meta.referencedMessageAuthorIsMe) return false;
   }
   return true;
@@ -90,6 +93,12 @@ export interface ProcessOptions {
    * reply is explained; the live path leaves it off.
    */
   acknowledgeIfStale?: boolean;
+  /**
+   * The routing facts the caller already resolved for {@link shouldRespond} (avoids
+   * re-fetching the referenced message). Needed to recognize a #youtube reply to Aivo
+   * as digest feedback.
+   */
+  meta?: MessageMeta;
 }
 
 /**
@@ -102,7 +111,12 @@ export async function processAndReply(
   cfg: DiscordConfig,
   opts: ProcessOptions = {},
 ): Promise<void> {
-  const result = await handleIncomingMessage(deps, normalize(message));
+  const isYoutube = cfg.youtubeChannelId !== null && message.channelId === cfg.youtubeChannelId;
+  const result = await handleIncomingMessage(deps, {
+    ...normalize(message),
+    channel: isYoutube ? "youtube" : "chat",
+    isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
+  });
 
   // Gated turn: post the confirmation with Approve/Cancel buttons and wait — the
   // button handler (discord/client.ts) resumes the turn. No assistant reply yet.

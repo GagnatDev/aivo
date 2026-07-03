@@ -2,14 +2,21 @@ import type { LlmProvider } from "../llm/provider.js";
 import type { Clock } from "./clock.js";
 import type { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import type { ConversationRepository } from "../storage/conversationRepository.js";
+import type { DigestItemRepository } from "../storage/digestItemRepository.js";
+import type { DigestRepository } from "../storage/digestRepository.js";
+import type { FeedbackRepository } from "../storage/feedbackRepository.js";
 import type { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import type { MemoryRepository } from "../storage/memoryRepository.js";
 import type { MessageRepository } from "../storage/messageRepository.js";
 import type { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import type { PendingApprovalRepository } from "../storage/pendingApprovalRepository.js";
+import type { ProfileRepository } from "../storage/profileRepository.js";
 import type { SettingsPermissionsRepository } from "../storage/settingsPermissionsRepository.js";
 import type { SettingsRepository } from "../storage/settingsRepository.js";
 import type { UserRepository } from "../storage/userRepository.js";
+import type { VideoRepository } from "../storage/videoRepository.js";
+import type { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
+import type { YoutubeChannelRepository } from "../storage/youtubeChannelRepository.js";
 
 /**
  * The agent-relevant config knobs, populated once from `loadEnv()` at the composition
@@ -27,6 +34,8 @@ export interface AgentConfig {
   contextMessageLimit: number;
   /** Remembered facts injected into the system prompt each turn. `AGENT_MEMORY_INJECT_LIMIT`. */
   memoryInjectLimit: number;
+  /** Pending approval prompts older than this are swept to expired. `APPROVAL_TTL_MINUTES`. */
+  approvalTtlMinutes: number;
 }
 
 /**
@@ -45,6 +54,13 @@ export interface AgentDeps {
   llmUsage: LlmUsageRepository;
   budgetConfig: BudgetConfigRepository;
   pendingApprovals: PendingApprovalRepository;
+  profiles: ProfileRepository;
+  youtubeAccount: YoutubeAccountRepository;
+  youtubeChannels: YoutubeChannelRepository;
+  videos: VideoRepository;
+  digests: DigestRepository;
+  digestItems: DigestItemRepository;
+  feedback: FeedbackRepository;
   llm: LlmProvider;
   /** Reads "now" for time-dependent business logic (rollover, expiry, staleness). */
   clock: Clock;

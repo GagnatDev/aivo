@@ -18,14 +18,19 @@ export function testDb(): Db {
 /**
  * Truncate all tables for per-test isolation (schema/migrations are preserved). The
  * CASCADE from `users` clears every user-scoped table (conversations, messages,
- * memories, settings, llm_usage, budget_config, pending_approvals). It deliberately
- * does NOT touch the two non-user-scoped, migration-seeded tables — `model_pricing`
+ * memories, settings, llm_usage, budget_config, pending_approvals, profiles, digests);
+ * `youtube_account` and `youtube_channels` are account-scoped rather than user-scoped
+ * (docs/data-model.md), so they're truncated explicitly — the CASCADE from
+ * `youtube_channels` clears `videos` (and any digest_items). It deliberately does NOT
+ * touch the two non-user-scoped, migration-seeded tables — `model_pricing`
  * (cheap/premium placeholder rows) and `settings_permissions` (the allow-list
  * singleton) — so their seed data survives across tests. A test that mutates pricing
  * should restore it or use distinct model ids.
  */
 export async function resetDb(): Promise<void> {
-  await sql`TRUNCATE users RESTART IDENTITY CASCADE`.execute(testDb());
+  await sql`TRUNCATE users, youtube_account, youtube_channels RESTART IDENTITY CASCADE`.execute(
+    testDb(),
+  );
 }
 
 /** Close the worker's pool. */

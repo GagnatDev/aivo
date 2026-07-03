@@ -3,6 +3,7 @@ import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
 import { isCommand, runCommand } from "./commands.js";
+import { resolveFeedbackClick } from "./feedback.js";
 import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
 import {
   normalize,
@@ -69,7 +70,8 @@ async function onMessage(
   message: Message,
   cfg: DiscordConfig,
 ): Promise<void> {
-  if (!shouldRespond(await resolveMessageMeta(message), cfg)) return;
+  const meta = await resolveMessageMeta(message);
+  if (!shouldRespond(meta, cfg)) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
     if (isCommand(message.content)) {
@@ -77,7 +79,7 @@ async function onMessage(
       await message.reply(reply);
       return;
     }
-    await processAndReply(deps, message, cfg);
+    await processAndReply(deps, message, cfg, { meta });
   } catch (err) {
     logger.error(err, "failed to handle discord message");
     // Last resort: the agent already turns LLM failures into a friendly reply, so
@@ -92,13 +94,31 @@ async function onMessage(
 }
 
 /**
- * Handle Approve/Cancel button clicks on an approval-gate prompt. We defer the update
- * first (Discord requires an ack within 3s, and resuming the turn runs the LLM, which
- * can take longer), then edit the prompt to drop its buttons and, on approval, post
- * the answer as a follow-up and persist it.
+ * Handle button clicks: digest feedback buttons (`fb:*`, acknowledged ephemerally and
+ * folded into the interest profile by the next run) and Approve/Cancel clicks on an
+ * approval-gate prompt. For approvals we defer the update first (Discord requires an
+ * ack within 3s, and resuming the turn runs the LLM, which can take longer), then edit
+ * the prompt to drop its buttons and, on approval, post the answer as a follow-up and
+ * persist it.
  */
 async function onInteraction(deps: HandleMessageDeps, interaction: Interaction): Promise<void> {
   if (!interaction.isButton()) return;
+
+  try {
+    const feedback = await resolveFeedbackClick(deps, {
+      customId: interaction.customId,
+      clickerDiscordId: interaction.user.id,
+      clickerDisplayName: interaction.user.username,
+    });
+    if (feedback) {
+      await interaction.reply({ content: feedback.ack, ephemeral: true });
+      return;
+    }
+  } catch (err) {
+    logger.error(err, "failed to handle feedback button");
+    return;
+  }
+
   const [action, approvalId] = interaction.customId.split(":");
   if ((action !== "approve" && action !== "cancel") || !approvalId) return;
 

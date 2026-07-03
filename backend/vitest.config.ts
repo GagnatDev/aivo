@@ -37,6 +37,7 @@ export default defineConfig({
         "src/db/migrate.ts",
         "src/logger.ts",
         "src/discord/client.ts",
+        "src/scheduler/cron.ts",
         "src/test/**",
       ],
     },

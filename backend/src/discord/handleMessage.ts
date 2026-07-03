@@ -16,6 +16,10 @@ export interface IncomingMessage {
   authorDisplayName: string | null;
   channelId: string;
   content: string;
+  /** Which capability channel the message arrived in (default `chat`). */
+  channel?: "chat" | "youtube";
+  /** True when the message replies to one of Aivo's own messages (digest feedback). */
+  isReplyToAgent?: boolean;
 }
 
 export interface HandleMessageResult {
@@ -48,7 +52,11 @@ export async function handleIncomingMessage(
     isOwner: msg.authorId === deps.ownerDiscordUserId,
   });
 
-  const conversation = await deps.conversations.getOrCreate(user.id, "chat", msg.channelId);
+  const conversation = await deps.conversations.getOrCreate(
+    user.id,
+    msg.channel ?? "chat",
+    msg.channelId,
+  );
 
   await deps.messages.insert({
     conversationId: conversation.id,
@@ -56,6 +64,17 @@ export async function handleIncomingMessage(
     content: msg.content,
     discordMessageId: msg.id,
   });
+
+  // A reply to Aivo in #youtube is digest feedback (docs/concept.md: freeform replies
+  // fold into the interest profile). Captured deterministically here — the next digest
+  // run folds it — and the turn still runs so the user gets a conversational response.
+  if (msg.channel === "youtube" && msg.isReplyToAgent && msg.content.trim()) {
+    await deps.feedback.insert({
+      userId: user.id,
+      signal: "freeform",
+      freeformText: msg.content.trim(),
+    });
+  }
 
   const result = await runAgent(deps, {
     userId: user.id,

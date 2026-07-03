@@ -11,6 +11,7 @@ const CFG: DiscordConfig = {
   botToken: "token",
   guildId: "guild-1",
   homeChannelId: "home-1",
+  youtubeChannelId: "youtube-1",
   offlineAckThresholdMinutes: 30,
 };
 
@@ -40,6 +41,11 @@ describe("shouldRespond", () => {
       name: "other channel, not mentioned, not a reply",
       meta: meta({ channelId: "other-1" }),
       expected: false,
+    },
+    {
+      name: "human in the youtube channel (digest feedback surface)",
+      meta: meta({ channelId: "youtube-1" }),
+      expected: true,
     },
     {
       name: "other channel, mentioned",

@@ -63,8 +63,9 @@ async function catchUpChannel(
     // Commands are immediate instructions — a missed one is stale, so don't replay it
     // (and never send a command through the agent loop).
     if (isCommand(message.content)) continue;
-    if (!shouldRespond(await resolveMessageMeta(message), cfg)) continue;
-    await processAndReply(deps, message, cfg, { acknowledgeIfStale: true });
+    const meta = await resolveMessageMeta(message);
+    if (!shouldRespond(meta, cfg)) continue;
+    await processAndReply(deps, message, cfg, { acknowledgeIfStale: true, meta });
     handled += 1;
   }
   return handled;

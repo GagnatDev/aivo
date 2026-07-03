@@ -53,10 +53,13 @@ Smallest useful slice first, each shippable on its own:
 2. **Cost control spine.** `llm_usage` ledger, `budget_config`, model tiering,
    spend report, graceful degradation, approval gate, provider-side spend limit.
    (Build early so everything after is metered.)
-3. **YouTube daily digest.** Subscriptions ingest → two-stage filter → `#youtube`
-   delivery (cap ~8–10) with TL;DW + "why" → buttons + freeform feedback →
-   profile updates → cold-start rejected-list calibration with auto-taper.
-   Scheduler fires at the configured hour.
+3. **YouTube daily digest.** — ✅ built (2026-07-02). Subscriptions ingest → two-stage
+   filter → `#youtube` delivery (cap ~8–10) with TL;DW + "why" → buttons + freeform
+   feedback → profile updates → cold-start rejected-list calibration with auto-taper.
+   Scheduler fires at the configured hour; interval/pause/off + "run it now" are
+   chat-configurable via the `youtube_digest` tool. Needs infra config to go live:
+   `YOUTUBE_OAUTH_*` secrets (one-time `/youtube/oauth/start` handshake) and
+   `DISCORD_YOUTUBE_CHANNEL_ID`.
 4. **Reminders.** User-set reminders delivered proactively via the scheduler.
 
 ### 4. Phase 2 — Mail triage (read-only)
