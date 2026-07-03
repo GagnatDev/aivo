@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import express, { type Express } from "express";
 import type { AuthProvider } from "./auth/index.js";
 import { httpLogger } from "./logger.js";
-import { dashboardRouter, type DashboardDeps } from "./routes/dashboard.js";
+import { dashboardRouter, type DashboardDeps } from "./routes/dashboard/index.js";
 import { healthRouter } from "./routes/health.js";
 import { youtubeOauthRouter, type YoutubeOauthRouteConfig } from "./routes/youtubeOauth.js";
 

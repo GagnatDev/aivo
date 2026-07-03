@@ -121,7 +121,12 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         callbackPath: env.AUTH_CALLBACK_PATH,
       }),
       callbackPath: env.AUTH_CALLBACK_PATH,
-      dashboard: { users: deps.users },
+      dashboard: {
+        users: deps.users,
+        llmUsage: deps.llmUsage,
+        budgetConfig: deps.budgetConfig,
+        modelPricing: deps.modelPricing,
+      },
     },
     webRoot: env.WEB_ROOT,
   };

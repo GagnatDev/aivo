@@ -1,7 +1,11 @@
 import { Router } from "express";
-import type { AuthProvider } from "../auth/index.js";
-import { resolveUser } from "../middleware/resolveUser.js";
-import type { UserRepository } from "../storage/userRepository.js";
+import type { AuthProvider } from "../../auth/index.js";
+import { resolveUser } from "../../middleware/resolveUser.js";
+import type { BudgetConfigRepository } from "../../storage/budgetConfigRepository.js";
+import type { LlmUsageRepository } from "../../storage/llmUsageRepository.js";
+import type { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
+import type { UserRepository } from "../../storage/userRepository.js";
+import { usageRoutes } from "./usage.js";
 
 /**
  * The repositories the dashboard API reads from. Handlers delegate to these —
@@ -9,6 +13,9 @@ import type { UserRepository } from "../storage/userRepository.js";
  */
 export interface DashboardDeps {
   users: UserRepository;
+  llmUsage: LlmUsageRepository;
+  budgetConfig: BudgetConfigRepository;
+  modelPricing: ModelPricingRepository;
 }
 
 /**
@@ -32,6 +39,8 @@ export function dashboardRouter(auth: AuthProvider, deps: DashboardDeps): Router
       },
     });
   });
+
+  router.use(usageRoutes(deps));
 
   return router;
 }
