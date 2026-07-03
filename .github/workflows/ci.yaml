@@ -1,5 +1,5 @@
-# CI (test + build) for aivo. Source pattern: workbench/.github/workflows/ci.yaml,
-# trimmed to the backend-only workspace (no frontend steps, no e2e job).
+# CI (test + build) for aivo. Source pattern: workbench/.github/workflows/ci.yaml
+# (no e2e job yet).
 name: CI
 
 on:
@@ -40,9 +40,21 @@ jobs:
       - name: Backend lint & format check
         run: pnpm --filter @aivo/backend run lint
 
+      - name: Frontend typecheck
+        run: pnpm --filter @aivo/frontend run typecheck
+
+      - name: Frontend lint & format check
+        run: pnpm --filter @aivo/frontend run lint
+
       # Backend tests spin up Postgres via Testcontainers (no external services).
       - name: Backend tests
         run: pnpm --filter @aivo/backend run test
 
+      - name: Frontend tests
+        run: pnpm --filter @aivo/frontend run test
+
       - name: Backend build
         run: pnpm --filter @aivo/backend run build
+
+      - name: Frontend build
+        run: pnpm --filter @aivo/frontend run build

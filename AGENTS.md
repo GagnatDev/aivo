@@ -2,14 +2,17 @@
 
 Aivo is a Discord-native personal AI agent: a backend that receives Discord messages,
 runs an in-house LLM tool-calling loop with cost control and an owner-approval gate, and
-persists everything to Postgres. See [`docs/concept.md`](docs/concept.md) for the why, and
-[`docs/technical-overview.md`](docs/technical-overview.md) for the how.
+persists everything to Postgres. A read-only web dashboard (phase 3) rides along as a
+`frontend/` workspace served by the same backend pod. See [`docs/concept.md`](docs/concept.md)
+for the why, [`docs/technical-overview.md`](docs/technical-overview.md) for the how, and
+[`docs/phase-3-web-dashboard-prd.md`](docs/phase-3-web-dashboard-prd.md) for the dashboard.
 
 ## Commands
 
-All backend commands run from the repo root:
+All commands run from the repo root (swap the filter to `@aivo/frontend` for the SPA):
 
 ```
+pnpm dev                                    # backend :8080 + Vite frontend :3000
 pnpm --filter @aivo/backend run dev        # watch-mode local run
 pnpm --filter @aivo/backend run typecheck  # tsc --noEmit
 pnpm --filter @aivo/backend run lint        # biome check (format + lint) — CI gate
@@ -18,8 +21,9 @@ pnpm --filter @aivo/backend run test        # vitest
 pnpm --filter @aivo/backend run build       # typecheck + tsup bundle
 ```
 
-Tests need **Docker** — they spin up Postgres via Testcontainers and are currently
+Backend tests need **Docker** — they spin up Postgres via Testcontainers and are currently
 **serial** (`fileParallelism: false`; the suite shares one database reset with `TRUNCATE`).
+Without Docker, point `TEST_DATABASE_URL` at a disposable Postgres instead.
 
 ## Layout (`backend/src/`)
 
@@ -32,8 +36,18 @@ Tests need **Docker** — they spin up Postgres via Testcontainers and are curre
 - `llm/` — provider-agnostic `LlmProvider` interface + `openaiProvider.ts` + error taxonomy.
 - `db/` — Kysely wiring, pool, migration runner, and **generated** `schema.ts` (do not edit — run `pnpm --filter @aivo/backend db:codegen`; hand-authored enums live in `schema.enums.ts`).
 - `config/` — Zod-validated env (`loadEnv()` + schema; no eager singleton).
-- `routes/` — Express health endpoints. `test/` — Testcontainers setup, fakes, helpers.
+- `routes/` — Express endpoints: health, YouTube OAuth, dashboard API (`/api/dashboard/*`).
+- `auth/` — pluggable dashboard auth: `AUTH_MODE=dev` fixed principal vs `homectl` OAuth2
+  (vendored homectl-auth client — swap for `@gagnatdev/homectl-auth-client` when registry
+  auth lands). `middleware/resolveUser.ts` maps the auth subject to a `users` row.
+- `test/` — Testcontainers setup, fakes, helpers.
 - `backend/migrations/` — numbered SQL, append-only, applied at boot.
+
+## Layout (`frontend/`)
+
+Vite + React SPA (dashboard). `src/pages/` one file per route, `src/components/` shell,
+`src/api/` fetch layer, `src/auth/` vendored browser client + `VITE_DISABLE_AUTH` dev
+bypass. No Discord or DB imports; presentation only (PRD §5.1).
 
 ## Conventions
 

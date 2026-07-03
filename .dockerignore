@@ -13,3 +13,5 @@ docs/
 # Env and logs
 *.log
 .env*
+frontend/dist/
+frontend/coverage/

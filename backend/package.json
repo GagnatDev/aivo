@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.development src/server.ts",
+    "dev:homectl": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.homectl src/server.ts",
     "build": "tsc --noEmit && tsup",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",
@@ -24,8 +25,10 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "discord.js": "^14.26.4",
     "express": "^5.1.0",
+    "jose": "^6.2.3",
     "kysely": "^0.27.4",
     "node-cron": "^4.5.0",
     "node-pg-migrate": "^7.9.0",
@@ -38,6 +41,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
     "@testcontainers/postgresql": "^10.16.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.11.10",

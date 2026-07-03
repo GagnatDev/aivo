@@ -48,3 +48,30 @@ describe("UserRepository.upsertByDiscordId", () => {
     expect(await users.findByDiscordId("nope")).toBeUndefined();
   });
 });
+
+describe("UserRepository auth_sub linking (dashboard, phase 3)", () => {
+  it("linkOwnerAuthSub claims the owner row once and findByAuthSub resolves it", async () => {
+    const users = new UserRepository(testDb());
+    const owner = await users.upsertByDiscordId({
+      discordUserId: "444",
+      displayName: "Owner",
+      isOwner: true,
+    });
+
+    const linked = await users.linkOwnerAuthSub("sub-1");
+    expect(linked?.id).toBe(owner.id);
+    expect(linked?.auth_sub).toBe("sub-1");
+    expect((await users.findByAuthSub("sub-1"))?.id).toBe(owner.id);
+
+    // Single-shot: a second subject cannot steal or overwrite the link.
+    expect(await users.linkOwnerAuthSub("sub-2")).toBeUndefined();
+    expect((await users.findByAuthSub("sub-1"))?.id).toBe(owner.id);
+    expect(await users.findByAuthSub("sub-2")).toBeUndefined();
+  });
+
+  it("linkOwnerAuthSub returns undefined when no owner row exists", async () => {
+    const users = new UserRepository(testDb());
+    await users.upsertByDiscordId({ discordUserId: "555", displayName: null, isOwner: false });
+    expect(await users.linkOwnerAuthSub("sub-1")).toBeUndefined();
+  });
+});

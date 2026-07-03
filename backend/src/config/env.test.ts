@@ -74,4 +74,37 @@ describe("loadEnv", () => {
     expect(env.AGENT_MEMORY_INJECT_LIMIT).toBe(20);
     expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });
+
+  it("applies auth defaults and derives dev mode outside production", () => {
+    const env = loadEnv(validEnv as NodeJS.ProcessEnv);
+    expect(env.authMode).toBe("dev");
+    expect(env.AUTH_SERVICE_URL).toBe("https://auth.homectl.no");
+    expect(env.AUTH_CLIENT_ID).toBe("aivo");
+    expect(env.AUTH_CALLBACK_PATH).toBe("/auth/callback");
+    expect(env.APP_BASE_URL).toBe("http://localhost:8080");
+    expect(env.WEB_ROOT).toBeUndefined();
+  });
+
+  it("derives homectl mode in production and requires the client secret", () => {
+    const prod = { ...validEnv, NODE_ENV: "production" };
+    expect(() => loadEnv(prod as NodeJS.ProcessEnv)).toThrow(/AIVO_CLIENT_SECRET/);
+    const env = loadEnv({ ...prod, AIVO_CLIENT_SECRET: "s3cret" } as NodeJS.ProcessEnv);
+    expect(env.authMode).toBe("homectl");
+  });
+
+  it("lets AUTH_MODE override the NODE_ENV-derived default", () => {
+    const env = loadEnv({
+      ...validEnv,
+      NODE_ENV: "production",
+      AUTH_MODE: "dev",
+    } as NodeJS.ProcessEnv);
+    expect(env.authMode).toBe("dev");
+    expect(() => loadEnv({ ...validEnv, AUTH_MODE: "homectl" } as NodeJS.ProcessEnv)).toThrow(
+      /AIVO_CLIENT_SECRET/,
+    );
+  });
+
+  it("rejects an unknown AUTH_MODE", () => {
+    expect(() => loadEnv({ ...validEnv, AUTH_MODE: "none" } as NodeJS.ProcessEnv)).toThrow();
+  });
 });

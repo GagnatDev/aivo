@@ -33,6 +33,31 @@ export class UserRepository {
     return this.db.selectFrom("users").select(USER_COLUMNS).where("id", "=", id).executeTakeFirst();
   }
 
+  /** The user a homectl-auth subject was linked to, or undefined before first web login. */
+  findByAuthSub(authSub: string): Promise<UserRow | undefined> {
+    return this.db
+      .selectFrom("users")
+      .select(USER_COLUMNS)
+      .where("auth_sub", "=", authSub)
+      .executeTakeFirst();
+  }
+
+  /**
+   * First web login: claim the owner row by filling its reserved `auth_sub` seam
+   * (see middleware/resolveUser.ts). The `auth_sub IS NULL` guard makes the claim
+   * atomic and single-shot — a second subject (or a concurrent request) finds the
+   * seam already filled and gets undefined instead of overwriting the link.
+   */
+  async linkOwnerAuthSub(authSub: string): Promise<UserRow | undefined> {
+    return this.db
+      .updateTable("users")
+      .set({ auth_sub: authSub, updated_at: sql`now()` })
+      .where("is_owner", "=", true)
+      .where("auth_sub", "is", null)
+      .returning(USER_COLUMNS)
+      .executeTakeFirst();
+  }
+
   /** The is_owner user (the digest's audience), or undefined before their first message. */
   findOwner(): Promise<UserRow | undefined> {
     return this.db

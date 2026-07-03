@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-// Validated at boot; fails fast on misconfiguration. v1 is Discord-only: identity
-// is the Discord user id, so there is no auth-service / OAuth config here (the
-// `users.auth_sub` seam is reserved for the phase-3 web dashboard).
+// Validated at boot; fails fast on misconfiguration.
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -59,9 +57,26 @@ const EnvSchema = z.object({
   AGENT_MEMORY_INJECT_LIMIT: z.coerce.number().int().positive().default(20),
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+
+  // Dashboard auth (homectl-auth; phase-3 web dashboard). AUTH_MODE `dev` is a fixed
+  // local principal (no auth service — dev/tests run offline); `homectl` is real
+  // OAuth2 against auth.homectl.no. Unset, it derives from NODE_ENV (see loadEnv).
+  AUTH_MODE: z.enum(["dev", "homectl"]).optional(),
+  AUTH_SERVICE_URL: z.string().url().default("https://auth.homectl.no"),
+  // The app id registered in homectl-auth's apps.json (conventions: id = app name).
+  AUTH_CLIENT_ID: z.string().min(1).default("aivo"),
+  AUTH_CALLBACK_PATH: z.string().startsWith("/").default("/auth/callback"),
+  // Public base URL of this app; builds the OAuth redirect_uri.
+  APP_BASE_URL: z.string().url().default("http://localhost:8080"),
+  // Plaintext client secret presented at /token (bcrypt-hashed on the auth side).
+  AIVO_CLIENT_SECRET: z.string().min(1).optional(),
+  // Directory of the built dashboard SPA. Set in the Docker image; unset in dev
+  // (Vite serves the frontend) so the backend skips static serving entirely.
+  WEB_ROOT: z.string().min(1).optional(),
 });
 
-export type Env = z.infer<typeof EnvSchema>;
+/** Validated env plus the derived auth mode (schema fields + `authMode`). */
+export type Env = z.infer<typeof EnvSchema> & { authMode: "dev" | "homectl" };
 
 /**
  * Validate the environment. Throws (fail fast) on misconfiguration. Called once at
@@ -71,5 +86,12 @@ export type Env = z.infer<typeof EnvSchema>;
  * `process.env` and tests can vary config per-case without mutating shared module state.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  return EnvSchema.parse(source);
+  const parsed = EnvSchema.parse(source);
+  // Convention (homectl-reference docs/conventions.md): real auth in prod unless
+  // explicitly overridden, offline dev bypass everywhere else.
+  const authMode = parsed.AUTH_MODE ?? (parsed.NODE_ENV === "production" ? "homectl" : "dev");
+  if (authMode === "homectl" && !parsed.AIVO_CLIENT_SECRET) {
+    throw new Error("AIVO_CLIENT_SECRET is required when AUTH_MODE=homectl");
+  }
+  return { ...parsed, authMode };
 }

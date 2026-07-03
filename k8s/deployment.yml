@@ -35,7 +35,8 @@ spec:
             - secretRef:
                 name: aivo-terraform-secrets
             # DISCORD_BOT_TOKEN, DISCORD_APP_ID, DISCORD_GUILD_ID,
-            # OWNER_DISCORD_USER_ID (hand-managed via `kubectl create secret`).
+            # OWNER_DISCORD_USER_ID, and dashboard auth (APP_BASE_URL,
+            # AIVO_CLIENT_SECRET) — hand-managed via `kubectl create secret`.
             - secretRef:
                 name: aivo-secrets
                 optional: true
