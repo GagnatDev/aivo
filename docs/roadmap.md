@@ -73,6 +73,12 @@ web dashboard — the point at which **homectl-auth** is integrated (the
 `users.auth_sub` seam is already reserved). Optionally revisit the Discovery lane
 (official interest-based search only; scraping ruled out).
 
+**Dashboard scope (detailed):** [`phase-3-web-dashboard-prd.md`](phase-3-web-dashboard-prd.md)
+— read-first web UI for LLM usage charts, model/pricing inspection, memory explorer,
+digest history, and activity log. Discord remains the control plane; the dashboard is
+for inspection and trust. Recommended build order: auth shell → usage & budget → models
+→ memory → overview → digests/activity.
+
 ## Decisions (locked)
 
 - **Semantic memory:** simple category/recency/keyword retrieval in v1; pgvector deferred.
