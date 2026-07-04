@@ -6,7 +6,8 @@ import type { ReminderDeliverer } from "../scheduler/tick.js";
 import type { DiscordConfig } from "./config.js";
 
 /**
- * Renders a due reminder into #chat: a mention + the reminder text, with snooze
+ * Renders a due reminder into the home channel (DISCORD_HOME_CHANNEL_ID — what the
+ * concept docs call the "#chat" lane): a mention + the reminder text, with snooze
  * buttons (docs/feature-suggestions.md B5 — snooze-on-delivery is the difference
  * between a reminder feature that gets used and one that gets abandoned). The builders
  * are pure and unit-tested; only the thin send loop touches discord.js. An audit row
@@ -41,7 +42,7 @@ export function snoozeButtons(reminderId: string): ActionRowBuilder<ButtonBuilde
   );
 }
 
-/** The production ReminderDeliverer: sends to #chat (the home channel). */
+/** The production ReminderDeliverer: sends to the home channel (DISCORD_HOME_CHANNEL_ID). */
 export function createReminderDeliverer(
   client: Client,
   deps: AgentDeps,

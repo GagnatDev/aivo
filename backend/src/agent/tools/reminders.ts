@@ -4,7 +4,8 @@ import { parse, type AgentTool, type ToolContext } from "./index.js";
 /**
  * The chat control surface for reminders: set one, list what's coming, cancel, and
  * reschedule ("make it 6 instead"). Delivery itself is the scheduler's job — the
- * minutely tick posts due reminders to #chat with snooze buttons. Reminders are
+ * minutely tick posts due reminders to the home channel (DISCORD_HOME_CHANNEL_ID,
+ * the concept docs' "#chat" lane) with snooze buttons. Reminders are
  * per-user (not owner-gated): every action is scoped to the calling user in the
  * repository, so one user can't touch another's reminders.
  *

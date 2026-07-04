@@ -64,7 +64,8 @@ Smallest useful slice first, each shippable on its own:
    via the scheduler: `reminder` chat tool (set / list / cancel / reschedule; the
    system prompt now carries the current local date/time so natural phrasing becomes
    an absolute `due_at`), minutely due-scan in `scheduler/tick.ts` (independent of the
-   YouTube lane, zero LLM cost), delivery to `#chat` with a mention + snooze buttons
+   YouTube lane, zero LLM cost), delivery to the home channel
+   (`DISCORD_HOME_CHANNEL_ID`) with a mention + snooze buttons
    (10 min / 1 h / tomorrow 09:00 local, per-user only). Natural recurrence
    ("every other Thursday", feature-suggestions B5) is deferred — the locked data
    model has no recurrence column yet.
