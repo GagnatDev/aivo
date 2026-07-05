@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApi } from "../api/useApi.js";
 import { DigestRunDetail } from "../components/digests/DigestRunDetail.js";
 import { DigestRunList } from "../components/digests/DigestRunList.js";
+import { formatTimestamp } from "../lib/activity.js";
 import type { DigestRuns } from "../lib/digests.js";
 
 /** Digest History (M5) — see PRD §4.6, requirements D-1..D-3. Owner only. */
@@ -34,6 +35,25 @@ export function DigestsPage() {
       </div>
 
       {runs.error ? <div className="error-banner">{runs.error}</div> : null}
+
+      {!selected && data ? (
+        // D-5: connection status — metadata and sync watermarks, never tokens.
+        <p className="muted digest-youtube-status">
+          {data.youtube.connected ? (
+            <>
+              YouTube connected{data.youtube.title ? ` as ${data.youtube.title}` : ""}
+              {data.youtube.subscriptionsSyncedAt
+                ? ` · subscriptions synced ${formatTimestamp(data.youtube.subscriptionsSyncedAt)}`
+                : ""}
+              {data.youtube.videosPolledAt
+                ? ` · videos polled ${formatTimestamp(data.youtube.videosPolledAt)}`
+                : ""}
+            </>
+          ) : (
+            "YouTube is not connected — digests start once the owner completes the OAuth handshake."
+          )}
+        </p>
+      ) : null}
 
       {selected ? (
         <DigestRunDetail id={selected.id} />

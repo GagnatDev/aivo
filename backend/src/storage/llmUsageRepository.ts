@@ -26,6 +26,15 @@ export interface ModelUsageTotal {
   tokensOut: number;
 }
 
+export interface UsageLedgerRow {
+  createdAt: Date;
+  model: string;
+  taskType: string;
+  tokensIn: number;
+  tokensOut: number;
+  costCents: number;
+}
+
 export interface DailySeriesOptions {
   /** Inclusive lower bound. */
   from: Date;
@@ -170,6 +179,33 @@ export class LlmUsageRepository {
       calls: Number(r.calls),
       tokensIn: Number(r.tokensIn),
       tokensOut: Number(r.tokensOut),
+    }));
+  }
+
+  /**
+   * Raw ledger rows in a window, oldest first, capped — the dashboard's CSV export
+   * (PRD U-8). The cap bounds response size; the route reports truncation.
+   */
+  async listRows(
+    userId: string,
+    opts: { from: Date; to: Date; limit: number },
+  ): Promise<UsageLedgerRow[]> {
+    const rows = await this.db
+      .selectFrom("llm_usage")
+      .select(["created_at", "model", "task_type", "tokens_in", "tokens_out", "cost_cents"])
+      .where("user_id", "=", userId)
+      .where("created_at", ">=", opts.from)
+      .where("created_at", "<", opts.to)
+      .orderBy("created_at", "asc")
+      .limit(opts.limit)
+      .execute();
+    return rows.map((r) => ({
+      createdAt: r.created_at,
+      model: r.model,
+      taskType: r.task_type,
+      tokensIn: r.tokens_in,
+      tokensOut: r.tokens_out,
+      costCents: Number(r.cost_cents),
     }));
   }
 

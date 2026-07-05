@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { downloadFile } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
 import { BurnDownChart } from "../components/usage/BurnDownChart.js";
 import { DailySpendChart } from "../components/usage/DailySpendChart.js";
@@ -89,16 +90,32 @@ export function UsagePage() {
           <h1>Usage &amp; Budget</h1>
           <p className="muted">LLM spend from the ledger — summed live, never a stored rollup.</p>
         </div>
-        <button
-          type="button"
-          className="refresh"
-          onClick={() => {
-            setNow(new Date());
-            summary.reload();
-          }}
-        >
-          Refresh
-        </button>
+        <div className="page-actions">
+          <button
+            type="button"
+            className="refresh"
+            onClick={() => {
+              // U-8: the export mirrors the chart's current date range.
+              const params = new URLSearchParams({
+                from: timeWindow.from.toISOString(),
+                to: timeWindow.to.toISOString(),
+              });
+              void downloadFile(`/api/dashboard/usage/export.csv?${params}`, "aivo-usage.csv");
+            }}
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            className="refresh"
+            onClick={() => {
+              setNow(new Date());
+              summary.reload();
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}

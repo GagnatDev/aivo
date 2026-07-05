@@ -195,3 +195,55 @@ describe("GET /api/dashboard/usage/drivers", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("GET /api/dashboard/usage/export.csv", () => {
+  it("downloads the range's ledger rows as CSV with exact fractional cents (U-8)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    await insertUsageAt(owner.id, new Date("2026-07-01T10:00:00Z"), {
+      model: "cheap-1",
+      taskType: "chat",
+      costCents: 0.1234,
+    });
+    await insertUsageAt(owner.id, new Date("2026-07-02T10:00:00Z"), {
+      model: 'weird,"model',
+      taskType: "stage1_rank",
+      costCents: 2.5,
+    });
+
+    const res = await request(app).get(
+      "/api/dashboard/usage/export.csv?from=2026-07-01T00:00:00Z&to=2026-07-03T00:00:00Z",
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/csv/);
+    expect(res.headers["content-disposition"]).toBe(
+      'attachment; filename="aivo-usage-2026-07-01_2026-07-03.csv"',
+    );
+    const lines = res.text.trimEnd().split("\n");
+    expect(lines[0]).toBe("created_at,model,task_type,tokens_in,tokens_out,cost_cents");
+    expect(lines[1]).toBe("2026-07-01T10:00:00.000Z,cheap-1,chat,100,50,0.1234");
+    // Fields with commas/quotes are quoted per RFC 4180.
+    expect(lines[2]).toBe('2026-07-02T10:00:00.000Z,"weird,""model",stage1_rank,100,50,2.5');
+  });
+
+  it("never exports another user's rows and 400s a backwards range", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    await provisionTestOwner(deps);
+    const other = await deps.users.upsertByDiscordId({
+      discordUserId: "someone-else",
+      displayName: null,
+      isOwner: false,
+    });
+    await insertUsageAt(other.id, new Date("2026-07-01T10:00:00Z"), { costCents: 9 });
+
+    const res = await request(app).get(
+      "/api/dashboard/usage/export.csv?from=2026-07-01T00:00:00Z&to=2026-07-02T00:00:00Z",
+    );
+    expect(res.text.trimEnd().split("\n")).toHaveLength(1);
+
+    const bad = await request(app).get(
+      "/api/dashboard/usage/export.csv?from=2026-07-02T00:00:00Z&to=2026-07-01T00:00:00Z",
+    );
+    expect(bad.status).toBe(400);
+  });
+});

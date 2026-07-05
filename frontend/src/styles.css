@@ -830,6 +830,72 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* ── M6 polish: settings cards, profile history diff, forgotten, export ── */
+
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-note {
+  font-size: 0.82rem;
+  margin: 0.75rem 0 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.settings-persona,
+.profile-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.digest-youtube-status,
+.digest-feedback {
+  font-size: 0.9rem;
+}
+
+.stat-value.digest-feedback {
+  font-size: 1.05rem;
+}
+
+.digest-youtube-status {
+  margin: 0.75rem 0 0;
+}
+
+.memory-forgotten .memory-content {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.profile-diff-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-line {
+  display: block;
+  border-radius: 4px;
+  padding: 0 0.35rem;
+}
+
+.diff-added {
+  background: rgba(76, 195, 138, 0.12);
+  color: var(--ok);
+}
+
+.diff-removed {
+  background: rgba(229, 100, 94, 0.12);
+  color: var(--danger);
+}
+
 fieldset.seg-group {
   margin: 0;
   padding: 0;

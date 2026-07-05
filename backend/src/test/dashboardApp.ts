@@ -5,13 +5,16 @@ import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import { ConversationRepository } from "../storage/conversationRepository.js";
 import { DigestItemRepository } from "../storage/digestItemRepository.js";
 import { DigestRepository } from "../storage/digestRepository.js";
+import { FeedbackRepository } from "../storage/feedbackRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import { MemoryRepository } from "../storage/memoryRepository.js";
 import { MessageRepository } from "../storage/messageRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
+import { ProfileRepository } from "../storage/profileRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
 import { VideoRepository } from "../storage/videoRepository.js";
+import { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
 import { testDb } from "./db.js";
 
 export interface DashboardTestHarness {
@@ -42,6 +45,9 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
     videos: new VideoRepository(db),
     conversations: new ConversationRepository(db),
     messages: new MessageRepository(db),
+    profiles: new ProfileRepository(db),
+    feedback: new FeedbackRepository(db),
+    youtubeAccount: new YoutubeAccountRepository(db),
     config: {
       memoryInjectLimit: options.memoryInjectLimit ?? 20,
     },

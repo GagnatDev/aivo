@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../api/useApi.js";
+import { ForgottenTab } from "../components/memory/ForgottenTab.js";
 import { MemoryList } from "../components/memory/MemoryList.js";
+import { ProfileTab } from "../components/memory/ProfileTab.js";
 import type { MemoriesResponse, MemoryCategory } from "../lib/memory.js";
 
 const CATEGORIES: Array<{ value: MemoryCategory | ""; label: string }> = [
@@ -10,11 +12,19 @@ const CATEGORIES: Array<{ value: MemoryCategory | ""; label: string }> = [
   { value: "context", label: "Context" },
 ];
 
+const TABS = [
+  { value: "memories", label: "Memories" },
+  { value: "profile", label: "Profile" },
+  { value: "forgotten", label: "Forgotten" },
+] as const;
+
+type Tab = (typeof TABS)[number]["value"];
+
 /** Keystrokes settle this long before a search request fires. */
 const SEARCH_DEBOUNCE_MS = 300;
 
-/** Memory & Profiles (M3) — see PRD §4.5, requirements ME-1..ME-5. */
-export function MemoryPage() {
+/** ME-1..ME-5: the active memory browser — search, category chips, injection hint. */
+function MemoriesTab() {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<MemoryCategory | "">("");
@@ -38,19 +48,7 @@ export function MemoryPage() {
   const filtering = query !== "" || category !== "";
 
   return (
-    <section>
-      <div className="page-head">
-        <div>
-          <h1>Memory &amp; Profiles</h1>
-          <p className="muted">
-            What Aivo remembers about you — inspectable, and editable from Discord ("forget that").
-          </p>
-        </div>
-        <button type="button" className="refresh" onClick={() => memories.reload()}>
-          Refresh
-        </button>
-      </div>
-
+    <>
       {memories.error ? <div className="error-banner">{memories.error}</div> : null}
 
       {data ? (
@@ -102,6 +100,41 @@ export function MemoryPage() {
       ) : (
         <p className="muted">Loading…</p>
       )}
+    </>
+  );
+}
+
+/** Memory & Profiles (M3 + M6 tabs) — see PRD §4.5, requirements ME-1..ME-8. */
+export function MemoryPage() {
+  const [tab, setTab] = useState<Tab>("memories");
+
+  return (
+    <section>
+      <div className="page-head">
+        <div>
+          <h1>Memory &amp; Profiles</h1>
+          <p className="muted">
+            What Aivo remembers about you — inspectable, and editable from Discord ("forget that").
+          </p>
+        </div>
+        <fieldset className="seg-group">
+          <legend className="visually-hidden">View</legend>
+          {TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              className={tab === t.value ? "seg active" : "seg"}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+
+      {tab === "memories" ? <MemoriesTab /> : null}
+      {tab === "profile" ? <ProfileTab /> : null}
+      {tab === "forgotten" ? <ForgottenTab /> : null}
     </section>
   );
 }

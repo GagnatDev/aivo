@@ -8,11 +8,24 @@ import { money } from "./money.js";
 /** Longest series/drivers window the API will aggregate in one request. */
 const MAX_RANGE_DAYS = 400;
 
+/** Ledger rows one CSV export will carry before truncating (bounds memory). */
+const EXPORT_MAX_ROWS = 50_000;
+
 const seriesQuerySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   groupBy: z.enum(["model", "task_type"]).optional(),
 });
+
+const exportQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
+/** Quote a CSV field only when it needs it (comma, quote, or newline). */
+function csvField(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
 
 const driversQuerySchema = z.object({
   since: z.coerce.date().optional(),
@@ -86,6 +99,42 @@ export function usageRoutes(deps: DashboardDeps): Router {
         tokensOut: b.tokensOut,
       })),
     });
+  });
+
+  // Raw ledger rows for the current view as a CSV download (U-8). Costs are
+  // exported as exact fractional cents — spreadsheet math stays lossless.
+  router.get("/api/dashboard/usage/export.csv", async (req, res) => {
+    const query = exportQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "bad_request", issues: query.error.issues });
+      return;
+    }
+    const now = new Date();
+    const from = query.data.from ?? startOfUtcMonth(now);
+    const to = query.data.to ?? now;
+    if (from >= to || to.getTime() - from.getTime() > MAX_RANGE_DAYS * 24 * 60 * 60 * 1000) {
+      res.status(400).json({ error: "bad_request", reason: "invalid date range" });
+      return;
+    }
+    const rows = await deps.llmUsage.listRows(req.userId!, { from, to, limit: EXPORT_MAX_ROWS });
+    const lines = [
+      "created_at,model,task_type,tokens_in,tokens_out,cost_cents",
+      ...rows.map((r) =>
+        [
+          r.createdAt.toISOString(),
+          csvField(r.model),
+          csvField(r.taskType),
+          String(r.tokensIn),
+          String(r.tokensOut),
+          String(r.costCents),
+        ].join(","),
+      ),
+    ];
+    const stamp = `${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="aivo-usage-${stamp}.csv"`);
+    if (rows.length === EXPORT_MAX_ROWS) res.setHeader("X-Export-Truncated", "true");
+    res.send(`${lines.join("\n")}\n`);
   });
 
   // Top spend drivers by (model, task_type) — same semantics as `!budget`'s

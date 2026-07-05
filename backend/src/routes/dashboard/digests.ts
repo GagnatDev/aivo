@@ -66,7 +66,10 @@ export function digestsRoutes(deps: DashboardDeps): Router {
       res.status(400).json({ error: "bad_request", issues: query.error.issues });
       return;
     }
-    const runs = await deps.digests.listForUser(req.userId!, query.data.limit);
+    const [runs, account] = await Promise.all([
+      deps.digests.listForUser(req.userId!, query.data.limit),
+      deps.youtubeAccount.find(),
+    ]);
     const counts = await deps.digestItems.countsByDigests(runs.map((r) => r.id));
     res.json({
       runs: runs.map((run) => ({
@@ -74,6 +77,13 @@ export function digestsRoutes(deps: DashboardDeps): Router {
         pickCount: counts.get(run.id)?.picks ?? 0,
         rejectCount: counts.get(run.id)?.rejects ?? 0,
       })),
+      // D-5: connection status — metadata and sync watermarks, never tokens.
+      youtube: {
+        connected: account?.youtube_channel_id != null,
+        title: account?.title ?? null,
+        subscriptionsSyncedAt: account?.subscriptions_synced_at?.toISOString() ?? null,
+        videosPolledAt: account?.videos_polled_at?.toISOString() ?? null,
+      },
     });
   });
 
@@ -96,12 +106,21 @@ export function digestsRoutes(deps: DashboardDeps): Router {
     const channelTitles = await deps.videos.channelTitles([
       ...new Set(videoRows.map((v) => v.channel_id)),
     ]);
+    const feedback = await deps.feedback.countsForDigest(run.id);
     res.json({
       run: runJson(run),
       picks: items.filter((i) => i.kind === "pick").map((i) => itemJson(i, videos, channelTitles)),
       rejects: items
         .filter((i) => i.kind === "reject")
         .map((i) => itemJson(i, videos, channelTitles)),
+      // D-4: the user's reactions on this run's delivered items.
+      feedback: {
+        keep: feedback.keep ?? 0,
+        drop: feedback.drop ?? 0,
+        tooLong: feedback.too_long ?? 0,
+        wrongTopic: feedback.wrong_topic ?? 0,
+        freeform: feedback.freeform ?? 0,
+      },
     });
   });
 

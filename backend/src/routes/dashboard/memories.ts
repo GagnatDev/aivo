@@ -25,6 +25,22 @@ function injectionOrder(rows: MemoryRow[]): MemoryRow[] {
 export function memoriesRoutes(deps: DashboardDeps): Router {
   const router = Router();
 
+  // ME-8: the soft-deleted audit trail — "forget that" never hard-deletes.
+  router.get("/api/dashboard/memories/forgotten", async (req, res) => {
+    const forgotten = await deps.memories.listForgotten(req.userId!);
+    res.json({
+      memories: forgotten.map((m) => ({
+        id: m.id,
+        category: m.category,
+        content: m.content,
+        source: m.source,
+        pinned: m.pinned,
+        createdAt: m.created_at.toISOString(),
+        forgottenAt: m.forgotten_at!.toISOString(),
+      })),
+    });
+  });
+
   router.get("/api/dashboard/memories", async (req, res) => {
     const query = listQuerySchema.safeParse(req.query);
     if (!query.success) {

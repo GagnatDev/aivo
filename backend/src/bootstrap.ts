@@ -136,6 +136,9 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         videos: deps.videos,
         conversations: deps.conversations,
         messages: deps.messages,
+        profiles: deps.profiles,
+        feedback: deps.feedback,
+        youtubeAccount: deps.youtubeAccount,
         config: {
           memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
         },

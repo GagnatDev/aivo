@@ -71,6 +71,33 @@ describe("GET /api/dashboard/digests", () => {
     expect(older.deliveredAt).toMatch(/^2026-07-01T/);
   });
 
+  it("reports YouTube connection status alongside the runs (D-5)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    await provisionTestOwner(deps);
+
+    const before = await request(app).get("/api/dashboard/digests");
+    expect(before.body.youtube).toEqual({
+      connected: false,
+      title: null,
+      subscriptionsSyncedAt: null,
+      videosPolledAt: null,
+    });
+
+    await deps.youtubeAccount.setIdentity({
+      youtubeChannelId: "UCme",
+      title: "Ann-Katrin",
+      connectedByUserId: null,
+    });
+    await deps.youtubeAccount.markSubscriptionsSynced(new Date("2026-07-01T05:00:00Z"));
+
+    const after = await request(app).get("/api/dashboard/digests");
+    expect(after.body.youtube).toMatchObject({
+      connected: true,
+      title: "Ann-Katrin",
+      subscriptionsSyncedAt: "2026-07-01T05:00:00.000Z",
+    });
+  });
+
   it("never lists another user's runs", async () => {
     const { app, deps } = buildDashboardTestApp();
     await provisionTestOwner(deps);
@@ -109,6 +136,25 @@ describe("GET /api/dashboard/digests/:id", () => {
     expect(res.body.rejects).toHaveLength(1);
     expect(res.body.rejects[0].reason).toMatch(/news recap/);
     expect(res.body.rejects[0].video.id).toBe("v3");
+  });
+
+  it("summarizes the run's feedback reactions (D-4)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const run = await seedDeliveredRun(deps, owner.id);
+    const items = await deps.digestItems.listByDigest(run.id);
+    await deps.feedback.insert({ userId: owner.id, digestItemId: items[0].id, signal: "keep" });
+    await deps.feedback.insert({ userId: owner.id, digestItemId: items[1].id, signal: "keep" });
+    await deps.feedback.insert({ userId: owner.id, digestItemId: items[1].id, signal: "too_long" });
+
+    const res = await request(app).get(`/api/dashboard/digests/${run.id}`);
+    expect(res.body.feedback).toEqual({
+      keep: 2,
+      drop: 0,
+      tooLong: 1,
+      wrongTopic: 0,
+      freeform: 0,
+    });
   });
 
   it("404s another user's run and 400s a malformed id", async () => {

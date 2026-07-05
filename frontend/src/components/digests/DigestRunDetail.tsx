@@ -3,6 +3,7 @@ import {
   DIGEST_STATUS_META,
   formatConfidence,
   formatDuration,
+  summarizeFeedback,
   videoUrl,
   type DigestDetail,
   type DigestItem,
@@ -55,6 +56,7 @@ export function DigestRunDetail({ id }: { id: string }) {
   if (!data) return <p className="muted">Loading…</p>;
 
   const status = DIGEST_STATUS_META[data.run.status];
+  const feedback = summarizeFeedback(data.feedback);
   return (
     <>
       <div className="stat-grid">
@@ -78,6 +80,13 @@ export function DigestRunDetail({ id }: { id: string }) {
           <div className="stat-label">Covers</div>
           <div className="stat-value">{formatShortDate(data.run.coversSince)} →</div>
           <div className="stat-detail">videos published since the previous run</div>
+        </div>
+        <div className="card stat-tile">
+          <div className="stat-label">Your feedback</div>
+          <div className="stat-value digest-feedback">{feedback ?? "—"}</div>
+          <div className="stat-detail">
+            {feedback ? "reactions on this run's picks" : "no reactions on this run yet"}
+          </div>
         </div>
       </div>
 

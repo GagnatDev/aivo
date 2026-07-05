@@ -46,6 +46,16 @@ describe("MemoryRepository", () => {
     expect(await memories.listActive(userId)).toHaveLength(1);
   });
 
+  it("listForgotten returns only soft-deleted rows, newest forgotten first", async () => {
+    const { memories, userId } = await setup();
+    await memories.insert({ userId, content: "keep me" });
+    const gone = await memories.insert({ userId, content: "drop me" });
+    await memories.forget(gone.id, userId);
+    const forgotten = await memories.listForgotten(userId);
+    expect(forgotten.map((m) => m.content)).toEqual(["drop me"]);
+    expect(forgotten[0]?.forgotten_at).toBeInstanceOf(Date);
+  });
+
   it("search matches case-insensitively on content, active only", async () => {
     const { memories, userId } = await setup();
     await memories.insert({ userId, content: "Prefers dark roast COFFEE" });

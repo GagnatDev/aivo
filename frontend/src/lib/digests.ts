@@ -19,8 +19,24 @@ export interface DigestRunSummary {
   rejectCount: number;
 }
 
+export interface YoutubeStatus {
+  connected: boolean;
+  title: string | null;
+  subscriptionsSyncedAt: string | null;
+  videosPolledAt: string | null;
+}
+
 export interface DigestRuns {
   runs: DigestRunSummary[];
+  youtube: YoutubeStatus;
+}
+
+export interface FeedbackSummary {
+  keep: number;
+  drop: number;
+  tooLong: number;
+  wrongTopic: number;
+  freeform: number;
 }
 
 export interface DigestItemVideo {
@@ -46,6 +62,20 @@ export interface DigestDetail {
   run: Omit<DigestRunSummary, "pickCount" | "rejectCount">;
   picks: DigestItem[];
   rejects: DigestItem[];
+  feedback: FeedbackSummary;
+}
+
+/** "2 keep · 1 too long" — non-zero reaction counts, or null when none yet (D-4). */
+export function summarizeFeedback(feedback: FeedbackSummary): string | null {
+  const parts = [
+    [feedback.keep, "keep"],
+    [feedback.drop, "drop"],
+    [feedback.tooLong, "too long"],
+    [feedback.wrongTopic, "wrong topic"],
+    [feedback.freeform, "freeform"],
+  ] as const;
+  const shown = parts.filter(([count]) => count > 0).map(([count, label]) => `${count} ${label}`);
+  return shown.length > 0 ? shown.join(" · ") : null;
 }
 
 /** Run lifecycle → status chip (same icon+label discipline as DEGRADATION_META). */

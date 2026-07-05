@@ -21,6 +21,30 @@ export interface MemoriesResponse {
   category: MemoryCategory | null;
 }
 
+export interface ForgottenMemoryItem extends MemoryItem {
+  forgottenAt: string;
+}
+
+export interface ForgottenMemoriesResponse {
+  memories: ForgottenMemoryItem[];
+}
+
+// Types mirroring the dashboard profiles API (backend routes/dashboard/profiles.ts).
+
+export interface ProfileVersion {
+  id: string;
+  version: number;
+  body: string;
+  isCurrent: boolean;
+  createdAt: string;
+}
+
+export interface ProfileResponse {
+  kind: "youtube_interest" | "mail_importance";
+  current: ProfileVersion | null;
+  versions: ProfileVersion[];
+}
+
 /** "Jun 5, 2026" for a memory's created timestamp. */
 export function formatMemoryDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en", {
