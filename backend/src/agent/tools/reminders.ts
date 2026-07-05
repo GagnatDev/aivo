@@ -22,7 +22,11 @@ const reminderArgs = z.object({
 });
 
 export const remindersTool: AgentTool = {
-  gate: /\bremind\w*|\bsnooze\b/i,
+  // Bilingual gate (English + Norwegian, the owner's usual language): the model can only
+  // call a tool whose schema was advertised this turn, so a Norwegian phrasing like
+  // "minn meg på …" / "påminnelse" / "utsett" must trip the gate too, or the reminder is
+  // silently never set. See selectToolSchemas in index.js.
+  gate: /\bremind\w*|\bsnooze\b|\b(minn\w*|påminn\w*|husk\w*|utsett\w*|slumre\w*)\b/i,
   schema: {
     name: "reminder",
     description:

@@ -10,7 +10,8 @@ const modelsArgs = z.object({
 });
 
 export const modelsTool: AgentTool = {
-  gate: /\b(models?|prices?|pricing|scaleway|llama|mtok|per[- ]?token|tier|premium|cheap)\b/i,
+  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
+  gate: /\b(models?|prices?|pricing|scaleway|llama|mtok|per[- ]?token|tier|premium|cheap|modell\w*|pris\w*)\b/i,
   schema: {
     name: "models",
     description:

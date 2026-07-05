@@ -11,7 +11,8 @@ const budgetArgs = z.object({
 });
 
 export const budgetTool: AgentTool = {
-  gate: /[$€]|\b(budget|spend|spent|spending|cost|costs|cap|caps|ceiling|cents?|dollars?|euros?|money|bill|billing|afford|expensive|threshold|approval|tier|premium|cheap)\b/i,
+  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
+  gate: /[$€]|\bkr\b|\b(budget|spend|spent|spending|cost|costs|cap|caps|ceiling|cents?|dollars?|euros?|money|bill|billing|afford|expensive|threshold|approval|tier|premium|cheap|budsjett\w*|brukt|bruke|kostnad\w*|koster|penger|kroner|dyr\w*|billig\w*|rimelig\w*|regning\w*|godkjenn\w*|grense\w*|tak)\b/i,
   schema: {
     name: "budget",
     description:
