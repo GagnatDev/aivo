@@ -2,6 +2,8 @@ import { buildApp } from "../app.js";
 import { createDevAuthProvider } from "../auth/devProvider.js";
 import type { DashboardDeps } from "../routes/dashboard/index.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
+import { DigestItemRepository } from "../storage/digestItemRepository.js";
+import { DigestRepository } from "../storage/digestRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import { MemoryRepository } from "../storage/memoryRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
@@ -18,6 +20,8 @@ export interface DashboardTestOptions {
   webRoot?: string;
   /** Defaults to the env schema's default (20) so ME-5 math is testable. */
   memoryInjectLimit?: number;
+  /** Simulated Discord gateway probe; omitted = "unknown" in the health widget. */
+  gatewayStatus?: () => boolean;
 }
 
 /** The dashboard app wired to the test DB with the dev auth provider. */
@@ -30,9 +34,12 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
     modelPricing: new ModelPricingRepository(db),
     settings: new SettingsRepository(db),
     memories: new MemoryRepository(db),
+    digests: new DigestRepository(db),
+    digestItems: new DigestItemRepository(db),
     config: {
       memoryInjectLimit: options.memoryInjectLimit ?? 20,
     },
+    ...(options.gatewayStatus ? { gatewayStatus: options.gatewayStatus } : {}),
   };
   const appOptions: Parameters<typeof buildApp>[0] = {
     auth: {

@@ -2,6 +2,8 @@ import { Router } from "express";
 import type { AuthProvider } from "../../auth/index.js";
 import { resolveUser } from "../../middleware/resolveUser.js";
 import type { BudgetConfigRepository } from "../../storage/budgetConfigRepository.js";
+import type { DigestItemRepository } from "../../storage/digestItemRepository.js";
+import type { DigestRepository } from "../../storage/digestRepository.js";
 import type { LlmUsageRepository } from "../../storage/llmUsageRepository.js";
 import type { MemoryRepository } from "../../storage/memoryRepository.js";
 import type { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
@@ -9,6 +11,7 @@ import type { SettingsRepository } from "../../storage/settingsRepository.js";
 import type { UserRepository } from "../../storage/userRepository.js";
 import { memoriesRoutes } from "./memories.js";
 import { modelsRoutes } from "./models.js";
+import { overviewRoutes } from "./overview.js";
 import { usageRoutes } from "./usage.js";
 
 /**
@@ -22,11 +25,19 @@ export interface DashboardDeps {
   modelPricing: ModelPricingRepository;
   settings: SettingsRepository;
   memories: MemoryRepository;
+  digests: DigestRepository;
+  digestItems: DigestItemRepository;
   /** App-config values surfaced read-only (PRD §4.5 — never the raw env). */
   config: {
     /** AGENT_MEMORY_INJECT_LIMIT — max memories injected into agent context. */
     memoryInjectLimit: number;
   };
+  /**
+   * Live Discord gateway probe for the health widget (O-6). Optional because the
+   * gateway logs in after the HTTP server starts (and doesn't exist in tests) —
+   * absent means "unknown", not "down".
+   */
+  gatewayStatus?: () => boolean;
 }
 
 /**
@@ -54,6 +65,7 @@ export function dashboardRouter(auth: AuthProvider, deps: DashboardDeps): Router
   router.use(usageRoutes(deps));
   router.use(modelsRoutes(deps));
   router.use(memoriesRoutes(deps));
+  router.use(overviewRoutes(deps));
 
   return router;
 }
