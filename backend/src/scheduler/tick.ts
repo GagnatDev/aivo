@@ -3,6 +3,7 @@ import type { DigestOutcome, YoutubeIntegrations } from "../digest/pipeline.js";
 import { runDigest } from "../digest/pipeline.js";
 import { digestDue } from "../digest/due.js";
 import { parseDigestLane, withDigestLane } from "../digest/proactivity.js";
+import type { ReminderRow } from "../storage/reminderRepository.js";
 import { logger } from "../logger.js";
 
 /**
@@ -18,6 +19,17 @@ export interface DigestDeliverer {
   deliver(userId: string, outcome: DigestOutcome): Promise<void>;
 }
 
+/** How a due reminder reaches the user — implemented by the Discord layer. */
+export interface ReminderDeliverer {
+  deliver(reminder: ReminderRow): Promise<void>;
+}
+
+/** The scheduler's outbound channels, wired to Discord at the composition root. */
+export interface Deliverers {
+  digest: DigestDeliverer;
+  reminder: ReminderDeliverer;
+}
+
 /**
  * Run whatever is due at `now`. YouTube integrations are null until the OAuth
  * credentials are configured — the digest lane simply stays dark (logged once per
@@ -26,7 +38,7 @@ export interface DigestDeliverer {
 export async function runDueWork(
   deps: AgentDeps,
   yt: YoutubeIntegrations | null,
-  deliverer: DigestDeliverer,
+  deliverers: Deliverers,
   now: Date,
 ): Promise<void> {
   // Sweep stale approval-gate prompts every tick (previously a one-shot at boot —
@@ -35,6 +47,16 @@ export async function runDueWork(
   await deps.pendingApprovals.expireOlderThan(
     new Date(now.getTime() - deps.config.approvalTtlMinutes * 60_000),
   );
+
+  // Reminders: per-user, template-rendered (zero LLM cost), so they deliver regardless
+  // of the YouTube lane or budget degradation — the user explicitly asked for each one.
+  // Marked delivered only after the send succeeds: a crash in between re-sends next
+  // tick (at-least-once), matching the digest's delivery semantics.
+  for (const reminder of await deps.reminders.listDue(now)) {
+    await deliverers.reminder.deliver(reminder);
+    await deps.reminders.markDelivered(reminder.id, now);
+    logger.info({ userId: reminder.user_id, reminderId: reminder.id }, "reminder delivered");
+  }
 
   if (!yt) return;
 
@@ -66,7 +88,7 @@ export async function runDueWork(
 
   logger.info({ userId: owner.id, reason: due.reason }, "digest run starting");
   const outcome = await runDigest(deps, yt, owner.id, now);
-  await deliverer.deliver(owner.id, outcome);
+  await deliverers.digest.deliver(owner.id, outcome);
   if (outcome.kind !== "skipped_budget") {
     await deps.digests.markDelivered(outcome.digestId, now);
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildContext } from "./context.js";
+import { buildContext, currentTimeLine } from "./context.js";
 import { makeFakeLlm } from "../test/fakeLlm.js";
-import { makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
+import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
 
 useCleanDb();
@@ -61,5 +61,35 @@ describe("buildContext", () => {
     });
 
     expect(memoryBlock(messages)).toBeUndefined();
+  });
+
+  it("grounds the system prompt with the current local date/time", async () => {
+    const deps = makeAgentDeps(
+      makeFakeLlm([]),
+      {},
+      new FakeClock(new Date("2026-07-03T12:34:00Z")),
+    );
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+    const settings = await deps.settings.getOrCreate(userId);
+
+    const [system] = await buildContext(deps, {
+      userId,
+      conversationId,
+      settings,
+      historyLimit: 15,
+      memoryLimit: 20,
+    });
+    // 12:34Z = 14:34 in Europe/Oslo (default timezone) in July.
+    expect(system.content).toContain(
+      "Current date/time: Friday 2026-07-03 14:34 (Europe/Oslo, GMT+02:00)",
+    );
+  });
+});
+
+describe("currentTimeLine", () => {
+  it("falls back to UTC on an invalid timezone", () => {
+    expect(currentTimeLine(new Date("2026-07-03T12:34:00Z"), "Not/AZone")).toBe(
+      "Friday 2026-07-03 12:34 (UTC, GMT+00:00)",
+    );
   });
 });

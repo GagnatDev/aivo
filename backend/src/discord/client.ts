@@ -4,6 +4,7 @@ import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
 import { isCommand, runCommand } from "./commands.js";
 import { resolveFeedbackClick } from "./feedback.js";
+import { resolveReminderClick } from "./reminderButtons.js";
 import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
 import {
   normalize,
@@ -95,27 +96,29 @@ async function onMessage(
 
 /**
  * Handle button clicks: digest feedback buttons (`fb:*`, acknowledged ephemerally and
- * folded into the interest profile by the next run) and Approve/Cancel clicks on an
- * approval-gate prompt. For approvals we defer the update first (Discord requires an
- * ack within 3s, and resuming the turn runs the LLM, which can take longer), then edit
- * the prompt to drop its buttons and, on approval, post the answer as a follow-up and
- * persist it.
+ * folded into the interest profile by the next run), reminder snooze buttons (`rem:*`,
+ * re-arming the reminder), and Approve/Cancel clicks on an approval-gate prompt. For
+ * approvals we defer the update first (Discord requires an ack within 3s, and resuming
+ * the turn runs the LLM, which can take longer), then edit the prompt to drop its
+ * buttons and, on approval, post the answer as a follow-up and persist it.
  */
 async function onInteraction(deps: HandleMessageDeps, interaction: Interaction): Promise<void> {
   if (!interaction.isButton()) return;
 
   try {
-    const feedback = await resolveFeedbackClick(deps, {
+    const click = {
       customId: interaction.customId,
       clickerDiscordId: interaction.user.id,
       clickerDisplayName: interaction.user.username,
-    });
-    if (feedback) {
-      await interaction.reply({ content: feedback.ack, ephemeral: true });
+    };
+    const ephemeralAck =
+      (await resolveFeedbackClick(deps, click)) ?? (await resolveReminderClick(deps, click));
+    if (ephemeralAck) {
+      await interaction.reply({ content: ephemeralAck.ack, ephemeral: true });
       return;
     }
   } catch (err) {
-    logger.error(err, "failed to handle feedback button");
+    logger.error(err, "failed to handle feedback/reminder button");
     return;
   }
 

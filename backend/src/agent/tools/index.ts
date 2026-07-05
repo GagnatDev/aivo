@@ -5,6 +5,7 @@ import type { AgentDeps } from "../deps.js";
 import { memoryTool } from "./memory.js";
 import { budgetTool } from "./budget.js";
 import { modelsTool } from "./models.js";
+import { remindersTool } from "./reminders.js";
 import { settingsTool } from "./settings.js";
 import { youtubeDigestTool } from "./youtubeDigest.js";
 
@@ -45,9 +46,9 @@ export function parse<T>(
   };
 }
 
-/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest). */
+/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest, reminder). */
 export function buildToolRegistry(): AgentTool[] {
-  return [memoryTool, budgetTool, modelsTool, settingsTool, youtubeDigestTool];
+  return [memoryTool, budgetTool, modelsTool, settingsTool, youtubeDigestTool, remindersTool];
 }
 
 /**

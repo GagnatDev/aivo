@@ -60,7 +60,15 @@ Smallest useful slice first, each shippable on its own:
    chat-configurable via the `youtube_digest` tool. Needs infra config to go live:
    `YOUTUBE_OAUTH_*` secrets (one-time `/youtube/oauth/start` handshake) and
    `DISCORD_YOUTUBE_CHANNEL_ID`.
-4. **Reminders.** User-set reminders delivered proactively via the scheduler.
+4. **Reminders.** — ✅ built (2026-07-03). User-set reminders delivered proactively
+   via the scheduler: `reminder` chat tool (set / list / cancel / reschedule; the
+   system prompt now carries the current local date/time so natural phrasing becomes
+   an absolute `due_at`), minutely due-scan in `scheduler/tick.ts` (independent of the
+   YouTube lane, zero LLM cost), delivery to the home channel
+   (`DISCORD_HOME_CHANNEL_ID`) with a mention + snooze buttons
+   (10 min / 1 h / tomorrow 09:00 local, per-user only). Natural recurrence
+   ("every other Thursday", feature-suggestions B5) is deferred — the locked data
+   model has no recurrence column yet.
 
 ### 4. Phase 2 — Mail triage (read-only)
 Reuse the YouTube pattern: `mail_importance` profile, importance classification

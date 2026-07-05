@@ -2,7 +2,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import type { AgentDeps } from "../agent/deps.js";
 import type { YoutubeIntegrations } from "../digest/pipeline.js";
 import { logger } from "../logger.js";
-import { runDueWork, type DigestDeliverer } from "./tick.js";
+import { runDueWork, type Deliverers } from "./tick.js";
 
 /**
  * The "when" of the scheduler: in-process node-cron ticking every minute and polling
@@ -13,14 +13,14 @@ import { runDueWork, type DigestDeliverer } from "./tick.js";
 export function startScheduler(
   deps: AgentDeps,
   yt: YoutubeIntegrations | null,
-  deliverer: DigestDeliverer,
+  deliverers: Deliverers,
 ): ScheduledTask {
   if (!yt) {
     logger.warn("YouTube credentials not configured — digest scheduler is idle");
   }
   return cron.schedule("* * * * *", async () => {
     try {
-      await runDueWork(deps, yt, deliverer, deps.clock.now());
+      await runDueWork(deps, yt, deliverers, deps.clock.now());
     } catch (err) {
       logger.error({ err }, "scheduler tick failed");
     }

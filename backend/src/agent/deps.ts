@@ -11,6 +11,7 @@ import type { MessageRepository } from "../storage/messageRepository.js";
 import type { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import type { PendingApprovalRepository } from "../storage/pendingApprovalRepository.js";
 import type { ProfileRepository } from "../storage/profileRepository.js";
+import type { ReminderRepository } from "../storage/reminderRepository.js";
 import type { SettingsPermissionsRepository } from "../storage/settingsPermissionsRepository.js";
 import type { SettingsRepository } from "../storage/settingsRepository.js";
 import type { UserRepository } from "../storage/userRepository.js";
@@ -55,6 +56,7 @@ export interface AgentDeps {
   budgetConfig: BudgetConfigRepository;
   pendingApprovals: PendingApprovalRepository;
   profiles: ProfileRepository;
+  reminders: ReminderRepository;
   youtubeAccount: YoutubeAccountRepository;
   youtubeChannels: YoutubeChannelRepository;
   videos: VideoRepository;

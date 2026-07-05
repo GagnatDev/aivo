@@ -37,6 +37,12 @@ describe("selectToolSchemas", () => {
     expect(names("update my digest hour")).toContain("settings");
   });
 
+  it("includes reminder when the message is about reminders", () => {
+    expect(names("remind me to call X at 5")).toContain("reminder");
+    expect(names("what reminders do I have?")).toContain("reminder");
+    expect(names("snooze that")).toContain("reminder");
+  });
+
   it("matches case-insensitively", () => {
     expect(names("What's My BUDGET?")).toContain("budget");
   });

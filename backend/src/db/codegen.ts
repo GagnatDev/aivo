@@ -31,6 +31,7 @@ const OVERRIDES = {
     "digests.status": "ColumnType<DigestStatus, string | undefined, string>",
     "digest_items.kind": "DigestItemKind",
     "feedback.signal": "FeedbackSignal",
+    "reminders.status": "ColumnType<ReminderStatus, string | undefined, string>",
   },
 } as const;
 
@@ -48,6 +49,7 @@ const CUSTOM_IMPORTS = {
   DigestStatus: "./schema.enums.js",
   DigestItemKind: "./schema.enums.js",
   FeedbackSignal: "./schema.enums.js",
+  ReminderStatus: "./schema.enums.js",
 } as const;
 
 /**

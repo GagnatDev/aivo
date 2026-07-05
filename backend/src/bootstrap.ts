@@ -8,6 +8,7 @@ import { createPool } from "./db/pool.js";
 import type { YoutubeIntegrations } from "./digest/pipeline.js";
 import { createDiscordGateway, type DiscordGateway } from "./discord/client.js";
 import { createDigestDeliverer } from "./discord/digestDelivery.js";
+import { createReminderDeliverer } from "./discord/reminderDelivery.js";
 import { createOpenAiProvider } from "./llm/openaiProvider.js";
 import { startScheduler } from "./scheduler/cron.js";
 import { BudgetConfigRepository } from "./storage/budgetConfigRepository.js";
@@ -21,6 +22,7 @@ import { MessageRepository } from "./storage/messageRepository.js";
 import { ModelPricingRepository } from "./storage/modelPricingRepository.js";
 import { PendingApprovalRepository } from "./storage/pendingApprovalRepository.js";
 import { ProfileRepository } from "./storage/profileRepository.js";
+import { ReminderRepository } from "./storage/reminderRepository.js";
 import { SettingsPermissionsRepository } from "./storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "./storage/settingsRepository.js";
 import { UserRepository } from "./storage/userRepository.js";
@@ -78,6 +80,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
     profiles: new ProfileRepository(db),
+    reminders: new ReminderRepository(db),
     youtubeAccount: new YoutubeAccountRepository(db),
     youtubeChannels: new YoutubeChannelRepository(db),
     videos: new VideoRepository(db),
@@ -130,13 +133,12 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   const gateway = createDiscordGateway(deps, discordConfig);
   await gateway.login();
 
-  // Proactive work: the in-process scheduler polls for due digests every minute and
-  // delivers them through the gateway (docs/technical-overview.md).
-  const scheduler = startScheduler(
-    deps,
-    buildYoutubeIntegrations(env),
-    createDigestDeliverer(gateway.client, deps, discordConfig),
-  );
+  // Proactive work: the in-process scheduler polls every minute for due digests and
+  // reminders and delivers them through the gateway (docs/technical-overview.md).
+  const scheduler = startScheduler(deps, buildYoutubeIntegrations(env), {
+    digest: createDigestDeliverer(gateway.client, deps, discordConfig),
+    reminder: createReminderDeliverer(gateway.client, deps, discordConfig),
+  });
 
   registerShutdown(server, pool, gateway, () => void scheduler.stop());
   return { server, pool, gateway };

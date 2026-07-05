@@ -12,6 +12,7 @@ import { MessageRepository } from "../storage/messageRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import { PendingApprovalRepository } from "../storage/pendingApprovalRepository.js";
 import { ProfileRepository } from "../storage/profileRepository.js";
+import { ReminderRepository } from "../storage/reminderRepository.js";
 import { SettingsPermissionsRepository } from "../storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
@@ -78,6 +79,7 @@ export function makeAgentDeps(
     budgetConfig: new BudgetConfigRepository(db),
     pendingApprovals: new PendingApprovalRepository(db),
     profiles: new ProfileRepository(db),
+    reminders: new ReminderRepository(db),
     youtubeAccount: new YoutubeAccountRepository(db),
     youtubeChannels: new YoutubeChannelRepository(db),
     videos: new VideoRepository(db),
