@@ -22,7 +22,8 @@ const settingsArgs = z.object({
 });
 
 export const settingsTool: AgentTool = {
-  gate: /\b(settings?|time ?zones?|digest|persona|preferences?|tier|member|editable)\b/i,
+  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
+  gate: /\b(settings?|time ?zones?|digest|persona|preferences?|tier|member|editable|innstilling\w*|tidssone\w*|preferanse\w*|medlem\w*|redigerbar\w*)\b/i,
   schema: {
     name: "settings",
     description:

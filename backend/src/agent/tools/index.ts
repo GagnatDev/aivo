@@ -64,6 +64,12 @@ export function buildToolRegistry(): AgentTool[] {
  * advertised only when the recent conversation matches their keyword regex; matching is
  * deliberately broad and biased toward inclusion — a false positive just wastes tokens,
  * a false negative loses a capability for that turn.
+ *
+ * The model can only *call* a tool whose schema was advertised, so a gate that misses the
+ * user's phrasing silently strips the capability (the model just replies in prose). The
+ * owner writes in Norwegian as often as English, so every gate is bilingual: it lists both
+ * English and Norwegian trigger words. New tools MUST do the same, or they'll be dead for
+ * non-English turns.
  */
 export function selectToolSchemas(registry: AgentTool[], recentText: string): ToolSchema[] {
   return registry.filter((t) => (t.gate ? t.gate.test(recentText) : true)).map((t) => t.schema);

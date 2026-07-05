@@ -38,7 +38,8 @@ const digestArgs = z.object({
 type DigestArgs = z.infer<typeof digestArgs>;
 
 export const youtubeDigestTool: AgentTool = {
-  gate: /\b(youtube|digests?|videos?|interests?|subscriptions?|picks?|channels?)\b/i,
+  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
+  gate: /\b(youtube|digests?|video\w*|interests?|subscriptions?|picks?|channels?|interesse\w*|abonnement\w*|kanal\w*|sammendrag\w*)\b/i,
   schema: {
     name: "youtube_digest",
     description:
