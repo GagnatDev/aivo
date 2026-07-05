@@ -4,6 +4,7 @@ import type { DashboardDeps } from "../routes/dashboard/index.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
+import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
 import { testDb } from "./db.js";
 
@@ -20,6 +21,7 @@ export function buildDashboardTestApp(webRoot?: string): DashboardTestHarness {
     llmUsage: new LlmUsageRepository(db),
     budgetConfig: new BudgetConfigRepository(db),
     modelPricing: new ModelPricingRepository(db),
+    settings: new SettingsRepository(db),
   };
   const options: Parameters<typeof buildApp>[0] = {
     auth: {

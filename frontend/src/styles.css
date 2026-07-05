@@ -484,6 +484,76 @@ a {
   border-bottom: none;
 }
 
+/* ── Models page (M2): tier badges, usage-share bars ───────────────────── */
+
+.stat-model {
+  font-size: 1.05rem;
+  word-break: break-all;
+}
+
+.tier-badge {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+}
+
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.share-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.share-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.share-model {
+  word-break: break-all;
+}
+
+.share-figures {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: 0.75rem;
+}
+
+.share-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.share-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.models-footnote {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+}
+
 fieldset.seg-group {
   margin: 0;
   padding: 0;

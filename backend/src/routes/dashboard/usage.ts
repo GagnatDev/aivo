@@ -1,21 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { loadBudgetSnapshot } from "../../agent/budget.js";
-import type { DegradationState } from "../../db/schema.enums.js";
+import { DEGRADATION_DESCRIPTIONS } from "./degradation.js";
 import type { DashboardDeps } from "./index.js";
 import { money } from "./money.js";
-
-// Plain-language explanations for the budget state machine (PRD U-6/O-3). The
-// percentages mirror the app-config thresholds in agent/budget.ts.
-const DEGRADATION_DESCRIPTIONS: Record<DegradationState, string> = {
-  normal: "Spending is within budget. Your preferred model tier is in use.",
-  cheap_models:
-    "Spend passed 80% of the monthly ceiling (or the daily soft cap), so replies use the cheap model tier until it resets.",
-  proactive_paused:
-    "Spend passed 90% of the monthly ceiling. Proactive work like the YouTube digest is paused; chat keeps answering on the cheap tier.",
-  over_ceiling:
-    "Spend is over the monthly ceiling. Aivo still answers — briefly, on the cheap tier — and tells you it is over budget.",
-};
 
 /** Longest series/drivers window the API will aggregate in one request. */
 const MAX_RANGE_DAYS = 400;

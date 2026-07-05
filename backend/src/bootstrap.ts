@@ -126,6 +126,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         llmUsage: deps.llmUsage,
         budgetConfig: deps.budgetConfig,
         modelPricing: deps.modelPricing,
+        settings: deps.settings,
       },
     },
     webRoot: env.WEB_ROOT,
