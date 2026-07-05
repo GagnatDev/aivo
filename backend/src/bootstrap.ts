@@ -127,6 +127,10 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         budgetConfig: deps.budgetConfig,
         modelPricing: deps.modelPricing,
         settings: deps.settings,
+        memories: deps.memories,
+        config: {
+          memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+        },
       },
     },
     webRoot: env.WEB_ROOT,

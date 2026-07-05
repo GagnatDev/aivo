@@ -17,6 +17,7 @@ export interface MemoryRow {
   content: string;
   source: string | null;
   pinned: boolean;
+  created_at: Date;
   forgotten_at: Date | null;
 }
 
@@ -27,6 +28,7 @@ const MEMORY_COLUMNS = [
   "content",
   "source",
   "pinned",
+  "created_at",
   "forgotten_at",
 ] as const;
 
