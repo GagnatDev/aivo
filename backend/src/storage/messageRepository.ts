@@ -74,15 +74,14 @@ export class MessageRepository {
       .select(MESSAGE_COLUMNS)
       .where("conversation_id", "=", conversationId);
     if (opts.before) {
-      const anchor = await this.db
-        .selectFrom("messages")
-        .select(["created_at", "id"])
-        .where("id", "=", opts.before)
-        .where("conversation_id", "=", conversationId)
-        .executeTakeFirst();
-      if (!anchor) return { messages: [], hasMore: false };
-      query = query.where(({ eb, refTuple, tuple }) =>
-        eb(refTuple("created_at", "id"), "<", tuple(anchor.created_at, anchor.id)),
+      // The anchor lookup stays inside this single statement rather than round-tripping
+      // through a JS `Date` (millisecond precision) and back — TIMESTAMPTZ carries
+      // microseconds, so a fetch-then-compare-in-JS anchor could silently drop rows
+      // inserted in the same millisecond as `before`.
+      query = query.where(
+        sql<boolean>`(messages.created_at, messages.id) < (
+          select created_at, id from messages where id = ${opts.before} and conversation_id = ${conversationId}
+        )`,
       );
     }
     const page = await query
