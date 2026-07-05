@@ -110,6 +110,9 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   // Dashboard auth + API (phase 3): the provider is picked from env.authMode, so a
   // local run needs no auth service. The SPA is only served when WEB_ROOT is set
   // (the Docker image sets it; dev leaves it to Vite).
+  // The gateway logs in after the HTTP server starts, so the health probe reads a
+  // ref that's filled in below — "disconnected" until then, never a crash.
+  let gatewayRef: DiscordGateway | undefined;
   const appOptions: AppOptions = {
     auth: {
       provider: createAuthProvider({
@@ -126,6 +129,14 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         llmUsage: deps.llmUsage,
         budgetConfig: deps.budgetConfig,
         modelPricing: deps.modelPricing,
+        settings: deps.settings,
+        memories: deps.memories,
+        digests: deps.digests,
+        digestItems: deps.digestItems,
+        config: {
+          memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+        },
+        gatewayStatus: () => gatewayRef?.isReady() ?? false,
       },
     },
     webRoot: env.WEB_ROOT,
@@ -151,6 +162,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   });
 
   const gateway = createDiscordGateway(deps, discordConfig);
+  gatewayRef = gateway;
   await gateway.login();
 
   // Proactive work: the in-process scheduler polls for due digests every minute and

@@ -2,8 +2,12 @@ import { buildApp } from "../app.js";
 import { createDevAuthProvider } from "../auth/devProvider.js";
 import type { DashboardDeps } from "../routes/dashboard/index.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
+import { DigestItemRepository } from "../storage/digestItemRepository.js";
+import { DigestRepository } from "../storage/digestRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
+import { MemoryRepository } from "../storage/memoryRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
+import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
 import { testDb } from "./db.js";
 
@@ -12,24 +16,40 @@ export interface DashboardTestHarness {
   deps: DashboardDeps;
 }
 
+export interface DashboardTestOptions {
+  webRoot?: string;
+  /** Defaults to the env schema's default (20) so ME-5 math is testable. */
+  memoryInjectLimit?: number;
+  /** Simulated Discord gateway probe; omitted = "unknown" in the health widget. */
+  gatewayStatus?: () => boolean;
+}
+
 /** The dashboard app wired to the test DB with the dev auth provider. */
-export function buildDashboardTestApp(webRoot?: string): DashboardTestHarness {
+export function buildDashboardTestApp(options: DashboardTestOptions = {}): DashboardTestHarness {
   const db = testDb();
   const deps: DashboardDeps = {
     users: new UserRepository(db),
     llmUsage: new LlmUsageRepository(db),
     budgetConfig: new BudgetConfigRepository(db),
     modelPricing: new ModelPricingRepository(db),
+    settings: new SettingsRepository(db),
+    memories: new MemoryRepository(db),
+    digests: new DigestRepository(db),
+    digestItems: new DigestItemRepository(db),
+    config: {
+      memoryInjectLimit: options.memoryInjectLimit ?? 20,
+    },
+    ...(options.gatewayStatus ? { gatewayStatus: options.gatewayStatus } : {}),
   };
-  const options: Parameters<typeof buildApp>[0] = {
+  const appOptions: Parameters<typeof buildApp>[0] = {
     auth: {
       provider: createDevAuthProvider(),
       callbackPath: "/auth/callback",
       dashboard: deps,
     },
   };
-  if (webRoot) options.webRoot = webRoot;
-  return { app: buildApp(options), deps };
+  if (options.webRoot) appOptions.webRoot = options.webRoot;
+  return { app: buildApp(appOptions), deps };
 }
 
 /** JIT-provision the owner row the way a first Discord message would. */

@@ -18,6 +18,14 @@ export interface SpendDriver {
   calls: number;
 }
 
+export interface ModelUsageTotal {
+  model: string;
+  costCents: number;
+  calls: number;
+  tokensIn: number;
+  tokensOut: number;
+}
+
 export interface DailySeriesOptions {
   /** Inclusive lower bound. */
   from: Date;
@@ -129,6 +137,35 @@ export class LlmUsageRepository {
     return rows.map((r) => ({
       day: r.day,
       group: r.grp,
+      costCents: Number(r.cost),
+      calls: Number(r.calls),
+      tokensIn: Number(r.tokensIn),
+      tokensOut: Number(r.tokensOut),
+    }));
+  }
+
+  /**
+   * Per-model totals since an instant, biggest spender first — the Models page's
+   * usage-share view (PRD M-4). Unlike topDrivers this collapses task types, so
+   * the share of each model is over the user's whole spend in the window.
+   */
+  async modelTotals(userId: string, since: Date): Promise<ModelUsageTotal[]> {
+    const rows = await this.db
+      .selectFrom("llm_usage")
+      .select((eb) => [
+        "model",
+        eb.fn.coalesce(eb.fn.sum("cost_cents"), sql<string>`0`).as("cost"),
+        eb.fn.countAll<string>().as("calls"),
+        eb.fn.coalesce(eb.fn.sum("tokens_in"), sql<string>`0`).as("tokensIn"),
+        eb.fn.coalesce(eb.fn.sum("tokens_out"), sql<string>`0`).as("tokensOut"),
+      ])
+      .where("user_id", "=", userId)
+      .where("created_at", ">=", since)
+      .groupBy("model")
+      .orderBy("cost", "desc")
+      .execute();
+    return rows.map((r) => ({
+      model: r.model,
       costCents: Number(r.cost),
       calls: Number(r.calls),
       tokensIn: Number(r.tokensIn),

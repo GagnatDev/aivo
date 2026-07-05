@@ -31,7 +31,7 @@ describe("SPA static serving", () => {
   it("serves index.html for client-routed paths but not API/auth paths", async () => {
     const webRoot = mkdtempSync(path.join(tmpdir(), "aivo-web-"));
     writeFileSync(path.join(webRoot, "index.html"), "<html><body>aivo shell</body></html>");
-    const { app, deps } = buildDashboardTestApp(webRoot);
+    const { app, deps } = buildDashboardTestApp({ webRoot });
     await provisionTestOwner(deps);
 
     const shell = await request(app).get("/");
@@ -52,7 +52,7 @@ describe("SPA static serving", () => {
   it("keeps /health JSON when a webRoot is configured", async () => {
     const webRoot = mkdtempSync(path.join(tmpdir(), "aivo-web-"));
     writeFileSync(path.join(webRoot, "index.html"), "<html></html>");
-    const { app } = buildDashboardTestApp(webRoot);
+    const { app } = buildDashboardTestApp({ webRoot });
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
