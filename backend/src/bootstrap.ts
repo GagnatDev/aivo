@@ -133,6 +133,9 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         memories: deps.memories,
         digests: deps.digests,
         digestItems: deps.digestItems,
+        videos: deps.videos,
+        conversations: deps.conversations,
+        messages: deps.messages,
         config: {
           memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
         },

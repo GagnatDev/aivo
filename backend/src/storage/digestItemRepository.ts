@@ -21,6 +21,11 @@ const ITEM_COLUMNS = [
   "confidence",
 ] as const;
 
+export interface DigestItemCounts {
+  picks: number;
+  rejects: number;
+}
+
 export interface InsertDigestItemInput {
   videoId: string;
   kind: DigestItemKind;
@@ -60,6 +65,25 @@ export class DigestItemRepository {
       .orderBy("kind", "asc") // 'pick' sorts before 'reject'
       .orderBy("rank", "asc")
       .execute();
+  }
+
+  /** Pick/reject counts per digest, for run lists that show totals without items. */
+  async countsByDigests(digestIds: string[]): Promise<Map<string, DigestItemCounts>> {
+    if (digestIds.length === 0) return new Map();
+    const rows = await this.db
+      .selectFrom("digest_items")
+      .select((eb) => ["digest_id", "kind", eb.fn.countAll<string>().as("count")])
+      .where("digest_id", "in", digestIds)
+      .groupBy(["digest_id", "kind"])
+      .execute();
+    const counts = new Map<string, DigestItemCounts>();
+    for (const row of rows) {
+      const entry = counts.get(row.digest_id) ?? { picks: 0, rejects: 0 };
+      if (row.kind === "pick") entry.picks = Number(row.count);
+      else entry.rejects = Number(row.count);
+      counts.set(row.digest_id, entry);
+    }
+    return counts;
   }
 
   findById(id: string): Promise<DigestItemRow | undefined> {

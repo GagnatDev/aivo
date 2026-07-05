@@ -678,6 +678,158 @@ a {
   font-size: 0.85rem;
 }
 
+/* ── Digest History page (M5): run table, pick cards, reject reasons ───── */
+
+.row-link {
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.digest-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.digest-pick {
+  padding: 0.75rem 1rem;
+}
+
+.digest-pick-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.digest-rank {
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.digest-pick-title a {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.digest-pick-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.digest-summary {
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.digest-why {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.data-table td.digest-reject-title,
+.data-table td.digest-reject-reason {
+  white-space: normal;
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── Activity Log page (M5): channel picker, message thread ────────────── */
+
+.activity-channels {
+  margin-top: 1rem;
+}
+
+.activity-last {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.thread-older {
+  display: block;
+  margin: 0 auto 0.75rem;
+}
+
+.thread-start {
+  text-align: center;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.thread-msg {
+  max-width: 46rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  background: var(--bg);
+}
+
+.thread-user {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* A-4: tool calls stand out from the conversation proper. */
+.thread-tool {
+  border-left: 3px solid var(--warn);
+}
+
+.thread-tool .thread-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.thread-system {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.thread-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.thread-role {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.thread-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 fieldset.seg-group {
   margin: 0;
   padding: 0;
