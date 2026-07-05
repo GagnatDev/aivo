@@ -34,6 +34,24 @@ export async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Download an authenticated resource (the CSV export) as a browser file save.
+ * A plain <a href> can't carry the bearer token, so this fetches through the
+ * auth client and hands the blob to a temporary object-URL anchor.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const res = await auth.fetch(path);
+  if (!res.ok) throw new ApiError(res.status, `Download failed (${res.status})`);
+  const name =
+    /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export interface Me {
   user: {
     id: string;

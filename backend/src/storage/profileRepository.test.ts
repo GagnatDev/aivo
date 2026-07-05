@@ -37,6 +37,17 @@ describe("ProfileRepository", () => {
     expect(current?.body).toMatch(/no shorts/);
   });
 
+  it("listVersions returns full history newest first with timestamps", async () => {
+    const { profiles, userId } = await setup();
+    await profiles.setCurrent(userId, "youtube_interest", "v1 body");
+    await profiles.setCurrent(userId, "youtube_interest", "v2 body");
+    const versions = await profiles.listVersions(userId, "youtube_interest");
+    expect(versions.map((v) => v.version)).toEqual([2, 1]);
+    expect(versions[0]?.is_current).toBe(true);
+    expect(versions[1]?.is_current).toBe(false);
+    expect(versions[0]?.created_at).toBeInstanceOf(Date);
+  });
+
   it("kinds are independent", async () => {
     const { profiles, userId } = await setup();
     await profiles.setCurrent(userId, "youtube_interest", "videos");

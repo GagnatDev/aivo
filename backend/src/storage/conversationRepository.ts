@@ -7,9 +7,18 @@ export interface ConversationRow {
   user_id: string;
   channel: Channel;
   discord_channel_id: string | null;
+  created_at: Date;
+  last_message_at: Date;
 }
 
-const CONVERSATION_COLUMNS = ["id", "user_id", "channel", "discord_channel_id"] as const;
+const CONVERSATION_COLUMNS = [
+  "id",
+  "user_id",
+  "channel",
+  "discord_channel_id",
+  "created_at",
+  "last_message_at",
+] as const;
 
 export class ConversationRepository {
   constructor(private readonly db: Db) {}
@@ -40,5 +49,25 @@ export class ConversationRepository {
       .returning(CONVERSATION_COLUMNS)
       .executeTakeFirstOrThrow();
     return row;
+  }
+
+  /** A user's conversations, most recently active first (dashboard A-1). */
+  listForUser(userId: string): Promise<ConversationRow[]> {
+    return this.db
+      .selectFrom("conversations")
+      .select(CONVERSATION_COLUMNS)
+      .where("user_id", "=", userId)
+      .orderBy("last_message_at", "desc")
+      .execute();
+  }
+
+  /** One conversation, scoped by user so the API can't serve another user's thread. */
+  findByIdForUser(id: string, userId: string): Promise<ConversationRow | undefined> {
+    return this.db
+      .selectFrom("conversations")
+      .select(CONVERSATION_COLUMNS)
+      .where("id", "=", id)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
   }
 }

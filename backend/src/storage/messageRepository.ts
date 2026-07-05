@@ -8,9 +8,21 @@ export interface MessageRow {
   role: MessageRole;
   discord_message_id: string | null;
   content: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  created_at: Date;
 }
 
-const MESSAGE_COLUMNS = ["id", "conversation_id", "role", "discord_message_id", "content"] as const;
+const MESSAGE_COLUMNS = [
+  "id",
+  "conversation_id",
+  "role",
+  "discord_message_id",
+  "content",
+  "tokens_in",
+  "tokens_out",
+  "created_at",
+] as const;
 
 export interface InsertMessageInput {
   conversationId: string;
@@ -44,6 +56,41 @@ export class MessageRepository {
       .where("conversation_id", "=", conversationId)
       .orderBy("created_at", "asc")
       .execute();
+  }
+
+  /**
+   * One page of a thread, ending at the newest message (or just before the `before`
+   * anchor when paging back through history). Full retention makes threads unbounded,
+   * so the dashboard reads windows, never the whole thread (PRD §4.7). Keyset on
+   * (created_at, id) — offset pagination would shift under a live conversation.
+   * Returns messages oldest-first (render order) plus whether older ones remain.
+   */
+  async listPage(
+    conversationId: string,
+    opts: { limit: number; before?: string },
+  ): Promise<{ messages: MessageRow[]; hasMore: boolean }> {
+    let query = this.db
+      .selectFrom("messages")
+      .select(MESSAGE_COLUMNS)
+      .where("conversation_id", "=", conversationId);
+    if (opts.before) {
+      // The anchor lookup stays inside this single statement rather than round-tripping
+      // through a JS `Date` (millisecond precision) and back — TIMESTAMPTZ carries
+      // microseconds, so a fetch-then-compare-in-JS anchor could silently drop rows
+      // inserted in the same millisecond as `before`.
+      query = query.where(
+        sql<boolean>`(messages.created_at, messages.id) < (
+          select created_at, id from messages where id = ${opts.before} and conversation_id = ${conversationId}
+        )`,
+      );
+    }
+    const page = await query
+      .orderBy("created_at", "desc")
+      .orderBy("id", "desc")
+      .limit(opts.limit + 1)
+      .execute();
+    const hasMore = page.length > opts.limit;
+    return { messages: page.slice(0, opts.limit).reverse(), hasMore };
   }
 
   /**

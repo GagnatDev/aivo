@@ -75,6 +75,17 @@ export class MemoryRepository {
       .execute();
   }
 
+  /** Soft-deleted memories, most recently forgotten first — the audit view (ME-8). */
+  listForgotten(userId: string): Promise<MemoryRow[]> {
+    return this.db
+      .selectFrom("memories")
+      .select(MEMORY_COLUMNS)
+      .where("user_id", "=", userId)
+      .where("forgotten_at", "is not", null)
+      .orderBy("forgotten_at", "desc")
+      .execute();
+  }
+
   /**
    * Keyword search over active memories (case-insensitive substring on content),
    * newest first. The simple category/recency/keyword retrieval of v1 — pgvector is

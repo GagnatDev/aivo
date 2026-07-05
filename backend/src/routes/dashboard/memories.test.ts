@@ -92,6 +92,20 @@ describe("GET /api/dashboard/memories", () => {
     expect(res.body.activeCount).toBe(0);
   });
 
+  it("serves the forgotten audit trail separately (ME-8)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    await deps.memories.insert({ userId: owner.id, content: "still active" });
+    const gone = await deps.memories.insert({ userId: owner.id, content: "old address" });
+    await deps.memories.forget(gone.id, owner.id);
+
+    const res = await request(app).get("/api/dashboard/memories/forgotten");
+    expect(res.status).toBe(200);
+    expect(res.body.memories).toHaveLength(1);
+    expect(res.body.memories[0]).toMatchObject({ content: "old address" });
+    expect(res.body.memories[0].forgottenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
   it("400s a bogus category or an oversized query", async () => {
     const { app, deps } = buildDashboardTestApp();
     await provisionTestOwner(deps);

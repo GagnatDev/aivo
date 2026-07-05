@@ -2,16 +2,26 @@ import { Router } from "express";
 import type { AuthProvider } from "../../auth/index.js";
 import { resolveUser } from "../../middleware/resolveUser.js";
 import type { BudgetConfigRepository } from "../../storage/budgetConfigRepository.js";
+import type { ConversationRepository } from "../../storage/conversationRepository.js";
 import type { DigestItemRepository } from "../../storage/digestItemRepository.js";
 import type { DigestRepository } from "../../storage/digestRepository.js";
+import type { FeedbackRepository } from "../../storage/feedbackRepository.js";
 import type { LlmUsageRepository } from "../../storage/llmUsageRepository.js";
 import type { MemoryRepository } from "../../storage/memoryRepository.js";
+import type { MessageRepository } from "../../storage/messageRepository.js";
 import type { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
+import type { ProfileRepository } from "../../storage/profileRepository.js";
 import type { SettingsRepository } from "../../storage/settingsRepository.js";
 import type { UserRepository } from "../../storage/userRepository.js";
+import type { VideoRepository } from "../../storage/videoRepository.js";
+import type { YoutubeAccountRepository } from "../../storage/youtubeAccountRepository.js";
+import { activityRoutes } from "./activity.js";
+import { digestsRoutes } from "./digests.js";
 import { memoriesRoutes } from "./memories.js";
+import { profilesRoutes } from "./profiles.js";
 import { modelsRoutes } from "./models.js";
 import { overviewRoutes } from "./overview.js";
+import { settingsRoutes } from "./settings.js";
 import { usageRoutes } from "./usage.js";
 
 /**
@@ -27,6 +37,12 @@ export interface DashboardDeps {
   memories: MemoryRepository;
   digests: DigestRepository;
   digestItems: DigestItemRepository;
+  videos: VideoRepository;
+  conversations: ConversationRepository;
+  messages: MessageRepository;
+  profiles: ProfileRepository;
+  feedback: FeedbackRepository;
+  youtubeAccount: YoutubeAccountRepository;
   /** App-config values surfaced read-only (PRD §4.5 — never the raw env). */
   config: {
     /** AGENT_MEMORY_INJECT_LIMIT — max memories injected into agent context. */
@@ -66,6 +82,10 @@ export function dashboardRouter(auth: AuthProvider, deps: DashboardDeps): Router
   router.use(modelsRoutes(deps));
   router.use(memoriesRoutes(deps));
   router.use(overviewRoutes(deps));
+  router.use(digestsRoutes(deps));
+  router.use(activityRoutes(deps));
+  router.use(settingsRoutes(deps));
+  router.use(profilesRoutes(deps));
 
   return router;
 }
