@@ -13,6 +13,7 @@ import {
   resolveMessageMeta,
   shouldRespond,
 } from "./router.js";
+import { withTyping } from "./typing.js";
 
 export interface DiscordGateway {
   client: Client;
@@ -127,11 +128,14 @@ async function onInteraction(deps: HandleMessageDeps, interaction: Interaction):
 
   try {
     await interaction.deferUpdate();
-    const outcome = await resolveApproval(deps, {
-      action,
-      approvalId,
-      clickerDiscordId: interaction.user.id,
-    });
+    const channel = interaction.channel?.isSendable() ? interaction.channel : null;
+    const resolve = () =>
+      resolveApproval(deps, {
+        action,
+        approvalId,
+        clickerDiscordId: interaction.user.id,
+      });
+    const outcome = action === "approve" ? await withTyping(channel, resolve) : await resolve();
 
     if (outcome.type === "denied") {
       await interaction.followUp({ content: outcome.ephemeral, ephemeral: true });

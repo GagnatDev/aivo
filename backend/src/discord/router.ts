@@ -7,6 +7,7 @@ import {
   type HandleMessageDeps,
   type IncomingMessage,
 } from "./handleMessage.js";
+import { withTyping } from "./typing.js";
 
 /** Normalize a discord.js message to the plain shape the core operates on. */
 export function normalize(message: Message): IncomingMessage {
@@ -111,35 +112,38 @@ export async function processAndReply(
   cfg: DiscordConfig,
   opts: ProcessOptions = {},
 ): Promise<void> {
-  const isYoutube = cfg.youtubeChannelId !== null && message.channelId === cfg.youtubeChannelId;
-  const result = await handleIncomingMessage(deps, {
-    ...normalize(message),
-    channel: isYoutube ? "youtube" : "chat",
-    isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
-  });
-
-  // Gated turn: post the confirmation with Approve/Cancel buttons and wait — the
-  // button handler (discord/client.ts) resumes the turn. No assistant reply yet.
-  if (result.pendingApprovalId) {
-    const sent = await message.reply({
-      content: result.reply,
-      components: [approvalButtons(result.pendingApprovalId)],
+  const channel = message.channel.isSendable() ? message.channel : null;
+  await withTyping(channel, async () => {
+    const isYoutube = cfg.youtubeChannelId !== null && message.channelId === cfg.youtubeChannelId;
+    const result = await handleIncomingMessage(deps, {
+      ...normalize(message),
+      channel: isYoutube ? "youtube" : "chat",
+      isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
     });
-    await deps.pendingApprovals.setPromptMessageId(result.pendingApprovalId, sent.id);
-    return;
-  }
 
-  let reply = result.reply;
-  if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
-  if (opts.acknowledgeIfStale) {
-    const ageMs = deps.clock.now().getTime() - message.createdTimestamp;
-    if (ageMs >= cfg.offlineAckThresholdMinutes * 60_000) {
-      reply = `${offlineAck(ageMs)}\n\n${reply}`;
+    // Gated turn: post the confirmation with Approve/Cancel buttons and wait — the
+    // button handler (discord/client.ts) resumes the turn. No assistant reply yet.
+    if (result.pendingApprovalId) {
+      const sent = await message.reply({
+        content: result.reply,
+        components: [approvalButtons(result.pendingApprovalId)],
+      });
+      await deps.pendingApprovals.setPromptMessageId(result.pendingApprovalId, sent.id);
+      return;
     }
-  }
 
-  const sent = await message.reply(reply);
-  await recordAssistantReply(deps, result.conversationId, reply, sent.id);
+    let reply = result.reply;
+    if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
+    if (opts.acknowledgeIfStale) {
+      const ageMs = deps.clock.now().getTime() - message.createdTimestamp;
+      if (ageMs >= cfg.offlineAckThresholdMinutes * 60_000) {
+        reply = `${offlineAck(ageMs)}\n\n${reply}`;
+      }
+    }
+
+    const sent = await message.reply(reply);
+    await recordAssistantReply(deps, result.conversationId, reply, sent.id);
+  });
 }
 
 /** The Approve/Cancel button row attached to an approval-gate prompt. */
