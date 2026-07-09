@@ -72,6 +72,20 @@ export class FeedbackRepository {
     await this.db.updateTable("feedback").set({ applied: true }).where("id", "in", ids).execute();
   }
 
+  /** Feedback counts per signal across a digest run's items (dashboard D-4). */
+  async countsForDigest(digestId: string): Promise<Partial<Record<FeedbackSignal, number>>> {
+    const rows = await this.db
+      .selectFrom("feedback")
+      .innerJoin("digest_items", "digest_items.id", "feedback.digest_item_id")
+      .select((eb) => ["feedback.signal", eb.fn.countAll<string>().as("count")])
+      .where("digest_items.digest_id", "=", digestId)
+      .groupBy("feedback.signal")
+      .execute();
+    const counts: Partial<Record<FeedbackSignal, number>> = {};
+    for (const row of rows) counts[row.signal] = Number(row.count);
+    return counts;
+  }
+
   /**
    * Keep-rate over button reactions since `since`. `keep` counts as agreement; `drop`,
    * `too_long`, and `wrong_topic` count as disagreement; freeform carries no verdict

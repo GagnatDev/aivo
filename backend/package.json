@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.development src/server.ts",
+    "dev:sidecar": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.sidecar src/server.ts",
     "build": "tsc --noEmit && tsup",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",

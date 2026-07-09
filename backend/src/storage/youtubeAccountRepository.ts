@@ -28,6 +28,15 @@ const ACCOUNT_COLUMNS = [
 export class YoutubeAccountRepository {
   constructor(private readonly db: Db) {}
 
+  /** Read the singleton without creating it — undefined means "never connected". */
+  find(): Promise<YoutubeAccountRow | undefined> {
+    return this.db
+      .selectFrom("youtube_account")
+      .select(ACCOUNT_COLUMNS)
+      .where("id", "=", 1)
+      .executeTakeFirst();
+  }
+
   /** The singleton row, created empty on first use. */
   async getOrCreate(): Promise<YoutubeAccountRow> {
     return this.db

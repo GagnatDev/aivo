@@ -88,7 +88,17 @@ the UI. Household member onboarding itself is out of scope here; the dashboard m
 
 ### 3.2 Auth integration
 
-- Use **homectl-auth** (browser OAuth), matching other homectl apps.
+> **Implementation update (auth sidecar).** This integrates with **homectl-auth**
+> via the recommended **auth-proxy sidecar** rather than a browser-OAuth client in
+> the app (homectl-auth `docs/sidecar/integration.md`). The sidecar fronts the pod,
+> runs the OAuth flow, holds an encrypted session cookie, and injects verified
+> `X-Homectl-*` identity headers; the SPA holds no token and makes plain same-origin
+> requests, and the backend does no auth work — it reads the headers
+> (`AUTH_MODE=sidecar`, `backend/src/auth/sidecarProvider.ts`). The `users.auth_sub`
+> linking and owner-only gate below are unchanged. See `k8s/deployment.yml` for the
+> wiring (ingress → Service:80 → sidecar:4180 → app:8080).
+
+- Use **homectl-auth** (via the auth-proxy sidecar), matching other homectl apps.
 - Map auth subject → `users.auth_sub` (column already reserved in migration 001).
 - JIT provisioning: on first login, link or create a `users` row (mirror workbench's
   `upsertByAuthSub` pattern).
@@ -345,8 +355,10 @@ gateway and in-process scheduler. That is acceptable for the dashboard too: depl
 cause brief downtime, which is fine for a personal inspection UI.
 
 **Ingress:** existing `aivo.homectl.no` ingress expands to serve the dashboard SPA,
-dashboard API (`/api/dashboard/*`), homectl-auth callback, YouTube OAuth callback,
-and `/health` — all from the same pod.
+dashboard API (`/api/dashboard/*`), YouTube OAuth callback, and `/health` — all from
+the same pod. Ingress points at the auth-proxy sidecar (Service:80 → sidecar:4180),
+which handles the homectl-auth login/callback/logout itself and proxies everything
+else to the app on :8080 (see §3.2 and `k8s/deployment.yml`).
 
 **Backend routes:** authenticated REST under e.g. `/api/dashboard/`. Reuse existing
 repositories; add query methods only where charts need aggregates not yet exposed.

@@ -74,4 +74,30 @@ describe("loadEnv", () => {
     expect(env.AGENT_MEMORY_INJECT_LIMIT).toBe(20);
     expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });
+
+  it("derives dev mode outside production", () => {
+    const env = loadEnv(validEnv as NodeJS.ProcessEnv);
+    expect(env.authMode).toBe("dev");
+    expect(env.WEB_ROOT).toBeUndefined();
+  });
+
+  it("derives sidecar mode in production (no app-side auth secrets)", () => {
+    const env = loadEnv({ ...validEnv, NODE_ENV: "production" } as NodeJS.ProcessEnv);
+    expect(env.authMode).toBe("sidecar");
+  });
+
+  it("lets AUTH_MODE override the NODE_ENV-derived default", () => {
+    const devInProd = loadEnv({
+      ...validEnv,
+      NODE_ENV: "production",
+      AUTH_MODE: "dev",
+    } as NodeJS.ProcessEnv);
+    expect(devInProd.authMode).toBe("dev");
+    const sidecarInDev = loadEnv({ ...validEnv, AUTH_MODE: "sidecar" } as NodeJS.ProcessEnv);
+    expect(sidecarInDev.authMode).toBe("sidecar");
+  });
+
+  it("rejects an unknown AUTH_MODE", () => {
+    expect(() => loadEnv({ ...validEnv, AUTH_MODE: "none" } as NodeJS.ProcessEnv)).toThrow();
+  });
 });

@@ -17,6 +17,7 @@ export interface MemoryRow {
   content: string;
   source: string | null;
   pinned: boolean;
+  created_at: Date;
   forgotten_at: Date | null;
 }
 
@@ -27,6 +28,7 @@ const MEMORY_COLUMNS = [
   "content",
   "source",
   "pinned",
+  "created_at",
   "forgotten_at",
 ] as const;
 
@@ -70,6 +72,17 @@ export class MemoryRepository {
       .where("user_id", "=", userId)
       .where("forgotten_at", "is", null)
       .orderBy("created_at", "desc")
+      .execute();
+  }
+
+  /** Soft-deleted memories, most recently forgotten first — the audit view (ME-8). */
+  listForgotten(userId: string): Promise<MemoryRow[]> {
+    return this.db
+      .selectFrom("memories")
+      .select(MEMORY_COLUMNS)
+      .where("user_id", "=", userId)
+      .where("forgotten_at", "is not", null)
+      .orderBy("forgotten_at", "desc")
       .execute();
   }
 

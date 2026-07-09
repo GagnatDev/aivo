@@ -5,6 +5,13 @@ import { testDb, useCleanDb } from "../test/db.js";
 useCleanDb();
 
 describe("YoutubeAccountRepository", () => {
+  it("find reads without provisioning: undefined until first getOrCreate", async () => {
+    const repo = new YoutubeAccountRepository(testDb());
+    expect(await repo.find()).toBeUndefined();
+    await repo.getOrCreate();
+    expect((await repo.find())?.id).toBe(1);
+  });
+
   it("getOrCreate provisions the singleton and is idempotent", async () => {
     const repo = new YoutubeAccountRepository(testDb());
     const first = await repo.getOrCreate();

@@ -1,0 +1,907 @@
+/* aivo dashboard — data-dense personal ops tool (PRD §5.5).
+   Desktop-first, mobile-usable: sidebar collapses to a drawer under 800px,
+   interactive controls keep ≥44px touch targets. */
+
+:root {
+  --bg: #0f1218;
+  --bg-raised: #171c26;
+  --bg-hover: #1e2531;
+  --border: #2a3242;
+  --text: #e6eaf2;
+  --text-muted: #8b94a7;
+  --accent: #5b9cf5;
+  --accent-soft: rgba(91, 156, 245, 0.14);
+  --ok: #4cc38a;
+  --warn: #e5b454;
+  --danger: #e5645e;
+  --sidebar-width: 230px;
+  --topbar-height: 52px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--text-muted);
+  margin-top: 0;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--topbar-height);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .brand {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.topbar-user {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.nav-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 1.1rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  padding: 1rem 0.75rem;
+  z-index: 40;
+}
+
+.sidebar-brand {
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  padding: 0 0.5rem 1rem;
+}
+
+.sidebar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 0.75rem 0.5rem 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar-user {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+}
+
+.logout {
+  min-height: 44px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.logout:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.nav-scrim {
+  display: none;
+}
+
+.content {
+  margin-left: var(--sidebar-width);
+  padding: 1.5rem;
+  max-width: 1200px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.card-link h2 {
+  color: var(--accent);
+}
+
+.card-link p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2.5rem 1rem;
+  margin-top: 1rem;
+}
+
+.error-banner {
+  background: rgba(229, 100, 94, 0.12);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Mobile (PRD §5.5: drawer nav, stacked layout) ─────────────────────── */
+
+@media (max-width: 800px) {
+  .topbar {
+    display: flex;
+  }
+
+  .sidebar {
+    top: var(--topbar-height);
+    transform: translateX(-100%);
+    transition: transform 0.18s ease-out;
+    width: min(78vw, 300px);
+  }
+
+  .sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-brand {
+    display: none;
+  }
+
+  .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-height) 0 0 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .content {
+    margin-left: 0;
+    padding: 1rem;
+  }
+}
+
+/* ── Usage page (M1): stat tiles, charts, controls, tables ─────────────── */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.refresh {
+  min-height: 44px;
+  padding: 0 1rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.refresh:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0.15rem 0;
+}
+
+.stat-detail {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.status-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.25rem;
+}
+
+.chart-card {
+  margin-top: 1rem;
+}
+
+.chart-card h2 {
+  margin-bottom: 0.1rem;
+}
+
+.chart-card .muted {
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.chart-controls h2 {
+  margin: 0;
+  margin-right: auto;
+}
+
+.seg-group {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.9rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.seg + .seg {
+  border-left: 1px solid var(--border);
+}
+
+.seg:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.seg.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Tooltip: title + one swatch/name/value row per series; text in ink tokens. */
+.chart-tooltip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.chart-tooltip-title {
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.chart-tooltip-name {
+  color: var(--text-muted);
+}
+
+.chart-tooltip-value {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.legend-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Tables scroll sideways on phones instead of squeezing (PRD §5.5). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Overview page (M4): health dots, digest summary ───────────────────── */
+
+.overview-lines {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.health-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-muted);
+}
+
+.health-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.health-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.health-ok {
+  background: var(--ok);
+}
+
+.health-bad {
+  background: var(--danger);
+}
+
+.health-unknown {
+  background: var(--text-muted);
+}
+
+/* ── Memory page (M3): search, category chips, memory cards ────────────── */
+
+.inject-hint {
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
+.memory-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.memory-search {
+  flex: 1 1 220px;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.memory-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.seg-count {
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.seg.active .seg-count {
+  color: var(--accent);
+}
+
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.memory-row {
+  padding: 0.75rem 1rem;
+}
+
+.memory-content {
+  margin: 0 0 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.memory-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.memory-pin {
+  color: var(--warn);
+}
+
+.memory-category {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+/* ── Models page (M2): tier badges, usage-share bars ───────────────────── */
+
+.stat-model {
+  font-size: 1.05rem;
+  word-break: break-all;
+}
+
+.tier-badge {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+}
+
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.share-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.share-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.share-model {
+  word-break: break-all;
+}
+
+.share-figures {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: 0.75rem;
+}
+
+.share-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.share-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.models-footnote {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+}
+
+/* ── Digest History page (M5): run table, pick cards, reject reasons ───── */
+
+.row-link {
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.digest-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.digest-pick {
+  padding: 0.75rem 1rem;
+}
+
+.digest-pick-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.digest-rank {
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.digest-pick-title a {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.digest-pick-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.digest-summary {
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.digest-why {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.data-table td.digest-reject-title,
+.data-table td.digest-reject-reason {
+  white-space: normal;
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── Activity Log page (M5): channel picker, message thread ────────────── */
+
+.activity-channels {
+  margin-top: 1rem;
+}
+
+.activity-last {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.thread-older {
+  display: block;
+  margin: 0 auto 0.75rem;
+}
+
+.thread-start {
+  text-align: center;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.thread-msg {
+  max-width: 46rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  background: var(--bg);
+}
+
+.thread-user {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* A-4: tool calls stand out from the conversation proper. */
+.thread-tool {
+  border-left: 3px solid var(--warn);
+}
+
+.thread-tool .thread-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.thread-system {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.thread-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.thread-role {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.thread-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── M6 polish: settings cards, profile history diff, forgotten, export ── */
+
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-note {
+  font-size: 0.82rem;
+  margin: 0.75rem 0 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.settings-persona,
+.profile-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.digest-youtube-status,
+.digest-feedback {
+  font-size: 0.9rem;
+}
+
+.stat-value.digest-feedback {
+  font-size: 1.05rem;
+}
+
+.digest-youtube-status {
+  margin: 0.75rem 0 0;
+}
+
+.memory-forgotten .memory-content {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.profile-diff-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-line {
+  display: block;
+  border-radius: 4px;
+  padding: 0 0.35rem;
+}
+
+.diff-added {
+  background: rgba(76, 195, 138, 0.12);
+  color: var(--ok);
+}
+
+.diff-removed {
+  background: rgba(229, 100, 94, 0.12);
+  color: var(--danger);
+}
+
+fieldset.seg-group {
+  margin: 0;
+  padding: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-// Validated at boot; fails fast on misconfiguration. v1 is Discord-only: identity
-// is the Discord user id, so there is no auth-service / OAuth config here (the
-// `users.auth_sub` seam is reserved for the phase-3 web dashboard).
+// Validated at boot; fails fast on misconfiguration.
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -59,9 +57,21 @@ const EnvSchema = z.object({
   AGENT_MEMORY_INJECT_LIMIT: z.coerce.number().int().positive().default(20),
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+
+  // Dashboard auth. Aivo sits behind the homectl-auth-proxy sidecar
+  // (homectl-auth docs/sidecar/integration.md): all OAuth config (PUBLIC_AUTH_URL,
+  // AUTH_CLIENT_ID/SECRET, COOKIE_KEY, ...) lives on the *sidecar* container, not
+  // here — the app only reads the identity headers the sidecar injects. AUTH_MODE
+  // `sidecar` does exactly that; `dev` is a fixed local principal (no sidecar —
+  // dev/tests run offline). Unset, it derives from NODE_ENV (see loadEnv).
+  AUTH_MODE: z.enum(["dev", "sidecar"]).optional(),
+  // Directory of the built dashboard SPA. Set in the Docker image; unset in dev
+  // (Vite serves the frontend) so the backend skips static serving entirely.
+  WEB_ROOT: z.string().min(1).optional(),
 });
 
-export type Env = z.infer<typeof EnvSchema>;
+/** Validated env plus the derived auth mode (schema fields + `authMode`). */
+export type Env = z.infer<typeof EnvSchema> & { authMode: "dev" | "sidecar" };
 
 /**
  * Validate the environment. Throws (fail fast) on misconfiguration. Called once at
@@ -71,5 +81,10 @@ export type Env = z.infer<typeof EnvSchema>;
  * `process.env` and tests can vary config per-case without mutating shared module state.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  return EnvSchema.parse(source);
+  const parsed = EnvSchema.parse(source);
+  // Convention (homectl-reference docs/conventions.md): real auth in prod unless
+  // explicitly overridden, offline dev bypass everywhere else. In prod the app runs
+  // behind the sidecar and reads its injected identity headers.
+  const authMode = parsed.AUTH_MODE ?? (parsed.NODE_ENV === "production" ? "sidecar" : "dev");
+  return { ...parsed, authMode };
 }

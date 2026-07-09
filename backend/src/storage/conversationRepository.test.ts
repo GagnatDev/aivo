@@ -40,3 +40,30 @@ describe("ConversationRepository.getOrCreate", () => {
     expect(chat.id).not.toBe(youtube.id);
   });
 });
+
+describe("ConversationRepository dashboard reads", () => {
+  it("listForUser orders by last activity, most recent first, scoped by user", async () => {
+    const userId = await makeUser("u1");
+    const otherId = await makeUser("u2");
+    const convos = new ConversationRepository(testDb());
+    const chat = await convos.getOrCreate(userId, "chat", "chan-1");
+    const youtube = await convos.getOrCreate(userId, "youtube", "chan-2");
+    await convos.getOrCreate(otherId, "chat", "chan-9");
+    // A new message in #chat bumps last_message_at past the younger youtube lane.
+    await convos.getOrCreate(userId, "chat", "chan-1");
+    const listed = await convos.listForUser(userId);
+    expect(listed.map((c) => c.id)).toEqual([chat.id, youtube.id]);
+    expect(listed[0].last_message_at.getTime()).toBeGreaterThanOrEqual(
+      listed[1].last_message_at.getTime(),
+    );
+  });
+
+  it("findByIdForUser never returns another user's conversation", async () => {
+    const userId = await makeUser("u1");
+    const otherId = await makeUser("u2");
+    const convos = new ConversationRepository(testDb());
+    const chat = await convos.getOrCreate(userId, "chat", "chan-1");
+    expect((await convos.findByIdForUser(chat.id, userId))?.id).toBe(chat.id);
+    expect(await convos.findByIdForUser(chat.id, otherId)).toBeUndefined();
+  });
+});

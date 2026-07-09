@@ -8,8 +8,10 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
+    "dev:sidecar": "pnpm -r --parallel run dev:sidecar",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "dev:backend": "pnpm --filter @aivo/backend run dev"
+    "dev:backend": "pnpm --filter @aivo/backend run dev",
+    "dev:frontend": "pnpm --filter @aivo/frontend run dev"
   }
 }

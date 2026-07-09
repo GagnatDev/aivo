@@ -12,7 +12,7 @@ The app id is `aivo` (kebab-case, load-bearing). It is the Postgres db + user,
 the secret prefix, and the k8s resource names. Repo name = app id.
 
 - App id / DB / user: `aivo`
-- Subdomain (only for the OAuth callback + health): `aivo.homectl.no`
+- Subdomain (dashboard via the auth sidecar, YouTube OAuth callback, health): `aivo.homectl.no`
 - Bucket: **none** in v1 (thumbnails hotlink from YouTube)
 
 ## Where aivo runs
@@ -31,9 +31,9 @@ flowchart TD
   ytapi["YouTube Data API"]
   infer["Inference provider"]
   subgraph cluster [Kapsule homectl namespace]
-    pod["aivo pod (replicas: 1, strategy: Recreate)"]
-    svc["Service :80 to :8080"]
-    ing["Ingress aivo.homectl.no (OAuth callback + /health only)"]
+    pod["aivo pod (replicas: 1, strategy: Recreate)<br/>auth-proxy sidecar :4180 → app :8080"]
+    svc["Service :80 → sidecar :4180"]
+    ing["Ingress aivo.homectl.no → sidecar"]
   end
   pg[("shared Postgres db: aivo (private VPC)")]
   lb["Scaleway LB + nginx ingress"]
@@ -46,8 +46,12 @@ flowchart TD
 ```
 
 Note most traffic is **outbound** (the gateway WebSocket, YouTube, inference).
-The ingress exists only for the rare inbound need: the YouTube OAuth callback and
-external health visibility.
+Inbound traffic (the phase-3 dashboard, the YouTube OAuth callback, and health)
+arrives through the **homectl-auth-proxy sidecar** that fronts the pod: the ingress
+points at the Service, which targets the sidecar on `:4180`; the sidecar runs the
+homectl-auth login flow, injects verified identity headers, and proxies to the app
+on `:8080` (see [`phase-3-web-dashboard-prd.md`](phase-3-web-dashboard-prd.md) §3.2
+and `k8s/deployment.yml`). The app itself does no auth work.
 
 ## Terraform: the `applications` map
 
@@ -156,9 +160,14 @@ spec:
             requests: { cpu: 100m, memory: 384Mi }
             limits: { memory: 768Mi }
 ---
-# Service :80 -> :8080, plus an Ingress for aivo.homectl.no
-# (only routes the OAuth callback + /health; everything else is outbound).
+# Service :80 -> :8080, plus an Ingress for aivo.homectl.no.
 ```
+
+> **Superseded for phase 3.** The authoritative manifest is now
+> [`k8s/deployment.yml`](../k8s/deployment.yml): it adds the **homectl-auth-proxy
+> sidecar** in front of the app, so the Service targets the sidecar (`:4180`) and
+> the app's `:8080` stays pod-local. The sketch above is the pre-dashboard v1 shape
+> (app directly on the Service) and is kept for historical context only.
 
 Service + Ingress mirror the template (`aivo.homectl.no`, cert-manager
 `letsencrypt-prod`, class `nginx`).

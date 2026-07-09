@@ -89,6 +89,13 @@ backend (same homectl pattern as workbench; `replicas: 1` / `Recreate` unchanged
 Recommended build order: auth shell → usage & budget → models → memory → overview →
 digests/activity.
 
+**Status:** M0 (auth shell — homectl-auth wiring, `users.auth_sub` linking, owner-only
+gate, SPA shell) and M1 (usage & budget — burn-down, daily series, drivers, budget
+state) — ✅ built (2026-07-03). M2+ (models, memory, overview, digests/activity,
+polish) not started. To go live the app still needs infra config: register `aivo` in
+homectl-auth `apps.json`, generate the client secret pair, and add `APP_BASE_URL` +
+`AIVO_CLIENT_SECRET` to `aivo-secrets`.
+
 ## Decisions (locked)
 
 - **Semantic memory:** simple category/recency/keyword retrieval in v1; pgvector deferred.

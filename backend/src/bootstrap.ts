@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { Pool } from "pg";
 import { buildApp, type AppOptions } from "./app.js";
 import type { AgentDeps } from "./agent/deps.js";
+import { createAuthProvider } from "./auth/index.js";
 import { systemClock } from "./agent/clock.js";
 import { createDb } from "./db/kysely.js";
 import { createPool } from "./db/pool.js";
@@ -109,8 +110,40 @@ export async function startServer(connectionString?: string): Promise<StartedSer
 
   // Stale approval prompts are swept by the scheduler's minutely tick (scheduler/tick.ts).
 
+  // Dashboard auth + API (phase 3): the provider is picked from env.authMode —
+  // `sidecar` reads the homectl-auth-proxy's injected identity headers in prod,
+  // `dev` is a fixed local principal so a local run needs no auth service. The SPA
+  // is only served when WEB_ROOT is set (the Docker image sets it; dev leaves it to
+  // Vite). The gateway logs in after the HTTP server starts, so the health probe
+  // reads a ref that's filled in below — "disconnected" until then, never a crash.
+  let gatewayRef: DiscordGateway | undefined;
+  const appOptions: AppOptions = {
+    auth: {
+      provider: createAuthProvider({ mode: env.authMode }),
+      dashboard: {
+        users: deps.users,
+        llmUsage: deps.llmUsage,
+        budgetConfig: deps.budgetConfig,
+        modelPricing: deps.modelPricing,
+        settings: deps.settings,
+        memories: deps.memories,
+        digests: deps.digests,
+        digestItems: deps.digestItems,
+        videos: deps.videos,
+        conversations: deps.conversations,
+        messages: deps.messages,
+        profiles: deps.profiles,
+        feedback: deps.feedback,
+        youtubeAccount: deps.youtubeAccount,
+        config: {
+          memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+        },
+        gatewayStatus: () => gatewayRef?.isReady() ?? false,
+      },
+    },
+    webRoot: env.WEB_ROOT,
+  };
   // Mount the one-time YouTube OAuth handshake only when the client is configured.
-  const appOptions: AppOptions = {};
   if (
     env.YOUTUBE_OAUTH_CLIENT_ID &&
     env.YOUTUBE_OAUTH_CLIENT_SECRET &&
@@ -131,6 +164,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   });
 
   const gateway = createDiscordGateway(deps, discordConfig);
+  gatewayRef = gateway;
   await gateway.login();
 
   // Proactive work: the in-process scheduler polls every minute for due digests and

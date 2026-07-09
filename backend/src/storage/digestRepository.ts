@@ -66,6 +66,27 @@ export class DigestRepository {
       .executeTakeFirst();
   }
 
+  /** A user's digest runs, newest first (dashboard history, PRD D-1). */
+  listForUser(userId: string, limit = 50): Promise<DigestRow[]> {
+    return this.db
+      .selectFrom("digests")
+      .select(DIGEST_SELECT)
+      .where("user_id", "=", userId)
+      .orderBy("created_at", "desc")
+      .limit(limit)
+      .execute();
+  }
+
+  /** One run, scoped by user so the API can't serve another user's digest. */
+  findByIdForUser(id: string, userId: string): Promise<DigestRow | undefined> {
+    return this.db
+      .selectFrom("digests")
+      .select(DIGEST_SELECT)
+      .where("id", "=", id)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+  }
+
   async markDelivered(id: string, at: Date): Promise<void> {
     await this.db
       .updateTable("digests")

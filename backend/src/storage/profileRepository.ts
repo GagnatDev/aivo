@@ -8,9 +8,18 @@ export interface ProfileRow {
   body: string;
   version: number;
   is_current: boolean;
+  created_at: Date;
 }
 
-const PROFILE_COLUMNS = ["id", "user_id", "kind", "body", "version", "is_current"] as const;
+const PROFILE_COLUMNS = [
+  "id",
+  "user_id",
+  "kind",
+  "body",
+  "version",
+  "is_current",
+  "created_at",
+] as const;
 
 /**
  * Versioned natural-language profiles (the YouTube interest profile; later the mail
@@ -32,6 +41,17 @@ export class ProfileRepository {
       .where("kind", "=", kind)
       .where("is_current", "=", true)
       .executeTakeFirst();
+  }
+
+  /** Every version of a kind for a user, newest first (dashboard history, ME-7). */
+  listVersions(userId: string, kind: ProfileKind): Promise<ProfileRow[]> {
+    return this.db
+      .selectFrom("profiles")
+      .select(PROFILE_COLUMNS)
+      .where("user_id", "=", userId)
+      .where("kind", "=", kind)
+      .orderBy("version", "desc")
+      .execute();
   }
 
   /** Write a new current version (v1 if none exists, else previous version + 1). */
