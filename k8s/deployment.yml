@@ -155,10 +155,17 @@ metadata:
   name: aivo
   namespace: homectl
   annotations:
+    # cert-manager auto-provisions the TLS cert for the host below (matches workbench).
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     # Defense in depth: never serve the sidecar's /internal/* from a public host.
     nginx.ingress.kubernetes.io/server-snippet: |
       location ~ ^/internal/ { return 404; }
 spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - aivo.homectl.no
+      secretName: aivo-tls
   rules:
     - host: aivo.homectl.no
       http:
