@@ -18,25 +18,12 @@
 #  - $IMAGE_TAG is substituted at deploy time by the deploy workflow (commit SHA).
 #
 # NOTE: not applied by this slice — infra onboarding (Terraform, secrets, kubectl)
-# is roadmap step 2 and runs separately. If aivo is provisioned by homectl-infra
-# Terraform with `auth = true`, the Secret below is created for you as
-# `aivo-terraform-secrets` (AUTH_CLIENT_ID, AUTH_CLIENT_SECRET, COOKIE_KEY) — wire
-# the sidecar env to it and drop the hand-written Secret.
-apiVersion: v1
-kind: Secret
-metadata:
-  # The two values the sidecar needs. Terraform-managed as aivo-terraform-secrets
-  # when `auth = true`; this hand-written form is only for apps outside that
-  # automation. homectl-auth's shared auth-client-secrets Secret must hold this
-  # exact same plaintext under AIVO_CLIENT_SECRET (no hashing on either side).
-  name: aivo-auth
-  namespace: homectl
-type: Opaque
-stringData:
-  AUTH_CLIENT_SECRET: "REPLACE_WITH_PLAINTEXT_SECRET" # ← substitute
-  # 32-byte base64 AES-256-GCM key for cookie encryption: openssl rand -base64 32
-  COOKIE_KEY: "REPLACE_WITH_openssl_rand_base64_32" # ← substitute
----
+# is roadmap step 2 and runs separately. aivo is provisioned by homectl-infra
+# Terraform with `auth = true`, so the sidecar's two secret values — AUTH_CLIENT_SECRET
+# and COOKIE_KEY — are generated once and written into the existing
+# `aivo-terraform-secrets` Secret (alongside DATABASE_URL); homectl-auth's shared
+# auth-client-secrets Secret gets the matching AIVO_CLIENT_SECRET plaintext. Nothing
+# to hand-create here — the sidecar env just references that Secret below.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,13 +55,14 @@ spec:
             - name: AUTH_MODE
               value: sidecar
           envFrom:
-            # DATABASE_URL (Terraform-managed).
+            # DATABASE_URL (Terraform-managed). This Secret also carries the sidecar's
+            # AUTH_CLIENT_SECRET/COOKIE_KEY (referenced individually below) — the app
+            # ignores those; it does no auth work.
             - secretRef:
                 name: aivo-terraform-secrets
             # DISCORD_BOT_TOKEN, DISCORD_APP_ID, DISCORD_GUILD_ID,
             # OWNER_DISCORD_USER_ID, LLM_API_KEY/BASE_URL, YouTube OAuth, etc. —
-            # hand-managed via `kubectl create secret`. No app-side auth secrets:
-            # all OAuth/session config lives on the sidecar container below.
+            # hand-managed via `kubectl create secret`.
             - secretRef:
                 name: aivo-secrets
                 optional: true
@@ -124,12 +112,12 @@ spec:
             - name: AUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: aivo-auth
+                  name: aivo-terraform-secrets
                   key: AUTH_CLIENT_SECRET
             - name: COOKIE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: aivo-auth
+                  name: aivo-terraform-secrets
                   key: COOKIE_KEY
             - name: NODE_ENV
               value: production
