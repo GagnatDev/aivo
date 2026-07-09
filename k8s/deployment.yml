@@ -157,14 +157,6 @@ metadata:
   annotations:
     # cert-manager auto-provisions the TLS cert for the host below (matches workbench).
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # NOTE: we previously carried a `nginx.ingress.kubernetes.io/server-snippet`
-    # here to 404 the sidecar's /internal/* on the public host as defense in depth.
-    # The cluster runs the ingress controller with `allow-snippet-annotations: false`
-    # (its admission webhook rejects both server- and configuration-snippet), so the
-    # annotation is gone and nginx-ingress offers no snippet-free way to 404 a
-    # sub-path. Blocking /internal/* from external callers is therefore the sidecar's
-    # responsibility (homectl-auth-proxy) — it is the component that owns those routes
-    # and the authoritative enforcement point regardless.
 spec:
   ingressClassName: nginx
   tls:
