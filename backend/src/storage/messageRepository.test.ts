@@ -70,11 +70,21 @@ describe("MessageRepository.getLatestDiscordMessageId", () => {
 });
 
 describe("MessageRepository.listPage", () => {
-  /** Thread render order — the same (created_at, id) keyset listPage paginates on. */
-  function threadOrder(rows: Awaited<ReturnType<MessageRepository["insert"]>>[]) {
-    return [...rows].sort(
-      (a, b) => a.created_at.getTime() - b.created_at.getTime() || a.id.localeCompare(b.id),
-    );
+  // gen_random_uuid() ids + microsecond created_at mean a fast insert loop can leave
+  // several rows in the same millisecond, where the (created_at, id) keyset the repo
+  // paginates on would tie-break on a *random* uuid — nondeterministic, and a JS Date
+  // (millisecond precision) can't even reconstruct the DB's microsecond order to
+  // predict it. Stamp strictly increasing created_at (1s apart) so render order is
+  // unambiguous. Returns the rows oldest-first with their new timestamps.
+  async function stampAscendingCreatedAt(rows: Awaited<ReturnType<MessageRepository["insert"]>>[]) {
+    const base = Date.parse("2024-01-01T00:00:00.000Z");
+    const stamped = [];
+    for (const [i, row] of rows.entries()) {
+      const created_at = new Date(base + i * 1000);
+      await testDb().updateTable("messages").set({ created_at }).where("id", "=", row.id).execute();
+      stamped.push({ ...row, created_at });
+    }
+    return stamped;
   }
 
   it("returns the newest window oldest-first and pages backwards with `before`", async () => {
@@ -84,7 +94,7 @@ describe("MessageRepository.listPage", () => {
     for (const content of ["m1", "m2", "m3", "m4", "m5"]) {
       inserted.push(await messages.insert({ conversationId: convo.id, role: "user", content }));
     }
-    const ordered = threadOrder(inserted);
+    const ordered = await stampAscendingCreatedAt(inserted);
 
     const newest = await messages.listPage(convo.id, { limit: 2 });
     expect(newest.hasMore).toBe(true);
