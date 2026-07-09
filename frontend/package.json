@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "dev:homectl": "vite --mode homectl",
+    "dev:sidecar": "vite --mode sidecar",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",

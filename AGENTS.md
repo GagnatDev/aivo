@@ -37,17 +37,19 @@ Without Docker, point `TEST_DATABASE_URL` at a disposable Postgres instead.
 - `db/` — Kysely wiring, pool, migration runner, and **generated** `schema.ts` (do not edit — run `pnpm --filter @aivo/backend db:codegen`; hand-authored enums live in `schema.enums.ts`).
 - `config/` — Zod-validated env (`loadEnv()` + schema; no eager singleton).
 - `routes/` — Express endpoints: health, YouTube OAuth, dashboard API (`/api/dashboard/*`).
-- `auth/` — pluggable dashboard auth: `AUTH_MODE=dev` fixed principal vs `homectl` OAuth2
-  (vendored homectl-auth client — swap for `@gagnatdev/homectl-auth-client` when registry
-  auth lands). `middleware/resolveUser.ts` maps the auth subject to a `users` row.
+- `auth/` — pluggable dashboard auth: `AUTH_MODE=dev` fixed principal vs `sidecar` (reads
+  the `X-Homectl-*` identity headers the homectl-auth-proxy sidecar injects — the app does
+  no OAuth work; see homectl-auth docs/sidecar/integration.md and k8s/deployment.yml).
+  `middleware/resolveUser.ts` maps the auth subject to a `users` row.
 - `test/` — Testcontainers setup, fakes, helpers.
 - `backend/migrations/` — numbered SQL, append-only, applied at boot.
 
 ## Layout (`frontend/`)
 
 Vite + React SPA (dashboard). `src/pages/` one file per route, `src/components/` shell,
-`src/api/` fetch layer, `src/auth/` vendored browser client + `VITE_DISABLE_AUTH` dev
-bypass. No Discord or DB imports; presentation only (PRD §5.1).
+`src/api/` fetch layer, `src/auth/` auth-agnostic seam (plain same-origin fetch; the
+sidecar injects identity server-side) + `VITE_DISABLE_AUTH` dev bypass. No Discord or DB
+imports; presentation only (PRD §5.1).
 
 ## Conventions
 

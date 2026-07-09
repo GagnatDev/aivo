@@ -11,14 +11,15 @@ export class ApiError extends Error {
 }
 
 /**
- * GET a dashboard API resource as JSON through the auth client. A 401 after the
- * client's own refresh-retry means the session is gone — bounce through login and
- * never resolve (the navigation unloads the page).
+ * GET a dashboard API resource as JSON. A same-origin request the sidecar
+ * authenticates by injecting identity headers; a 401 means the session is gone
+ * (the sidecar returns 401 for an XHR rather than redirecting it) — bounce through
+ * a full page load and never resolve (the navigation unloads the page).
  */
 export async function getJson<T>(path: string): Promise<T> {
   const res = await auth.fetch(path, { headers: { Accept: "application/json" } });
   if (res.status === 401) {
-    auth.login(window.location.pathname + window.location.search);
+    auth.login();
     return new Promise<T>(() => {});
   }
   if (!res.ok) {
@@ -36,8 +37,8 @@ export async function getJson<T>(path: string): Promise<T> {
 
 /**
  * Download an authenticated resource (the CSV export) as a browser file save.
- * A plain <a href> can't carry the bearer token, so this fetches through the
- * auth client and hands the blob to a temporary object-URL anchor.
+ * A same-origin fetch carries the session cookie so the sidecar authenticates it;
+ * the blob is handed to a temporary object-URL anchor for the save.
  */
 export async function downloadFile(path: string, fallbackName: string): Promise<void> {
   const res = await auth.fetch(path);

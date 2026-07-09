@@ -1,11 +1,42 @@
-# Deployment + Service for aivo. Source pattern: workbench/k8s/deployment.yml.
-# Trimmed for v1: no Ingress (the bot is an outbound Discord gateway client — nothing
-# inbound from the internet is needed yet; the aivo.homectl.no ingress arrives with
-# the YouTube OAuth-callback slice) and no S3 env mappings (no bucket).
-# $IMAGE_TAG is substituted at deploy time by the deploy workflow (commit SHA).
+# Deployment + Service + Ingress for aivo, fronted by the homectl-auth-proxy
+# sidecar (homectl-auth docs/sidecar/integration.md). The sidecar runs the OAuth
+# flow, holds the encrypted session, and injects verified X-Homectl-* identity
+# headers into aivo — aivo itself does no auth work (backend/src/auth).
+#
+# Critical wiring: ingress → Service:80 → sidecar:4180 → app:8080. The app's 8080
+# is pod-local and NEVER a Service target or ingress backend; if it were, a client
+# could forge X-Homectl-* and impersonate anyone (the sidecar strips inbound copies
+# before injecting its own — that's what makes the headers trustworthy).
+#
+# Aivo-specific deviations from the guide's sample manifest:
+#  - replicas: 1 + Recreate. Aivo is a stateful Discord gateway; two pods would open
+#    two gateway connections / duplicate the scheduler. The sidecar is stateless
+#    (session lives in the cookie), so single-replica is fine — COOKIE_KEY sharing
+#    across replicas is moot here.
+#  - app container port is 8080 (aivo's PORT), not the guide's 3000; UPSTREAM points
+#    at it.
+#  - $IMAGE_TAG is substituted at deploy time by the deploy workflow (commit SHA).
 #
 # NOTE: not applied by this slice — infra onboarding (Terraform, secrets, kubectl)
-# is roadmap step 2 and runs separately.
+# is roadmap step 2 and runs separately. If aivo is provisioned by homectl-infra
+# Terraform with `auth = true`, the Secret below is created for you as
+# `aivo-terraform-secrets` (AUTH_CLIENT_ID, AUTH_CLIENT_SECRET, COOKIE_KEY) — wire
+# the sidecar env to it and drop the hand-written Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  # The two values the sidecar needs. Terraform-managed as aivo-terraform-secrets
+  # when `auth = true`; this hand-written form is only for apps outside that
+  # automation. homectl-auth's shared auth-client-secrets Secret must hold this
+  # exact same plaintext under AIVO_CLIENT_SECRET (no hashing on either side).
+  name: aivo-auth
+  namespace: homectl
+type: Opaque
+stringData:
+  AUTH_CLIENT_SECRET: "REPLACE_WITH_PLAINTEXT_SECRET" # ← substitute
+  # 32-byte base64 AES-256-GCM key for cookie encryption: openssl rand -base64 32
+  COOKIE_KEY: "REPLACE_WITH_openssl_rand_base64_32" # ← substitute
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +45,7 @@ metadata:
 spec:
   replicas: 1
   # Single-instance, stateful gateway: never run two pods at once (would open two
-  # Discord gateway connections / duplicate any future scheduler).
+  # Discord gateway connections / duplicate the scheduler).
   strategy:
     type: Recreate
   selector:
@@ -26,20 +57,29 @@ spec:
         app: aivo
     spec:
       containers:
+        # ── aivo (app) ────────────────────────────────────────────────────────
+        # Pod-local only: reachable exclusively via the sidecar, never the ingress.
         - name: aivo
           image: rg.fr-par.scw.cloud/homectl/aivo:$IMAGE_TAG
           ports:
             - containerPort: 8080
+          env:
+            # Behind the sidecar in prod: read the injected X-Homectl-* headers.
+            - name: AUTH_MODE
+              value: sidecar
           envFrom:
             # DATABASE_URL (Terraform-managed).
             - secretRef:
                 name: aivo-terraform-secrets
             # DISCORD_BOT_TOKEN, DISCORD_APP_ID, DISCORD_GUILD_ID,
-            # OWNER_DISCORD_USER_ID, and dashboard auth (APP_BASE_URL,
-            # AIVO_CLIENT_SECRET) — hand-managed via `kubectl create secret`.
+            # OWNER_DISCORD_USER_ID, LLM_API_KEY/BASE_URL, YouTube OAuth, etc. —
+            # hand-managed via `kubectl create secret`. No app-side auth secrets:
+            # all OAuth/session config lives on the sidecar container below.
             - secretRef:
                 name: aivo-secrets
                 optional: true
+          # Probes hit the app port directly (kubelet → pod IP:8080), bypassing the
+          # sidecar, so they need no session.
           startupProbe:
             httpGet:
               path: /health
@@ -64,6 +104,46 @@ spec:
               memory: 384Mi
             limits:
               memory: 768Mi
+        # ── auth-proxy (sidecar) ────────────────────────────────────────────────
+        - name: auth-proxy
+          image: rg.fr-par.scw.cloud/homectl/homectl-auth-proxy:latest
+          ports:
+            - name: proxy
+              containerPort: 4180
+          env:
+            - name: PUBLIC_AUTH_URL # browser redirect target + JWT issuer
+              value: https://auth.homectl.no
+            - name: INTERNAL_AUTH_URL # in-cluster ClusterIP for /token + refresh + JWKS
+              value: http://homectl-auth.homectl
+            - name: APP_BASE_URL # public host; builds redirect_uri = APP_BASE_URL + /auth/callback
+              value: https://aivo.homectl.no
+            - name: UPSTREAM # the aivo container in this pod
+              value: http://127.0.0.1:8080
+            - name: AUTH_CLIENT_ID # must match the id registered in homectl-auth apps.json
+              value: aivo
+            - name: AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aivo-auth
+                  key: AUTH_CLIENT_SECRET
+            - name: COOKIE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aivo-auth
+                  key: COOKIE_KEY
+            - name: NODE_ENV
+              value: production
+          readinessProbe:
+            httpGet: { path: /readyz, port: 4180 } # verifies JWKS reachable
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 4180 }
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "25m", memory: "64Mi" }
+            limits: { cpu: "250m", memory: "256Mi" }
 ---
 apiVersion: v1
 kind: Service
@@ -75,4 +155,30 @@ spec:
     app: aivo
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 4180 # → the SIDECAR, never the app's 8080
+---
+# aivo.homectl.no now has real inbound traffic: the dashboard (through the sidecar)
+# and the one-time YouTube OAuth consent callback. That callback is a top-level
+# browser navigation carrying the owner's hs_session cookie (SameSite=Lax), so the
+# sidecar authenticates it like any other request — no special-casing needed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aivo
+  namespace: homectl
+  annotations:
+    # Defense in depth: never serve the sidecar's /internal/* from a public host.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~ ^/internal/ { return 404; }
+spec:
+  rules:
+    - host: aivo.homectl.no
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aivo
+                port:
+                  number: 80

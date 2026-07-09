@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "dev:homectl": "pnpm -r --parallel run dev:homectl",
+    "dev:sidecar": "pnpm -r --parallel run dev:sidecar",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "dev:backend": "pnpm --filter @aivo/backend run dev",

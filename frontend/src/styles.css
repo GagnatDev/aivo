@@ -55,13 +55,6 @@ a {
   margin-top: 0;
 }
 
-.boot-splash {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  color: var(--text-muted);
-}
-
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
 .shell {

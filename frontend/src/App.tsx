@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
-import { auth } from "./auth/auth.js";
 import { Layout } from "./components/Layout.js";
 import { ActivityPage } from "./pages/ActivityPage.js";
 import { DigestsPage } from "./pages/DigestsPage.js";
@@ -11,28 +9,15 @@ import { SettingsPage } from "./pages/SettingsPage.js";
 import { UsagePage } from "./pages/UsagePage.js";
 
 /**
- * Gate the whole app on an access token: bootstrap exchanges the homectl-auth
- * refresh cookie for an in-memory token; without one we bounce through the
- * backend's /auth/login (full-page navigation, so this render never completes).
- * With VITE_DISABLE_AUTH the dev auth client bootstraps unconditionally.
+ * The shell renders straight away: no token bootstrap. Under the homectl-auth-proxy
+ * sidecar the SPA is auth-agnostic — the sidecar only serves this HTML to an
+ * already-authenticated session (an unauthenticated top-level navigation is 302'd
+ * to central login before the shell loads), so by the time this runs there is a
+ * session. If it later expires, the first API call returns 401 and the fetch layer
+ * bounces through a full page load (see api/client.ts). In dev the backend's dev
+ * provider authenticates every request.
  */
 export function App() {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    void auth.bootstrap().then((ok) => {
-      if (!ok) {
-        auth.login(window.location.pathname + window.location.search);
-        return;
-      }
-      setReady(true);
-    });
-  }, []);
-
-  if (!ready) {
-    return <div className="boot-splash">Signing in…</div>;
-  }
-
   return (
     <Routes>
       <Route element={<Layout />}>

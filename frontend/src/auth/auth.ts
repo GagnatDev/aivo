@@ -1,52 +1,42 @@
-import {
-  type AuthBrowserClient,
-  createAuthBrowserClient,
-} from "./vendoredHomectlAuthBrowserClient.js";
-
 /**
- * The SPA-side auth seam, mirroring the backend's pluggable provider: with
- * `VITE_DISABLE_AUTH=true` (committed .env.development overlay) fetches pass
- * through unadorned and the backend's dev provider supplies the principal;
- * otherwise the vendored homectl-auth browser client bootstraps an in-memory
- * access token from the refresh cookie and attaches it as a Bearer header.
+ * The SPA is auth-agnostic under the homectl-auth-proxy sidecar
+ * (homectl-auth docs/sidecar/integration.md §5): it holds no token, makes plain
+ * same-origin requests (the browser's `hs_session` cookie rides along
+ * automatically), and knows nothing about auth.homectl.no. The sidecar runs the
+ * login redirect for a top-level navigation and returns 401 for an XHR.
+ *
+ * This module is a thin seam over those two facts so call sites stay tidy:
+ *  - `fetch` is a plain same-origin fetch.
+ *  - `login()` bounces to a full page load so the sidecar can do the top-level
+ *    login redirect (called when an API request comes back 401).
+ *  - `logout()` navigates to the sidecar's logout path, which clears the session.
+ *
+ * With `VITE_DISABLE_AUTH=true` (the committed .env.development overlay) there is
+ * no sidecar and the backend's dev provider supplies a fixed principal, so logout
+ * has nowhere to go and just returns home.
  */
 export interface AuthClient {
-  /** Resolve to true when authenticated; false means the caller should login(). */
-  bootstrap(): Promise<boolean>;
+  /** Same-origin fetch; the sidecar injects the verified identity server-side. */
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-  /** Full-page navigation that starts the OAuth flow, returning to `next`. */
-  login(next: string): void;
-  logout(): Promise<void>;
+  /** Full-page navigation so the sidecar can run the top-level login redirect. */
+  login(): void;
+  /** Navigate to the sidecar logout path (clears `hs_session`), then home. */
+  logout(): void;
 }
 
 const disableAuth = import.meta.env.VITE_DISABLE_AUTH === "true";
-const authServiceUrl = import.meta.env.VITE_AUTH_SERVICE_URL ?? "https://auth.homectl.no";
 
-function createDevAuthClient(): AuthClient {
-  return {
-    bootstrap: () => Promise.resolve(true),
-    fetch: (input, init) => fetch(input, init),
-    login: () => {},
-    logout: () => Promise.resolve(),
-  };
-}
+/** Path the sidecar handles for logout (its LOGOUT_PATH default). */
+const LOGOUT_PATH = "/auth/logout";
 
-function createHomectlAuthClient(): AuthClient {
-  const client: AuthBrowserClient = createAuthBrowserClient({ authServiceUrl });
-  return {
-    bootstrap: async () => (await client.bootstrap()) !== null,
-    fetch: (input, init) => client.authedFetch(input, init),
-    login: (next) => {
-      window.location.href = buildLoginUrl(next);
-    },
-    logout: () => client.logout(),
-  };
-}
-
-/** The backend's login bounce (server-handled callback); `next` must stay relative. */
-export function buildLoginUrl(next: string): string {
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
-  return `/auth/login?next=${encodeURIComponent(safeNext)}`;
-}
-
-export const auth: AuthClient = disableAuth ? createDevAuthClient() : createHomectlAuthClient();
+export const auth: AuthClient = {
+  fetch: (input, init) => fetch(input, init),
+  // A full page load at "/" lets the sidecar 302 an unauthenticated top-level
+  // navigation to central login before the shell is served.
+  login: () => {
+    window.location.href = "/";
+  },
+  logout: () => {
+    window.location.href = disableAuth ? "/" : LOGOUT_PATH;
+  },
+};

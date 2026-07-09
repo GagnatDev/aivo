@@ -58,25 +58,20 @@ const EnvSchema = z.object({
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 
-  // Dashboard auth (homectl-auth; phase-3 web dashboard). AUTH_MODE `dev` is a fixed
-  // local principal (no auth service — dev/tests run offline); `homectl` is real
-  // OAuth2 against auth.homectl.no. Unset, it derives from NODE_ENV (see loadEnv).
-  AUTH_MODE: z.enum(["dev", "homectl"]).optional(),
-  AUTH_SERVICE_URL: z.string().url().default("https://auth.homectl.no"),
-  // The app id registered in homectl-auth's apps.json (conventions: id = app name).
-  AUTH_CLIENT_ID: z.string().min(1).default("aivo"),
-  AUTH_CALLBACK_PATH: z.string().startsWith("/").default("/auth/callback"),
-  // Public base URL of this app; builds the OAuth redirect_uri.
-  APP_BASE_URL: z.string().url().default("http://localhost:8080"),
-  // Plaintext client secret presented at /token (bcrypt-hashed on the auth side).
-  AIVO_CLIENT_SECRET: z.string().min(1).optional(),
+  // Dashboard auth. Aivo sits behind the homectl-auth-proxy sidecar
+  // (homectl-auth docs/sidecar/integration.md): all OAuth config (PUBLIC_AUTH_URL,
+  // AUTH_CLIENT_ID/SECRET, COOKIE_KEY, ...) lives on the *sidecar* container, not
+  // here — the app only reads the identity headers the sidecar injects. AUTH_MODE
+  // `sidecar` does exactly that; `dev` is a fixed local principal (no sidecar —
+  // dev/tests run offline). Unset, it derives from NODE_ENV (see loadEnv).
+  AUTH_MODE: z.enum(["dev", "sidecar"]).optional(),
   // Directory of the built dashboard SPA. Set in the Docker image; unset in dev
   // (Vite serves the frontend) so the backend skips static serving entirely.
   WEB_ROOT: z.string().min(1).optional(),
 });
 
 /** Validated env plus the derived auth mode (schema fields + `authMode`). */
-export type Env = z.infer<typeof EnvSchema> & { authMode: "dev" | "homectl" };
+export type Env = z.infer<typeof EnvSchema> & { authMode: "dev" | "sidecar" };
 
 /**
  * Validate the environment. Throws (fail fast) on misconfiguration. Called once at
@@ -88,10 +83,8 @@ export type Env = z.infer<typeof EnvSchema> & { authMode: "dev" | "homectl" };
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.parse(source);
   // Convention (homectl-reference docs/conventions.md): real auth in prod unless
-  // explicitly overridden, offline dev bypass everywhere else.
-  const authMode = parsed.AUTH_MODE ?? (parsed.NODE_ENV === "production" ? "homectl" : "dev");
-  if (authMode === "homectl" && !parsed.AIVO_CLIENT_SECRET) {
-    throw new Error("AIVO_CLIENT_SECRET is required when AUTH_MODE=homectl");
-  }
+  // explicitly overridden, offline dev bypass everywhere else. In prod the app runs
+  // behind the sidecar and reads its injected identity headers.
+  const authMode = parsed.AUTH_MODE ?? (parsed.NODE_ENV === "production" ? "sidecar" : "dev");
   return { ...parsed, authMode };
 }

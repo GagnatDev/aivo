@@ -58,9 +58,9 @@ export interface DashboardDeps {
 
 /**
  * The authenticated read-only dashboard API under /api/dashboard (PRD §5.4).
- * Every route runs behind authMiddleware (verifies the token, sets `req.user`)
- * and resolveUser (maps to `req.userId`, enforces the v1 owner-only gate) — so
- * handlers can assume a resolved, authorized user.
+ * Every route runs behind authMiddleware (reads the sidecar's verified identity
+ * headers into `req.user`) and resolveUser (maps to `req.userId`, enforces the v1
+ * owner-only gate) — so handlers can assume a resolved, authorized user.
  */
 export function dashboardRouter(auth: AuthProvider, deps: DashboardDeps): Router {
   const router = Router();

@@ -1,8 +1,8 @@
 # Two-stage Node 24 build for the aivo monorepo (backend + dashboard SPA).
 # Source pattern: workbench/Dockerfile via homectl-reference templates/Dockerfile.
-# The auth client is vendored (backend/src/auth/vendoredHomectlAuthClient.ts), so
-# no github_token secret mount is needed yet — add it when swapping to the
-# published @gagnatdev/homectl-auth-client package.
+# Auth is handled by the homectl-auth-proxy sidecar in front of this image (see
+# k8s/deployment.yml) — the app just reads injected identity headers, so it pulls
+# no auth client package and needs no github_token secret mount.
 # -----------------------------------------------------------------------------
 # Stage 1: Build frontend + backend
 # -----------------------------------------------------------------------------

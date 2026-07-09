@@ -1,4 +1,5 @@
 import { buildApp } from "../app.js";
+import type { AuthProvider } from "../auth/index.js";
 import { createDevAuthProvider } from "../auth/devProvider.js";
 import type { DashboardDeps } from "../routes/dashboard/index.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
@@ -28,9 +29,11 @@ export interface DashboardTestOptions {
   memoryInjectLimit?: number;
   /** Simulated Discord gateway probe; omitted = "unknown" in the health widget. */
   gatewayStatus?: () => boolean;
+  /** Auth provider under test; defaults to the offline dev provider. */
+  provider?: AuthProvider;
 }
 
-/** The dashboard app wired to the test DB with the dev auth provider. */
+/** The dashboard app wired to the test DB with the dev auth provider by default. */
 export function buildDashboardTestApp(options: DashboardTestOptions = {}): DashboardTestHarness {
   const db = testDb();
   const deps: DashboardDeps = {
@@ -55,8 +58,7 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
   };
   const appOptions: Parameters<typeof buildApp>[0] = {
     auth: {
-      provider: createDevAuthProvider(),
-      callbackPath: "/auth/callback",
+      provider: options.provider ?? createDevAuthProvider(),
       dashboard: deps,
     },
   };

@@ -5,9 +5,12 @@ export const DEV_AUTH_SUB = "dev-owner";
 
 /**
  * Offline auth for local dev and tests: every request is authenticated as a fixed
- * owner-role principal, no auth service involved (workbench devProvider pattern).
- * Tests can impersonate other subjects with an `x-dev-sub` header, and drop the
- * owner role with `x-dev-role` to exercise the authorization paths.
+ * owner-role principal, no sidecar and no auth service involved. This is the
+ * sidecar guide's "Option A" — run the app directly and default to a fixed local
+ * user when the `X-Homectl-*` headers are absent (homectl-auth
+ * docs/sidecar/integration.md §7). Tests can impersonate other subjects with an
+ * `x-dev-sub` header, and drop the owner role with `x-dev-role` to exercise the
+ * authorization paths.
  */
 export function createDevAuthProvider(): AuthProvider {
   return {
@@ -19,21 +22,9 @@ export function createDevAuthProvider(): AuthProvider {
       req.user = {
         id: sub,
         email: `${sub}@dev.local`,
-        isAdmin: role === "owner",
         role: role === "" ? null : role,
       };
       next();
-    },
-    loginHandler: (req, res) => {
-      const next = typeof req.query.next === "string" ? req.query.next : "/";
-      const returnTo = next.startsWith("/") && !next.startsWith("//") ? next : "/";
-      res.redirect(302, returnTo);
-    },
-    callbackHandler: (_req, res) => {
-      res.redirect(302, "/");
-    },
-    logoutHandler: (_req, res) => {
-      res.redirect(302, "/");
     },
   };
 }

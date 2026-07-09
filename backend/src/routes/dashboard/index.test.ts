@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
+import { createSidecarAuthProvider } from "../../auth/sidecarProvider.js";
 import { buildDashboardTestApp, provisionTestOwner } from "../../test/dashboardApp.js";
 import { useCleanDb } from "../../test/db.js";
 
@@ -23,6 +24,43 @@ describe("GET /api/dashboard/me", () => {
     const { app, deps } = buildDashboardTestApp();
     await provisionTestOwner(deps);
     const res = await request(app).get("/api/dashboard/me").set("x-dev-role", "member");
+    expect(res.status).toBe(403);
+  });
+});
+
+// End-to-end through the real sidecar provider: the injected X-Homectl-* headers
+// flow through buildApp → authMiddleware → resolveUser to the owner row, exactly
+// as they would behind the homectl-auth-proxy in prod.
+describe("GET /api/dashboard/me (sidecar auth)", () => {
+  const sidecarApp = () => buildDashboardTestApp({ provider: createSidecarAuthProvider() });
+
+  it("resolves the owner from the sidecar's identity headers", async () => {
+    const { app, deps } = sidecarApp();
+    const owner = await provisionTestOwner(deps);
+    const res = await request(app)
+      .get("/api/dashboard/me")
+      .set("X-Homectl-User", "auth-sub-1")
+      .set("X-Homectl-Email", "owner@example.com")
+      .set("X-Homectl-Role", "owner");
+    expect(res.status).toBe(200);
+    expect(res.body.user.id).toBe(owner.id);
+  });
+
+  it("401s when the sidecar injected no identity (no session)", async () => {
+    const { app, deps } = sidecarApp();
+    await provisionTestOwner(deps);
+    const res = await request(app).get("/api/dashboard/me");
+    expect(res.status).toBe(401);
+  });
+
+  it("403s a non-owner-role principal (owner-only v1 gate)", async () => {
+    const { app, deps } = sidecarApp();
+    await provisionTestOwner(deps);
+    const res = await request(app)
+      .get("/api/dashboard/me")
+      .set("X-Homectl-User", "member-sub")
+      .set("X-Homectl-Email", "member@example.com")
+      .set("X-Homectl-Role", "member");
     expect(res.status).toBe(403);
   });
 });

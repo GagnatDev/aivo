@@ -1,13 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { buildLoginUrl } from "./auth.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { auth } from "./auth.js";
 
-describe("buildLoginUrl", () => {
-  it("round-trips a relative path", () => {
-    expect(buildLoginUrl("/usage?range=7d")).toBe("/auth/login?next=%2Fusage%3Frange%3D7d");
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("auth (auth-agnostic SPA behind the sidecar)", () => {
+  it("fetch delegates to a plain same-origin fetch, adding no auth headers", async () => {
+    const spy = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", spy);
+    const init = { headers: { Accept: "application/json" } };
+    await auth.fetch("/api/dashboard/me", init);
+    expect(spy).toHaveBeenCalledWith("/api/dashboard/me", init);
   });
 
-  it("refuses absolute and protocol-relative URLs (open-redirect guard)", () => {
-    expect(buildLoginUrl("https://evil.example")).toBe("/auth/login?next=%2F");
-    expect(buildLoginUrl("//evil.example")).toBe("/auth/login?next=%2F");
+  it("login bounces to a full page load at the app root", () => {
+    const location = { href: "" };
+    vi.stubGlobal("window", { location });
+    auth.login();
+    // A top-level navigation lets the sidecar 302 an unauthenticated request to login.
+    expect(location.href).toBe("/");
+  });
+
+  it("logout navigates to the sidecar logout path", () => {
+    const location = { href: "" };
+    vi.stubGlobal("window", { location });
+    auth.logout();
+    expect(location.href).toBe("/auth/logout");
   });
 });

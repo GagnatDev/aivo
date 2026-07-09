@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import type { UserRepository, UserRow } from "../storage/userRepository.js";
 
 // Extend Express Request with the resolved app user (the auth principal itself is
-// added by auth/vendoredHomectlAuthClient.ts).
+// added by the auth provider — see auth/index.ts).
 declare global {
   namespace Express {
     interface Request {
@@ -27,6 +27,11 @@ declare global {
  * the owner row gets 403. Relaxing this for household members later means adding
  * a lookup/link path for non-owner rows here — handlers already scope by
  * `req.userId` and need no change.
+ *
+ * The owner-claim signal is the aivo app role (`owner`) the sidecar injects as
+ * `X-Homectl-Role`. homectl-auth's global `isAdmin` is not projected through the
+ * sidecar, so to let someone claim the owner row they must hold the `owner` role
+ * in aivo's apps.json entry — least privilege, no cross-app super-admin path.
  */
 export function resolveUser(users: UserRepository): RequestHandler {
   return async (req, res, next) => {
@@ -49,7 +54,7 @@ export function resolveUser(users: UserRepository): RequestHandler {
         return;
       }
 
-      const mayClaimOwner = principal.role === "owner" || principal.isAdmin;
+      const mayClaimOwner = principal.role === "owner";
       if (!mayClaimOwner) {
         res.status(403).json({ error: "forbidden", reason: "dashboard is owner-only in v1" });
         return;

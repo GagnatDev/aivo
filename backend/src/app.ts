@@ -1,5 +1,4 @@
 import path from "node:path";
-import cookieParser from "cookie-parser";
 import express, { type Express } from "express";
 import type { AuthProvider } from "./auth/index.js";
 import { httpLogger } from "./logger.js";
@@ -10,32 +9,34 @@ import { youtubeOauthRouter, type YoutubeOauthRouteConfig } from "./routes/youtu
 export interface AppOptions {
   /** Mounts the one-time YouTube OAuth handshake when the client config exists. */
   youtubeOauth?: YoutubeOauthRouteConfig;
-  /** Mounts /auth/* and the authenticated dashboard API when provided. */
+  /** Mounts the authenticated dashboard API when provided. */
   auth?: {
     provider: AuthProvider;
-    /** Where the OAuth callback lands (env.AUTH_CALLBACK_PATH). */
-    callbackPath: string;
     dashboard: DashboardDeps;
   };
   /**
    * Directory of the built SPA (env.WEB_ROOT, set in the Docker image). Unset in
-   * dev — Vite serves the frontend. Served unauthenticated: access tokens live in
-   * browser memory only, so the HTML shell can never carry one; the SPA gates
-   * itself by bootstrapping a token and bouncing to /auth/login when it has none.
+   * dev — Vite serves the frontend. The SPA is auth-agnostic: in prod the sidecar
+   * only proxies the HTML shell to an already-authenticated session (a top-level
+   * navigation without a session is 302'd to central login before it ever reaches
+   * this app), so the shell can be served without any token handling here.
    */
   webRoot?: string;
 }
 
-// Path prefixes owned by the API/auth surfaces — everything else falls through to
-// the SPA's index.html so client-side routes survive a full page load.
+// Path prefixes owned by the API surfaces — everything else falls through to the
+// SPA's index.html so client-side routes survive a full page load. `/auth/` stays
+// listed defensively: the sidecar intercepts its callback/logout before they reach
+// this app, so any `/auth/*` that does arrive should 404, not serve the shell.
 const NON_SPA_PREFIXES = ["/api/", "/auth/", "/health", "/youtube/"];
 
 /**
  * Assemble the Express application. The HTTP surface is `/health` (k8s probes), the
- * one-time YouTube OAuth callback, the homectl-auth login/callback/logout trio, the
- * authenticated dashboard API under /api/dashboard, and the static dashboard SPA —
- * one pod serves everything (PRD §5.1). Returns the app without listening so it can
- * be driven in-process by supertest.
+ * one-time YouTube OAuth callback, the authenticated dashboard API under
+ * /api/dashboard, and the static dashboard SPA — one pod serves everything
+ * (PRD §5.1). User auth is handled by the homectl-auth-proxy sidecar in front of
+ * this app (see auth/sidecarProvider.ts); this app mounts no OAuth routes. Returns
+ * the app without listening so it can be driven in-process by supertest.
  */
 export function buildApp(options: AppOptions = {}): Express {
   const app = express();
@@ -47,12 +48,7 @@ export function buildApp(options: AppOptions = {}): Express {
   if (options.youtubeOauth) app.use(youtubeOauthRouter(options.youtubeOauth));
 
   if (options.auth) {
-    const { provider, callbackPath, dashboard } = options.auth;
-    // The OAuth state cookie round-trips through the callback (vendored client).
-    app.use(cookieParser());
-    app.get("/auth/login", provider.loginHandler);
-    app.get(callbackPath, provider.callbackHandler);
-    app.post("/auth/logout", provider.logoutHandler);
+    const { provider, dashboard } = options.auth;
     app.use(dashboardRouter(provider, dashboard));
   }
 

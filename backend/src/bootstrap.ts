@@ -107,23 +107,16 @@ export async function startServer(connectionString?: string): Promise<StartedSer
 
   // Stale approval prompts are swept by the scheduler's minutely tick (scheduler/tick.ts).
 
-  // Dashboard auth + API (phase 3): the provider is picked from env.authMode, so a
-  // local run needs no auth service. The SPA is only served when WEB_ROOT is set
-  // (the Docker image sets it; dev leaves it to Vite).
-  // The gateway logs in after the HTTP server starts, so the health probe reads a
-  // ref that's filled in below — "disconnected" until then, never a crash.
+  // Dashboard auth + API (phase 3): the provider is picked from env.authMode —
+  // `sidecar` reads the homectl-auth-proxy's injected identity headers in prod,
+  // `dev` is a fixed local principal so a local run needs no auth service. The SPA
+  // is only served when WEB_ROOT is set (the Docker image sets it; dev leaves it to
+  // Vite). The gateway logs in after the HTTP server starts, so the health probe
+  // reads a ref that's filled in below — "disconnected" until then, never a crash.
   let gatewayRef: DiscordGateway | undefined;
   const appOptions: AppOptions = {
     auth: {
-      provider: createAuthProvider({
-        mode: env.authMode,
-        authServiceUrl: env.AUTH_SERVICE_URL,
-        clientId: env.AUTH_CLIENT_ID,
-        clientSecret: env.AIVO_CLIENT_SECRET ?? null,
-        appBaseUrl: env.APP_BASE_URL,
-        callbackPath: env.AUTH_CALLBACK_PATH,
-      }),
-      callbackPath: env.AUTH_CALLBACK_PATH,
+      provider: createAuthProvider({ mode: env.authMode }),
       dashboard: {
         users: deps.users,
         llmUsage: deps.llmUsage,

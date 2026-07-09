@@ -1,9 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Committed overlays: "true" in .env.development, "false" in .env.homectl. */
+  /** Committed overlays: "true" in .env.development, "false" in .env.sidecar. */
   readonly VITE_DISABLE_AUTH?: string;
-  readonly VITE_AUTH_SERVICE_URL?: string;
 }
 
 interface ImportMeta {
