@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { downloadFile } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
 import { ConversationThread } from "../components/activity/ConversationThread.js";
 import { CHANNEL_LABELS, formatTimestamp, type Conversations } from "../lib/activity.js";
@@ -27,9 +28,26 @@ export function ActivityPage() {
             Aivo's conversation history per channel — for debugging and trust, not billing.
           </p>
         </div>
-        <button type="button" className="refresh" onClick={() => conversations.reload()}>
-          Refresh
-        </button>
+        <div className="page-actions">
+          <button
+            type="button"
+            className="refresh"
+            disabled={!selected}
+            onClick={() => {
+              if (selected) {
+                void downloadFile(
+                  `/api/dashboard/conversations/${selected.id}/export.csv`,
+                  "aivo-activity.csv",
+                );
+              }
+            }}
+          >
+            Export CSV
+          </button>
+          <button type="button" className="refresh" onClick={() => conversations.reload()}>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {conversations.error ? <div className="error-banner">{conversations.error}</div> : null}

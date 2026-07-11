@@ -1,15 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { loadBudgetSnapshot } from "../../agent/budget.js";
+import { csvField, EXPORT_MAX_ROWS } from "./csv.js";
 import { DEGRADATION_DESCRIPTIONS } from "./degradation.js";
 import type { DashboardDeps } from "./index.js";
 import { money } from "./money.js";
 
 /** Longest series/drivers window the API will aggregate in one request. */
 const MAX_RANGE_DAYS = 400;
-
-/** Ledger rows one CSV export will carry before truncating (bounds memory). */
-const EXPORT_MAX_ROWS = 50_000;
 
 const seriesQuerySchema = z.object({
   from: z.coerce.date().optional(),
@@ -21,11 +19,6 @@ const exportQuerySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });
-
-/** Quote a CSV field only when it needs it (comma, quote, or newline). */
-function csvField(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
 
 const driversQuerySchema = z.object({
   since: z.coerce.date().optional(),
