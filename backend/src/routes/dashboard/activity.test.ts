@@ -107,3 +107,47 @@ describe("GET /api/dashboard/conversations/:id/messages", () => {
     ).toBe(400);
   });
 });
+
+describe("GET /api/dashboard/conversations/:id/export.csv", () => {
+  it("downloads the thread oldest-first as CSV with RFC 4180 quoting", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const convo = await deps.conversations.getOrCreate(owner.id, "chat", "chan-1");
+    await deps.messages.insert({ conversationId: convo.id, role: "user", content: 'hi, "Aivo"' });
+    await deps.messages.insert({ conversationId: convo.id, role: "tool", content: null });
+    await deps.messages.insert({ conversationId: convo.id, role: "assistant", content: "hello!" });
+
+    const res = await request(app).get(`/api/dashboard/conversations/${convo.id}/export.csv`);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/csv/);
+    expect(res.headers["content-disposition"]).toMatch(
+      /^attachment; filename="aivo-activity-chat-\d{4}-\d{2}-\d{2}\.csv"$/,
+    );
+    expect(res.headers["x-export-truncated"]).toBeUndefined();
+    const lines = res.text.trimEnd().split("\n");
+    expect(lines[0]).toBe("created_at,role,content,tokens_in,tokens_out");
+    expect(lines).toHaveLength(4);
+    // Oldest first; commas/quotes quoted; null content and tokens export as empty fields.
+    expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z,user,"hi, ""Aivo""",,$/);
+    expect(lines[2]).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z,tool,,,$/);
+    expect(lines[3]).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z,assistant,hello!,,$/);
+  });
+
+  it("404s another user's thread and 400s a bad id", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    await provisionTestOwner(deps);
+    const other = await deps.users.upsertByDiscordId({
+      discordUserId: "someone-else",
+      displayName: null,
+      isOwner: false,
+    });
+    const foreign = await deps.conversations.getOrCreate(other.id, "chat", "chan-9");
+
+    expect(
+      (await request(app).get(`/api/dashboard/conversations/${foreign.id}/export.csv`)).status,
+    ).toBe(404);
+    expect((await request(app).get("/api/dashboard/conversations/nope/export.csv")).status).toBe(
+      400,
+    );
+  });
+});
