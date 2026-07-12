@@ -146,6 +146,33 @@ describe("runDueWork", () => {
     expect(reminded).toHaveLength(1);
   });
 
+  it("collapses same-user duplicate reminders due together into one delivery", async () => {
+    const { deps, userId } = await setupOwner(DUE_TIME);
+    const dueAt = new Date(DUE_TIME.getTime() - 60_000);
+    const first = await deps.reminders.insert({ userId, text: "kampen starter", dueAt });
+    const dup = await deps.reminders.insert({ userId, text: "  Kampen starter", dueAt });
+    await deps.reminders.insert({ userId, text: "noe annet", dueAt });
+    // Another user's identical text is their own reminder — never collapsed.
+    const { userId: otherUser } = await provisionUser(deps, "member-1");
+    await deps.reminders.insert({ userId: otherUser, text: "kampen starter", dueAt });
+    const { deliverer, reminded } = captureDeliveries();
+
+    await runDueWork(deps, null, deliverer, DUE_TIME);
+    // Ties on due_at deliver in unspecified order, so assert on normalized texts.
+    const ownerTexts = reminded
+      .filter((r) => r.user_id === userId)
+      .map((r) => r.text.trim().toLowerCase())
+      .sort();
+    expect(ownerTexts).toEqual(["kampen starter", "noe annet"]);
+    expect(reminded.filter((r) => r.user_id === otherUser)).toHaveLength(1);
+
+    // The collapsed duplicate is consumed too — it won't fire on a later tick.
+    expect((await deps.reminders.findById(first.id))?.status).toBe("delivered");
+    expect((await deps.reminders.findById(dup.id))?.status).toBe("delivered");
+    await runDueWork(deps, null, deliverer, DUE_TIME);
+    expect(reminded).toHaveLength(3);
+  });
+
   it("does not deliver cancelled reminders", async () => {
     const { deps, userId } = await setupOwner(DUE_TIME);
     const r = await deps.reminders.insert({ userId, text: "nope", dueAt: BEFORE_HOUR });
