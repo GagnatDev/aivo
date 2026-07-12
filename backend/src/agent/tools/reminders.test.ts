@@ -34,6 +34,25 @@ describe("reminder tool", () => {
     expect(list[0].text).toBe("call X");
   });
 
+  it("refuses to stack an exact duplicate of a pending reminder", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    await tool().execute({ action: "set", text: "call X", due_at: LATER }, ctx);
+    // Same instant expressed in a different offset, text differing only in case/space.
+    const dup = await tool().execute(
+      { action: "set", text: "  Call x", due_at: "2026-07-03T15:00:00Z" },
+      ctx,
+    );
+    expect(dup).toMatch(/already exists/);
+    expect(JSON.parse(await tool().execute({ action: "list" }, ctx))).toHaveLength(1);
+
+    // Same text at a different time is a distinct reminder, not a duplicate.
+    const other = await tool().execute(
+      { action: "set", text: "call X", due_at: "2026-07-03T18:00:00Z" },
+      ctx,
+    );
+    expect(other).toMatch(/Reminder set/);
+  });
+
   it("rejects a past or unparseable due_at", async () => {
     const ctx = await ctxFor(OWNER_ID);
     expect(

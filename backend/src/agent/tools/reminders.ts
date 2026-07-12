@@ -36,7 +36,9 @@ export const remindersTool: AgentTool = {
       "for snoozing). due_at must be an absolute ISO-8601 timestamp WITH a UTC offset " +
       "(e.g. 2026-07-04T17:00:00+02:00) — compute it from the current date/time and " +
       "timezone given in the system prompt; never guess. If the user's phrasing is " +
-      "ambiguous (e.g. 'at 5' could be 05:00 or 17:00), ask before setting.",
+      "ambiguous (e.g. 'at 5' could be 05:00 or 17:00), ask before setting. Only 'set' " +
+      "when the user explicitly asks to be reminded — for questions ('when is X?') " +
+      "answer from 'list' or memory; never create a reminder as a side effect.",
     parameters: {
       type: "object",
       properties: {
@@ -58,12 +60,26 @@ export const remindersTool: AgentTool = {
 
     switch (a.action) {
       case "set": {
-        if (!a.text) return "Provide the reminder text.";
+        const text = a.text;
+        if (!text) return "Provide the reminder text.";
         const due = parseDueAt(a.due_at, ctx);
         if (typeof due === "string") return due;
+        // Exact-duplicate guard: a flailing model re-issues "set" with the same text and
+        // time across turns (retries, restated requests), and every blind insert becomes
+        // another ping when the instant arrives. Same text + same instant = the same
+        // reminder, so hand back the existing row instead of stacking a copy.
+        const dup = (await ctx.deps.reminders.listPending(ctx.userId)).find(
+          (r) => sameReminderText(r.text, text) && r.due_at.getTime() === due.getTime(),
+        );
+        if (dup) {
+          return (
+            `That reminder already exists (id ${dup.id}): "${dup.text}" at ` +
+            `${dup.due_at.toISOString()} — no duplicate was created.`
+          );
+        }
         const row = await ctx.deps.reminders.insert({
           userId: ctx.userId,
-          text: a.text,
+          text,
           dueAt: due,
         });
         return `Reminder set (id ${row.id}): "${row.text}" at ${row.due_at.toISOString()}.`;
@@ -92,6 +108,11 @@ export const remindersTool: AgentTool = {
     }
   },
 };
+
+/** Whether two reminder texts are the same reminder (whitespace/case-insensitive). */
+function sameReminderText(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 /** Validate due_at: parseable and in the future. Returns the Date or an error string. */
 function parseDueAt(dueAt: string | undefined, ctx: ToolContext): Date | string {

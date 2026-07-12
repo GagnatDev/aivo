@@ -51,10 +51,24 @@ export async function runDueWork(
   // Reminders: per-user, template-rendered (zero LLM cost), so they deliver regardless
   // of the YouTube lane or budget degradation — the user explicitly asked for each one.
   // Marked delivered only after the send succeeds: a crash in between re-sends next
-  // tick (at-least-once), matching the digest's delivery semantics.
+  // tick (at-least-once), matching the digest's delivery semantics. Rows with the same
+  // user + text that come due together collapse into one send: a flailing model can
+  // stack identical reminders (or reschedule several onto the same instant), and
+  // delivering each row separately turns one nudge into a burst of pings.
+  const sentKeys = new Set<string>();
   for (const reminder of await deps.reminders.listDue(now)) {
+    const key = `${reminder.user_id}:${reminder.text.trim().toLowerCase()}`;
+    if (sentKeys.has(key)) {
+      await deps.reminders.markDelivered(reminder.id, now);
+      logger.info(
+        { userId: reminder.user_id, reminderId: reminder.id },
+        "duplicate reminder collapsed",
+      );
+      continue;
+    }
     await deliverers.reminder.deliver(reminder);
     await deps.reminders.markDelivered(reminder.id, now);
+    sentKeys.add(key);
     logger.info({ userId: reminder.user_id, reminderId: reminder.id }, "reminder delivered");
   }
 
