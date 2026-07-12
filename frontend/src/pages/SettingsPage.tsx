@@ -1,7 +1,13 @@
 import { useState } from "react";
+import { sendJson } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
 import { formatTimestamp } from "../lib/activity.js";
-import { formatHour, formatInterval, type SettingsBundle } from "../lib/settings.js";
+import {
+  formatHour,
+  formatInterval,
+  type SettingsBundle,
+  type UnforkedStatus,
+} from "../lib/settings.js";
 
 /** Persona snippets longer than this start collapsed (S-2). */
 const PERSONA_SNIPPET_CHARS = 240;
@@ -22,7 +28,115 @@ function PersonaPrompt({ prompt }: { prompt: string }) {
   );
 }
 
-/** Settings (M6) — see PRD §4.8, requirements S-1..S-5. Read-only by design. */
+/**
+ * The unforked (family meal planner) connection. The one deliberately
+ * dashboard-managed setting: the API key is a secret, so it is registered
+ * here — never pasted into Discord chat, where it would sit in the message
+ * history and the LLM context. The key is created in unforked itself
+ * (More → API keys) and verified against unforked before it is stored;
+ * it is never displayed back.
+ */
+function UnforkedCard() {
+  const status = useApi<UnforkedStatus>("/api/dashboard/unforked");
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const data = status.data;
+
+  const register = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await sendJson("/api/dashboard/unforked", "PUT", { apiKey: apiKey.trim() });
+      setApiKey("");
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect unforked? Aivo loses access until a new key is registered.")) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await sendJson("/api/dashboard/unforked", "DELETE");
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2>Unforked meal planner</h2>
+      {status.error ? <div className="error-banner">{status.error}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
+      {!data && !status.error ? <p className="muted">Loading…</p> : null}
+
+      {data && !data.configured ? (
+        <p className="muted">
+          Not available on this deployment (UNFORKED_BASE_URL is unset), so a key can't be
+          registered yet.
+        </p>
+      ) : null}
+
+      {data?.configured ? (
+        <>
+          <p className="muted overview-lines">
+            {data.connected ? (
+              <>
+                Connected{data.ownerEmail ? ` as ${data.ownerEmail}` : ""}
+                {data.keyName ? ` (key “${data.keyName}”)` : ""}
+                <br />
+                Key verified {data.verifiedAt ? formatTimestamp(data.verifiedAt) : "—"}
+              </>
+            ) : (
+              <>Not connected — Aivo can't read meal plans, shopping lists or recipes yet.</>
+            )}
+          </p>
+          <form className="settings-key-form" onSubmit={(e) => void register(e)}>
+            <input
+              className="settings-key-input"
+              type="password"
+              required
+              placeholder="ufk_…"
+              aria-label="unforked API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            <button type="submit" className="refresh" disabled={busy}>
+              {data.connected ? "Replace key" : "Register key"}
+            </button>
+            {data.connected ? (
+              <button
+                type="button"
+                className="refresh"
+                disabled={busy}
+                onClick={() => void disconnect()}
+              >
+                Disconnect
+              </button>
+            ) : null}
+          </form>
+          <p className="muted settings-note">
+            Create the key in unforked (More → API keys) and register it here — deliberately not via
+            Discord chat, so the secret never lands in the message history.
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** Settings (M6) — see PRD §4.8, requirements S-1..S-5. Read-only except the unforked connection. */
 export function SettingsPage() {
   const settings = useApi<SettingsBundle>("/api/dashboard/settings");
   const data = settings.data;
@@ -33,8 +147,8 @@ export function SettingsPage() {
         <div>
           <h1>Settings</h1>
           <p className="muted">
-            Everything here is changed by talking to Aivo in Discord — this page only shows the
-            current state.
+            Most of this is changed by talking to Aivo in Discord — this page shows the current
+            state. The unforked connection is the exception: its API key is registered here.
           </p>
         </div>
         <button type="button" className="refresh" onClick={() => settings.reload()}>
@@ -100,6 +214,8 @@ export function SettingsPage() {
             )}
             <p className="muted settings-note">Change via Discord: “be more concise”.</p>
           </div>
+
+          <UnforkedCard />
         </div>
       ) : null}
     </section>

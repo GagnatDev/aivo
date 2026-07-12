@@ -163,6 +163,17 @@ export interface SettingsPermissions {
   updated_at: Generated<Timestamp>;
 }
 
+export interface UnforkedConnection {
+  api_key: string;
+  connected_by_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  key_name: string | null;
+  owner_email: string | null;
+  updated_at: Generated<Timestamp>;
+  verified_at: Generated<Timestamp>;
+}
+
 export interface Users {
   auth_sub: string | null;
   created_at: Generated<Timestamp>;
@@ -227,6 +238,7 @@ export interface DB {
   reminders: Reminders;
   settings: Settings;
   settings_permissions: SettingsPermissions;
+  unforked_connection: UnforkedConnection;
   users: Users;
   videos: Videos;
   youtube_account: YoutubeAccount;

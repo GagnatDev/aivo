@@ -13,7 +13,9 @@ import { MessageRepository } from "../storage/messageRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import { ProfileRepository } from "../storage/profileRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
+import { UnforkedConnectionRepository } from "../storage/unforkedConnectionRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
+import type { UnforkedClient } from "../unforked/client.js";
 import { VideoRepository } from "../storage/videoRepository.js";
 import { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
 import { testDb } from "./db.js";
@@ -31,6 +33,8 @@ export interface DashboardTestOptions {
   gatewayStatus?: () => boolean;
   /** Auth provider under test; defaults to the offline dev provider. */
   provider?: AuthProvider;
+  /** unforked client (usually test/fakeUnforked.ts); omitted = "not configured". */
+  unforked?: UnforkedClient | null;
 }
 
 /** The dashboard app wired to the test DB with the dev auth provider by default. */
@@ -51,6 +55,8 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
     profiles: new ProfileRepository(db),
     feedback: new FeedbackRepository(db),
     youtubeAccount: new YoutubeAccountRepository(db),
+    unforkedConnection: new UnforkedConnectionRepository(db),
+    unforked: options.unforked ?? null,
     config: {
       memoryInjectLimit: options.memoryInjectLimit ?? 20,
     },

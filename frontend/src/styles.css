@@ -905,3 +905,28 @@ fieldset.seg-group {
   white-space: nowrap;
   border: 0;
 }
+
+/* ── Unforked connection (Settings) ── */
+
+.settings-key-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.settings-key-input {
+  flex: 1 1 200px;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.settings-key-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

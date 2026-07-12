@@ -26,10 +26,12 @@ import { ProfileRepository } from "./storage/profileRepository.js";
 import { ReminderRepository } from "./storage/reminderRepository.js";
 import { SettingsPermissionsRepository } from "./storage/settingsPermissionsRepository.js";
 import { SettingsRepository } from "./storage/settingsRepository.js";
+import { UnforkedConnectionRepository } from "./storage/unforkedConnectionRepository.js";
 import { UserRepository } from "./storage/userRepository.js";
 import { VideoRepository } from "./storage/videoRepository.js";
 import { YoutubeAccountRepository } from "./storage/youtubeAccountRepository.js";
 import { YoutubeChannelRepository } from "./storage/youtubeChannelRepository.js";
+import { createUnforkedClient } from "./unforked/client.js";
 import { createYoutubeDataApi } from "./youtube/api.js";
 import { createWatchPageTranscriptSource } from "./youtube/transcripts.js";
 import { loadEnv, type Env } from "./config/env.js";
@@ -69,6 +71,17 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   const pool = createPool(connectionString ?? env.DATABASE_URL);
   const db = createDb(pool);
 
+  // unforked (family meal planner): the client reads the API key per call from
+  // unforked_connection, so a key registered/replaced on the dashboard applies
+  // without a restart. Null until UNFORKED_BASE_URL is configured.
+  const unforkedConnection = new UnforkedConnectionRepository(db);
+  const unforked = env.UNFORKED_BASE_URL
+    ? createUnforkedClient({
+        baseUrl: env.UNFORKED_BASE_URL,
+        getApiKey: () => unforkedConnection.findApiKey(),
+      })
+    : null;
+
   const deps: AgentDeps = {
     users: new UserRepository(db),
     conversations: new ConversationRepository(db),
@@ -89,6 +102,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     digestItems: new DigestItemRepository(db),
     feedback: new FeedbackRepository(db),
     llm: createOpenAiProvider({ apiKey: env.LLM_API_KEY, baseURL: env.LLM_BASE_URL }),
+    unforked,
     clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
     config: {
@@ -135,6 +149,8 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         profiles: deps.profiles,
         feedback: deps.feedback,
         youtubeAccount: deps.youtubeAccount,
+        unforkedConnection,
+        unforked,
         config: {
           memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
         },

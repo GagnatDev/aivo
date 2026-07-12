@@ -1,4 +1,5 @@
 import type { LlmProvider } from "../llm/provider.js";
+import type { UnforkedClient } from "../unforked/client.js";
 import type { Clock } from "./clock.js";
 import type { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import type { ConversationRepository } from "../storage/conversationRepository.js";
@@ -64,6 +65,12 @@ export interface AgentDeps {
   digestItems: DigestItemRepository;
   feedback: FeedbackRepository;
   llm: LlmProvider;
+  /**
+   * Read client for unforked, the family meal planner — null until
+   * UNFORKED_BASE_URL is configured. The API key it sends is read per call from
+   * unforked_connection (registered via the dashboard, see routes/dashboard/unforked.ts).
+   */
+  unforked: UnforkedClient | null;
   /** Reads "now" for time-dependent business logic (rollover, expiry, staleness). */
   clock: Clock;
   /** Discord id of the owner; flags is_owner on JIT provisioning. */

@@ -12,7 +12,9 @@ import type { MessageRepository } from "../../storage/messageRepository.js";
 import type { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
 import type { ProfileRepository } from "../../storage/profileRepository.js";
 import type { SettingsRepository } from "../../storage/settingsRepository.js";
+import type { UnforkedConnectionRepository } from "../../storage/unforkedConnectionRepository.js";
 import type { UserRepository } from "../../storage/userRepository.js";
+import type { UnforkedClient } from "../../unforked/client.js";
 import type { VideoRepository } from "../../storage/videoRepository.js";
 import type { YoutubeAccountRepository } from "../../storage/youtubeAccountRepository.js";
 import { activityRoutes } from "./activity.js";
@@ -22,6 +24,7 @@ import { profilesRoutes } from "./profiles.js";
 import { modelsRoutes } from "./models.js";
 import { overviewRoutes } from "./overview.js";
 import { settingsRoutes } from "./settings.js";
+import { unforkedRoutes } from "./unforked.js";
 import { usageRoutes } from "./usage.js";
 
 /**
@@ -43,6 +46,12 @@ export interface DashboardDeps {
   profiles: ProfileRepository;
   feedback: FeedbackRepository;
   youtubeAccount: YoutubeAccountRepository;
+  unforkedConnection: UnforkedConnectionRepository;
+  /**
+   * unforked machine-API client for verifying keys at registration; null until
+   * UNFORKED_BASE_URL is configured (the section shows "not configured").
+   */
+  unforked: UnforkedClient | null;
   /** App-config values surfaced read-only (PRD §4.5 — never the raw env). */
   config: {
     /** AGENT_MEMORY_INJECT_LIMIT — max memories injected into agent context. */
@@ -85,6 +94,7 @@ export function dashboardRouter(auth: AuthProvider, deps: DashboardDeps): Router
   router.use(digestsRoutes(deps));
   router.use(activityRoutes(deps));
   router.use(settingsRoutes(deps));
+  router.use(unforkedRoutes(deps));
   router.use(profilesRoutes(deps));
 
   return router;
