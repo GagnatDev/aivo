@@ -54,6 +54,13 @@ spec:
             # Behind the sidecar in prod: read the injected X-Homectl-* headers.
             - name: AUTH_MODE
               value: sidecar
+            # unforked's machine API (unforked docs/aivo-integration.md): the
+            # ingress-less unforked-machine Service, reachable only in-cluster
+            # and NetworkPolicy-restricted to pods labelled app=aivo (this pod).
+            # The API key is NOT an env/Secret — the owner registers it from the
+            # dashboard's Settings page and it lives in the database.
+            - name: UNFORKED_BASE_URL
+              value: http://unforked-machine.homectl
           envFrom:
             # DATABASE_URL (Terraform-managed). This Secret also carries the sidecar's
             # AUTH_CLIENT_SECRET/COOKIE_KEY (referenced individually below) — the app

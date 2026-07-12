@@ -47,6 +47,15 @@ describe("selectToolSchemas", () => {
     expect(names("What's My BUDGET?")).toContain("budget");
   });
 
+  it("includes unforked when the message is about meals, recipes or shopping", () => {
+    expect(names("what's for dinner on Thursday?")).toContain("unforked");
+    expect(names("what meals are planned this week?")).toContain("unforked");
+    expect(names("give me the shopping list for next week")).toContain("unforked");
+    expect(names("I have chicken thighs and leeks in the fridge, what can I make?")).toContain(
+      "unforked",
+    );
+  });
+
   // The owner writes in Norwegian as often as English; an English-only gate silently
   // strips the capability for those turns (the model can't call a schema it never saw).
   describe("Norwegian phrasing (owner's language)", () => {
@@ -77,6 +86,16 @@ describe("selectToolSchemas", () => {
     it("includes youtube_digest for Norwegian digest phrasings", () => {
       expect(names("vis meg videoene i sammendraget")).toContain("youtube_digest");
       expect(names("demp den kanalen")).toContain("youtube_digest");
+    });
+
+    it("includes unforked for Norwegian meal/recipe/shopping phrasings", () => {
+      expect(names("hva blir middag på torsdag?")).toContain("unforked");
+      expect(names("hva står på ukemenyen?")).toContain("unforked");
+      expect(names("vis handlelista for neste uke")).toContain("unforked");
+      expect(names("jeg har kyllinglår og purre i kjøleskapet, hva kan jeg lage?")).toContain(
+        "unforked",
+      );
+      expect(names("finn en oppskrift på pannekaker")).toContain("unforked");
     });
 
     it("still gates tools out of ordinary Norwegian small talk", () => {

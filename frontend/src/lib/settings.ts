@@ -26,6 +26,17 @@ export interface SettingsBundle {
   };
 }
 
+/** The unforked meal-planner connection (backend routes/dashboard/unforked.ts). */
+export interface UnforkedStatus {
+  /** False until UNFORKED_BASE_URL is set on the deployment. */
+  configured: boolean;
+  /** True once an API key is registered (the key itself is never sent back). */
+  connected: boolean;
+  ownerEmail: string | null;
+  keyName: string | null;
+  verifiedAt: string | null;
+}
+
 /** "07:00" from the digest hour. */
 export function formatHour(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;

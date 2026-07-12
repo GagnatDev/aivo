@@ -34,6 +34,7 @@ Without Docker, point `TEST_DATABASE_URL` at a disposable Postgres instead.
 - `youtube/` — YouTube Data API + transcript ports (network impls behind interfaces; fakes in `test/`).
 - `scheduler/` — `tick.ts` (testable `runDueWork`) + `cron.ts` (thin node-cron wiring).
 - `llm/` — provider-agnostic `LlmProvider` interface + `openaiProvider.ts` + error taxonomy.
+- `unforked/` — client for unforked's machine API (the family meal planner; see unforked docs/aivo-integration.md). Its API key is registered on the dashboard Settings page and stored in `unforked_connection` — never via chat or env.
 - `db/` — Kysely wiring, pool, migration runner, and **generated** `schema.ts` (do not edit — run `pnpm --filter @aivo/backend db:codegen`; hand-authored enums live in `schema.enums.ts`).
 - `config/` — Zod-validated env (`loadEnv()` + schema; no eager singleton).
 - `routes/` — Express endpoints: health, YouTube OAuth, dashboard API (`/api/dashboard/*`).

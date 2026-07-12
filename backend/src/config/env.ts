@@ -58,6 +58,14 @@ const EnvSchema = z.object({
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 
+  // unforked (family meal planner) machine API — the in-cluster, ingress-less
+  // `unforked-machine` Service (unforked docs/aivo-integration.md), e.g.
+  // http://unforked-machine.homectl. The API key deliberately does NOT live in
+  // the env: the owner registers it from the dashboard's Settings page and it
+  // is stored in the unforked_connection table. Unset disables the capability
+  // (the tool and the dashboard section report "not configured").
+  UNFORKED_BASE_URL: z.string().url().optional(),
+
   // Dashboard auth. Aivo sits behind the homectl-auth-proxy sidecar
   // (homectl-auth docs/sidecar/integration.md): all OAuth config (PUBLIC_AUTH_URL,
   // AUTH_CLIENT_ID/SECRET, COOKIE_KEY, ...) lives on the *sidecar* container, not

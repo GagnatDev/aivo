@@ -1,4 +1,5 @@
 import type { LlmProvider } from "../llm/provider.js";
+import type { UnforkedClient } from "../unforked/client.js";
 import type { AgentConfig, AgentDeps } from "../agent/deps.js";
 import { systemClock, type Clock } from "../agent/clock.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
@@ -65,6 +66,7 @@ export function makeAgentDeps(
   llm: LlmProvider = makeFakeLlm([]),
   config: Partial<AgentConfig> = {},
   clock: Clock = systemClock,
+  unforked: UnforkedClient | null = null,
 ): AgentDeps {
   const db = testDb();
   return {
@@ -87,6 +89,7 @@ export function makeAgentDeps(
     digestItems: new DigestItemRepository(db),
     feedback: new FeedbackRepository(db),
     llm,
+    unforked,
     clock,
     ownerDiscordUserId: OWNER_ID,
     config: { ...TEST_AGENT_CONFIG, ...config },

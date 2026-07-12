@@ -36,6 +36,42 @@ export async function getJson<T>(path: string): Promise<T> {
 }
 
 /**
+ * Send a mutating dashboard request (PUT/DELETE) with an optional JSON body.
+ * Same 401 semantics as getJson: bounce through login and never resolve.
+ * Returns the parsed JSON body, or undefined for a 204.
+ */
+export async function sendJson<T>(
+  path: string,
+  method: "PUT" | "POST" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  const res = await auth.fetch(path, {
+    method,
+    headers: {
+      Accept: "application/json",
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  if (res.status === 401) {
+    auth.login();
+    return new Promise<T>(() => {});
+  }
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const parsed = (await res.json()) as { error?: string; reason?: string };
+      message = parsed.reason ?? parsed.error ?? message;
+    } catch {
+      // Non-JSON error body — keep the status message.
+    }
+    throw new ApiError(res.status, message);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/**
  * Download an authenticated resource (the CSV export) as a browser file save.
  * A same-origin fetch carries the session cookie so the sidecar authenticates it;
  * the blob is handed to a temporary object-URL anchor for the save.
