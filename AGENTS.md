@@ -1,11 +1,8 @@
 # AGENTS.md
 
-Aivo is a Discord-native personal AI agent: a backend that receives Discord messages,
-runs an in-house LLM tool-calling loop with cost control and an owner-approval gate, and
-persists everything to Postgres. A read-only web dashboard (phase 3) rides along as a
-`frontend/` workspace served by the same backend pod. See [`docs/concept.md`](docs/concept.md)
-for the why, [`docs/technical-overview.md`](docs/technical-overview.md) for the how, and
-[`docs/phase-3-web-dashboard-prd.md`](docs/phase-3-web-dashboard-prd.md) for the dashboard.
+See [`README.md`](README.md) for what this repo is and links to the docs. This file
+covers what an agent working in this codebase needs beyond that: commands, source
+layout, and conventions.
 
 ## Commands
 
