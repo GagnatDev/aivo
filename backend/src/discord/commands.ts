@@ -55,15 +55,25 @@ interface CommandDef {
  */
 const COMMANDS: Record<string, CommandDef> = {
   models: {
-    description: "List the active models with their cheap/premium role and prices.",
+    description: "List the active models with the tier slots they fill and their prices.",
     async run({ deps }) {
-      const rows = await deps.modelPricing.listActive();
+      const [rows, assignments] = await Promise.all([
+        deps.modelPricing.listActive(),
+        deps.modelPricing.listAssignments(),
+      ]);
       if (rows.length === 0) return "No models are configured yet.";
       const lines = rows.map((r) => {
-        const role = r.tier_role ?? "unassigned";
+        const roles = assignments
+          .filter((a) => a.model_id === r.model_id)
+          .map((a) => `${a.capability}:${a.tier_role}`);
+        const role = roles.length > 0 ? roles.join(", ") : "unassigned";
         const input = Number(r.input_cost_per_mtok_cents);
         const output = Number(r.output_cost_per_mtok_cents);
-        return `• ${r.model_id} — ${role} — in ${input}¢ / out ${output}¢ per Mtok (${r.currency})`;
+        const audio =
+          r.audio_cost_per_min_cents != null
+            ? `, audio ${Number(r.audio_cost_per_min_cents)}¢/min`
+            : "";
+        return `• ${r.model_id} — ${role} — in ${input}¢ / out ${output}¢ per Mtok${audio} (${r.currency})`;
       });
       return `**Available models**\n${lines.join("\n")}`;
     },

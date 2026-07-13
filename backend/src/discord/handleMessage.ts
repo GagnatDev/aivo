@@ -1,5 +1,6 @@
 import { runAgent } from "../agent/agent.js";
 import type { AgentDeps } from "../agent/deps.js";
+import { transcribeVoiceMessage, type VoiceAttachment } from "../agent/transcription.js";
 
 /**
  * The dependencies the message core needs, injected so the core stays free of
@@ -20,7 +21,18 @@ export interface IncomingMessage {
   channel?: "chat" | "youtube";
   /** True when the message replies to one of Aivo's own messages (digest feedback). */
   isReplyToAgent?: boolean;
+  /** Present when the message is a Discord voice message (transcribed before the turn). */
+  voice?: VoiceAttachment;
 }
+
+// A voice message's transcript is persisted as the user turn's content, prefixed so the
+// history (and the model) reads it as spoken — the model is then lenient with the small
+// disfluencies transcription leaves in. The `stt` llm_usage row is the durable proof it
+// was audio.
+const VOICE_PREFIX = "🎤 (voice message) ";
+// Persisted when a voice message can't be transcribed (too long / STT unavailable), so
+// the conversation still records that something was sent.
+const VOICE_PLACEHOLDER = "🎤 (voice message)";
 
 export interface HandleMessageResult {
   /** The text to send back to Discord. */
@@ -58,21 +70,42 @@ export async function handleIncomingMessage(
     msg.channelId,
   );
 
+  // Voice message: transcribe up front and run the rest of the turn on the transcript.
+  // A rejection (too long) or STT failure short-circuits to a friendly reply with no LLM
+  // turn — but we still record the inbound so history reflects that a note arrived.
+  let voiceAlertPct: number | undefined;
+  let content = msg.content;
+  if (msg.voice) {
+    const outcome = await transcribeVoiceMessage(deps, user.id, msg.voice);
+    if (outcome.kind !== "ok") {
+      await deps.messages.insert({
+        conversationId: conversation.id,
+        role: "user",
+        content: VOICE_PLACEHOLDER,
+        discordMessageId: msg.id,
+      });
+      return { reply: outcome.reply, conversationId: conversation.id };
+    }
+    // Combine any typed text with the transcript (voice notes are normally text-empty).
+    content = [`${VOICE_PREFIX}${outcome.text}`, msg.content.trim()].filter(Boolean).join("\n");
+    voiceAlertPct = outcome.alertPct;
+  }
+
   await deps.messages.insert({
     conversationId: conversation.id,
     role: "user",
-    content: msg.content,
+    content,
     discordMessageId: msg.id,
   });
 
   // A reply to Aivo in #youtube is digest feedback (docs/concept.md: freeform replies
   // fold into the interest profile). Captured deterministically here — the next digest
   // run folds it — and the turn still runs so the user gets a conversational response.
-  if (msg.channel === "youtube" && msg.isReplyToAgent && msg.content.trim()) {
+  if (msg.channel === "youtube" && msg.isReplyToAgent && content.trim()) {
     await deps.feedback.insert({
       userId: user.id,
       signal: "freeform",
-      freeformText: msg.content.trim(),
+      freeformText: content.trim(),
     });
   }
 
@@ -83,11 +116,18 @@ export async function handleIncomingMessage(
     triggerMessageId: msg.id,
   });
 
+  // Surface whichever budget alert crossed higher — transcription may have tipped a
+  // threshold before the chat turn ran.
+  const alertPct =
+    voiceAlertPct != null && result.alertPct != null
+      ? Math.max(voiceAlertPct, result.alertPct)
+      : (result.alertPct ?? voiceAlertPct);
+
   return {
     reply: result.reply,
     conversationId: result.conversationId,
     pendingApprovalId: result.pendingApprovalId,
-    alertPct: result.alertPct,
+    alertPct,
   };
 }
 

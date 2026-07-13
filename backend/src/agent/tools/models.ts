@@ -6,19 +6,26 @@ const modelsArgs = z.object({
   model_id: z.string().optional(),
   input_cost_per_mtok_cents: z.number().nonnegative().optional(),
   output_cost_per_mtok_cents: z.number().nonnegative().optional(),
+  audio_cost_per_min_cents: z.number().nonnegative().optional(),
+  capabilities: z.array(z.enum(["chat", "audio", "vision"])).optional(),
   role: z.enum(["cheap", "premium"]).optional(),
+  capability: z.enum(["chat", "audio", "vision"]).optional(),
 });
 
 export const modelsTool: AgentTool = {
   // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
-  gate: /\b(models?|prices?|pricing|scaleway|llama|mtok|per[- ]?token|tier|premium|cheap|modell\w*|pris\w*)\b/i,
+  gate: /\b(models?|prices?|pricing|scaleway|llama|whisper|voxtral|mtok|per[- ]?token|tier|premium|cheap|capabilit\w*|audio|voice|transcri\w*|modell\w*|pris\w*|stemme|tale|lyd)\b/i,
   schema: {
     name: "models",
     description:
-      "Inspect or configure the model/pricing table. 'list' shows models, their cheap/premium " +
-      "role, and prices in cents per 1,000,000 tokens (anyone). 'set_price' adds a model (new " +
-      "model_id) or updates its prices; 'set_tier_role' assigns the cheap/premium role (a model " +
-      "is used for chat only once it holds a role). set_price and set_tier_role are OWNER-ONLY: " +
+      "Inspect or configure the model/pricing table. 'list' shows models with their " +
+      "capabilities (chat|audio|vision), the slots they fill (e.g. chat:cheap — aivo uses a " +
+      "model only for slots it holds), token prices (cents per 1,000,000 tokens) and, for " +
+      "audio models, the per-minute audio price (anyone). 'set_price' adds a model (new " +
+      "model_id, optionally with capabilities and an audio per-minute price) or updates prices; " +
+      "'set_tier_role' points a (capability, cheap|premium) slot at a model — pass 'capability' " +
+      "when the model has several; one model may fill many slots. Audio models (e.g. Scaleway " +
+      "whisper/voxtral) transcribe voice messages. set_price and set_tier_role are OWNER-ONLY: " +
       "call them only when the owner explicitly asks. You cannot look up prices — never guess or " +
       "invent them; pass only figures the owner stated exactly, and ask if you don't have them.",
     parameters: {
@@ -34,10 +41,26 @@ export const modelsTool: AgentTool = {
           type: "number",
           description: "cents per 1M output tokens (set_price)",
         },
+        audio_cost_per_min_cents: {
+          type: "number",
+          description: "cents per minute of audio, for audio models (set_price)",
+        },
+        capabilities: {
+          type: "array",
+          items: { type: "string", enum: ["chat", "audio", "vision"] },
+          description: "what the model can do; defaults to chat when adding a model (set_price)",
+        },
         role: {
           type: "string",
           enum: ["cheap", "premium"],
-          description: "tier to assign (set_tier_role)",
+          description: "tier slot to assign (set_tier_role)",
+        },
+        capability: {
+          type: "string",
+          enum: ["chat", "audio", "vision"],
+          description:
+            "which capability's slot to assign (set_tier_role); required when the model " +
+            "declares more than one capability",
         },
       },
       required: ["action"],
@@ -49,13 +72,21 @@ export const modelsTool: AgentTool = {
     const { modelPricing } = ctx.deps;
     switch (p.value.action) {
       case "list": {
-        const rows = await modelPricing.listActive();
+        const [rows, assignments] = await Promise.all([
+          modelPricing.listActive(),
+          modelPricing.listAssignments(),
+        ]);
         return JSON.stringify(
           rows.map((r) => ({
             model_id: r.model_id,
-            role: r.tier_role,
+            roles: assignments
+              .filter((a) => a.model_id === r.model_id)
+              .map((a) => `${a.capability}:${a.tier_role}`),
+            capabilities: r.capabilities,
             input_cents_per_mtok: Number(r.input_cost_per_mtok_cents),
             output_cents_per_mtok: Number(r.output_cost_per_mtok_cents),
+            audio_cents_per_min:
+              r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
             currency: r.currency,
           })),
         );
@@ -73,14 +104,36 @@ export const modelsTool: AgentTool = {
           modelId: p.value.model_id,
           inputCostPerMtokCents: p.value.input_cost_per_mtok_cents,
           outputCostPerMtokCents: p.value.output_cost_per_mtok_cents,
+          ...(p.value.capabilities ? { capabilities: p.value.capabilities } : {}),
+          ...(p.value.audio_cost_per_min_cents !== undefined
+            ? { audioCostPerMinCents: p.value.audio_cost_per_min_cents }
+            : {}),
         });
-        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok.`;
+        const audioNote =
+          row.audio_cost_per_min_cents != null
+            ? `, audio ${Number(row.audio_cost_per_min_cents)}¢/min`
+            : "";
+        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok${audioNote}. Capabilities: ${row.capabilities.join(", ")}.`;
       }
       case "set_tier_role": {
         if (!ctx.isOwner) return OWNER_ONLY;
         if (!p.value.model_id || !p.value.role) return "Provide model_id and role (cheap|premium).";
-        const row = await modelPricing.setTierRole(p.value.model_id, p.value.role);
-        return row ? `${row.model_id} is now the ${row.tier_role} model.` : "No such model id.";
+        const result = await modelPricing.setTierRole(
+          p.value.model_id,
+          p.value.role,
+          p.value.capability,
+        );
+        if (!result.ok) {
+          switch (result.reason) {
+            case "unknown_model":
+              return "No such model id.";
+            case "ambiguous_capability":
+              return "That model has several capabilities — say which slot to assign (capability: chat|audio|vision).";
+            case "capability_not_held":
+              return "That model isn't declared capable of that — update its capabilities via set_price first if it really is.";
+          }
+        }
+        return `${result.row.model_id} is now the ${p.value.role} ${result.capability} model.`;
       }
     }
   },

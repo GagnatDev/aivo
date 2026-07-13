@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -12,6 +12,8 @@ import type {
   LlmProvider,
   ToolCall,
   ToolSchema,
+  TranscriptionRequest,
+  TranscriptionResult,
 } from "./provider.js";
 import { estimateRequestTokens } from "./tokens.js";
 
@@ -121,6 +123,25 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
 
     countTokens(messages: ChatMessage[], tools?: ToolSchema[]): number {
       return estimateRequestTokens(messages, tools);
+    },
+
+    async transcribe(req: TranscriptionRequest): Promise<TranscriptionResult> {
+      try {
+        // `toFile` wraps the in-memory buffer as the multipart upload the SDK expects;
+        // the filename's extension + contentType tell the provider the audio format.
+        const file = await toFile(req.audio, req.filename, { type: req.contentType });
+        const res = await client.audio.transcriptions.create({ file, model: req.model });
+        // Some OpenAI-compatible servers include a `duration` (seconds) in the response;
+        // it's optional in the SDK types, so read it defensively — the caller falls back
+        // to Discord's duration for cost metering when it's absent.
+        const duration = (res as { duration?: number }).duration;
+        return {
+          text: res.text ?? "",
+          ...(typeof duration === "number" ? { durationSeconds: duration } : {}),
+        };
+      } catch (err) {
+        throw toLlmProviderError(err);
+      }
     },
   };
 }

@@ -26,14 +26,25 @@ afterEach(async () => {
     modelId: "llama-3.1-8b-instruct",
     inputCostPerMtokCents: 20,
     outputCostPerMtokCents: 20,
+    capabilities: ["chat"],
   });
   await repo.upsertModel({
     modelId: "llama-3.3-70b-instruct",
     inputCostPerMtokCents: 90,
     outputCostPerMtokCents: 90,
+    capabilities: ["chat"],
   });
-  await repo.setTierRole("llama-3.1-8b-instruct", "cheap");
-  await repo.setTierRole("llama-3.3-70b-instruct", "premium");
+  await repo.upsertModel({
+    modelId: "voxtral-small-24b-2507",
+    inputCostPerMtokCents: 15,
+    outputCostPerMtokCents: 35,
+    capabilities: ["chat", "audio"],
+    audioCostPerMinCents: 0.03,
+  });
+  await repo.setTierRole("llama-3.1-8b-instruct", "cheap", "chat");
+  await repo.setTierRole("llama-3.3-70b-instruct", "premium", "chat");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap", "audio");
+  await repo.setTierRole("voxtral-small-24b-2507", "premium", "audio");
 });
 
 describe("models tool authorization", () => {
@@ -74,5 +85,63 @@ describe("models tool authorization", () => {
     const ctx = await ctxFor("not-the-owner");
     const rows = JSON.parse(await tool("models").execute({ action: "list" }, ctx));
     expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("list surfaces capabilities, filled slots, and the audio per-minute price", async () => {
+    const ctx = await ctxFor("not-the-owner");
+    const rows = JSON.parse(await tool("models").execute({ action: "list" }, ctx));
+    const voxtral = rows.find((r: { model_id: string }) => r.model_id === "voxtral-small-24b-2507");
+    expect(voxtral.capabilities).toContain("audio");
+    expect(voxtral.audio_cents_per_min).toBe(0.03);
+    expect(voxtral.roles).toEqual(["audio:cheap", "audio:premium"]);
+    const chat = rows.find((r: { model_id: string }) => r.model_id === "llama-3.3-70b-instruct");
+    expect(chat.capabilities).toEqual(["chat"]);
+    expect(chat.audio_cents_per_min).toBeNull();
+    expect(chat.roles).toEqual(["chat:premium"]);
+  });
+
+  it("set_tier_role wants an explicit capability for a multi-capability model", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const ambiguous = await tool("models").execute(
+      { action: "set_tier_role", model_id: "voxtral-small-24b-2507", role: "cheap" },
+      ctx,
+    );
+    expect(ambiguous).toMatch(/several capabilities/);
+    // With the capability given, voxtral takes the cheap CHAT slot; audio is untouched.
+    const res = await tool("models").execute(
+      {
+        action: "set_tier_role",
+        model_id: "voxtral-small-24b-2507",
+        role: "cheap",
+        capability: "chat",
+      },
+      ctx,
+    );
+    expect(res).toBe("voxtral-small-24b-2507 is now the cheap chat model.");
+    expect((await ctx.deps.modelPricing.getByTier("cheap", "chat"))?.model_id).toBe(
+      "voxtral-small-24b-2507",
+    );
+    expect((await ctx.deps.modelPricing.getByTier("premium", "chat"))?.model_id).toBe(
+      "llama-3.3-70b-instruct",
+    );
+  });
+
+  it("lets the owner add an audio model with capabilities and a per-minute price", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const res = await tool("models").execute(
+      {
+        action: "set_price",
+        model_id: "some-stt-model",
+        input_cost_per_mtok_cents: 0,
+        output_cost_per_mtok_cents: 0,
+        capabilities: ["audio"],
+        audio_cost_per_min_cents: 4,
+      },
+      ctx,
+    );
+    expect(res).toMatch(/audio 4¢\/min/);
+    const row = await ctx.deps.modelPricing.getByModelId("some-stt-model");
+    expect(row?.capabilities).toEqual(["audio"]);
+    expect(Number(row?.audio_cost_per_min_cents)).toBe(4);
   });
 });

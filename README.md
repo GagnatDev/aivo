@@ -32,6 +32,22 @@ TypeScript on Node, pnpm workspaces (`backend/`, `frontend/`). Express + discord
 backend, Postgres via Kysely, an OpenAI-SDK-compatible LLM provider. The frontend is a
 Vite + React SPA. Biome for lint/format, Vitest for tests.
 
+## Audio model pricing
+
+Voice messages are transcribed by Scaleway audio models, whose billing doesn't fit the
+per-token pricing used for chat, so `model_pricing` carries a separate per-minute audio
+price (`audio_cost_per_min_cents`) and STT cost is metered as rate × duration. The quirk:
+Scaleway bills the two models differently. `whisper-large-v3` is genuinely priced per
+audio minute (€0.003/min), so the linear formula is exact for it. `voxtral-small-24b-2507`
+is priced per *token* (€0.15/M in, €0.35/M out): audio input tokenizes at 1 token per
+80 ms (750 tokens per minute) and is **rounded up to 30-second chunks** — a 10 s clip
+bills as a full 30 s — plus the transcript itself as output tokens. Its seeded rate
+(0.03¢/min) is a flat equivalent of that shape, set slightly high so short clips' chunk
+round-up never under-counts. Voxtral — ~10× cheaper than whisper per minute *and* the
+stronger transcriber — fills both audio tier slots in `model_tier_assignments`, so
+transcription always uses it and budget degradation has nothing cheaper to reach for;
+whisper stays priced but unassigned, one `set_tier_role` away if ever wanted.
+
 ## Getting started
 
 Requires Node (see `.nvmrc`), pnpm, and Docker (for backend tests). Copy `.env.example`

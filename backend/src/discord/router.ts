@@ -1,5 +1,12 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type Message } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  type Message,
+} from "discord.js";
 import { resumeApprovedAgent } from "../agent/agent.js";
+import type { VoiceAttachment } from "../agent/transcription.js";
 import type { DiscordConfig } from "./config.js";
 import {
   handleIncomingMessage,
@@ -9,14 +16,35 @@ import {
 } from "./handleMessage.js";
 import { withTyping } from "./typing.js";
 
+/**
+ * Pull the voice-message payload off a Discord message, or null if it isn't one. Discord
+ * flags voice messages with `IsVoiceMessage` and attaches exactly one audio file carrying
+ * its duration and byte size, so the caps can be checked before any download. This is the
+ * only place discord.js attachment shapes are read; the result is plain data.
+ */
+function extractVoice(message: Message): VoiceAttachment | undefined {
+  if (!message.flags.has(MessageFlags.IsVoiceMessage)) return undefined;
+  const a = message.attachments.first();
+  if (!a) return undefined;
+  return {
+    url: a.url,
+    contentType: a.contentType ?? "audio/ogg",
+    durationSecs: a.duration ?? 0,
+    sizeBytes: a.size,
+    filename: a.name ?? "voice-message.ogg",
+  };
+}
+
 /** Normalize a discord.js message to the plain shape the core operates on. */
 export function normalize(message: Message): IncomingMessage {
+  const voice = extractVoice(message);
   return {
     id: message.id,
     authorId: message.author.id,
     authorDisplayName: message.member?.displayName ?? message.author.username,
     channelId: message.channelId,
     content: message.content,
+    ...(voice ? { voice } : {}),
   };
 }
 

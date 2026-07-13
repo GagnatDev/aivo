@@ -54,6 +54,28 @@ export interface ChatResult {
   usage: TokenUsage;
 }
 
+/** One audio file to transcribe, held in memory (aivo has no object storage). */
+export interface TranscriptionRequest {
+  /** The transcription model id (e.g. a Scaleway whisper/voxtral id). */
+  model: string;
+  /** The raw audio bytes. */
+  audio: Buffer;
+  /** File name whose extension signals the format to the provider (e.g. `voice.ogg`). */
+  filename: string;
+  /** MIME type of the audio (e.g. `audio/ogg`). */
+  contentType: string;
+}
+
+export interface TranscriptionResult {
+  /** The transcribed text. */
+  text: string;
+  /**
+   * Audio length in seconds if the provider reports it. Often absent; the caller falls
+   * back to the duration Discord already attached to the voice message for cost metering.
+   */
+  durationSeconds?: number;
+}
+
 export interface LlmProvider {
   /** Run one chat completion (possibly returning tool calls). */
   chat(req: ChatRequest): Promise<ChatResult>;
@@ -62,4 +84,6 @@ export interface LlmProvider {
    * approval-gate cost estimate. Approximate by design (see llm/tokens.ts).
    */
   countTokens(messages: ChatMessage[], tools?: ToolSchema[]): number;
+  /** Transcribe an audio file to text (OpenAI-compatible `/audio/transcriptions`). */
+  transcribe(req: TranscriptionRequest): Promise<TranscriptionResult>;
 }

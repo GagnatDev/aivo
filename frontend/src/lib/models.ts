@@ -5,11 +5,17 @@ import type { DegradationState, Money } from "./usage.js";
 
 export type TierRole = "cheap" | "premium";
 
+export type ModelCapability = "chat" | "audio" | "vision";
+
 export interface ModelRow {
   modelId: string;
-  tierRole: TierRole | null;
+  /** The (capability, tier) slots this model fills — one model may fill several. */
+  roles: Array<{ capability: ModelCapability; role: TierRole }>;
+  capabilities: ModelCapability[];
   inputCentsPerMtok: number;
   outputCentsPerMtok: number;
+  /** Cents per minute of audio for audio models; null otherwise. */
+  audioCentsPerMin: number | null;
   currency: string;
 }
 

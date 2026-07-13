@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -102,12 +102,20 @@ export interface Messages {
 
 export interface ModelPricing {
   active: Generated<boolean>;
+  audio_cost_per_min_cents: Numeric | null;
+  capabilities: ColumnType<ModelCapability[], string | undefined, string>;
   currency: Generated<string>;
   id: Generated<string>;
   input_cost_per_mtok_cents: Numeric;
   model_id: string;
   output_cost_per_mtok_cents: Numeric;
-  tier_role: ModelTierRole | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface ModelTierAssignments {
+  capability: ModelCapability;
+  model_id: string;
+  tier_role: ModelTierRole;
   updated_at: Generated<Timestamp>;
 }
 
@@ -233,6 +241,7 @@ export interface DB {
   memories: Memories;
   messages: Messages;
   model_pricing: ModelPricing;
+  model_tier_assignments: ModelTierAssignments;
   pending_approvals: PendingApprovals;
   profiles: Profiles;
   reminders: Reminders;

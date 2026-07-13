@@ -38,6 +38,10 @@ export interface AgentConfig {
   memoryInjectLimit: number;
   /** Pending approval prompts older than this are swept to expired. `APPROVAL_TTL_MINUTES`. */
   approvalTtlMinutes: number;
+  /** Max duration of a transcribed voice message, in seconds. `VOICE_MAX_DURATION_SECS`. */
+  voiceMaxDurationSecs: number;
+  /** Max size of a transcribed voice message, in bytes. `VOICE_MAX_BYTES`. */
+  voiceMaxBytes: number;
 }
 
 /**
