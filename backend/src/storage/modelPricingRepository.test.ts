@@ -23,22 +23,22 @@ afterEach(async () => {
   });
   await repo.upsertModel({
     modelId: "voxtral-small-24b-2507",
-    inputCostPerMtokCents: 0,
-    outputCostPerMtokCents: 0,
+    inputCostPerMtokCents: 15,
+    outputCostPerMtokCents: 35,
     capabilities: ["audio"],
-    audioCostPerMinCents: 10,
+    audioCostPerMinCents: 0.03,
   });
   await repo.upsertModel({
     modelId: "whisper-large-v3",
     inputCostPerMtokCents: 0,
     outputCostPerMtokCents: 0,
     capabilities: ["audio"],
-    audioCostPerMinCents: 3,
+    audioCostPerMinCents: 0.3,
   });
   await repo.setTierRole("llama-3.1-8b-instruct", "cheap");
   await repo.setTierRole("llama-3.3-70b-instruct", "premium");
-  await repo.setTierRole("whisper-large-v3", "cheap");
-  await repo.setTierRole("voxtral-small-24b-2507", "premium");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap");
+  await repo.setTierRole("whisper-large-v3", "premium");
 });
 
 describe("ModelPricingRepository", () => {
@@ -91,46 +91,47 @@ describe("ModelPricingRepository", () => {
 
   it("getByTier defaults to chat and never returns an audio-only model", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // whisper is the cheap AUDIO model; the cheap CHAT model is still the llama.
+    // voxtral is the cheap AUDIO model; the cheap CHAT model is still the llama.
     expect((await repo.getByTier("cheap"))?.model_id).toBe("llama-3.1-8b-instruct");
     expect((await repo.getByTier("premium"))?.model_id).toBe("llama-3.3-70b-instruct");
   });
 
   it("resolves audio models by tier via the capability filter", async () => {
     const repo = new ModelPricingRepository(testDb());
-    expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("whisper-large-v3");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
+    expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
+    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-large-v3");
   });
 
   it("keeps one premium chat and one premium audio model at once", async () => {
     const repo = new ModelPricingRepository(testDb());
     // The seed already has both premium roles filled in different capability domains.
     expect((await repo.getByTier("premium", "chat"))?.model_id).toBe("llama-3.3-70b-instruct");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
+    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-large-v3");
   });
 
   it("assigning the premium audio role does not strip the premium chat model", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // Re-assert voxtral as premium audio; the scoped clear must leave the chat premium alone.
-    await repo.setTierRole("voxtral-small-24b-2507", "premium");
+    // Re-assert whisper as premium audio; the scoped clear must leave the chat premium alone.
+    await repo.setTierRole("whisper-large-v3", "premium");
     expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
-    expect((await repo.getByModelId("voxtral-small-24b-2507"))?.tier_role).toBe("premium");
+    expect((await repo.getByModelId("whisper-large-v3"))?.tier_role).toBe("premium");
   });
 
   it("swapping the premium audio model clears the previous audio holder only", async () => {
     const repo = new ModelPricingRepository(testDb());
     await repo.upsertModel({
-      modelId: "voxtral-next",
+      modelId: "whisper-next",
       inputCostPerMtokCents: 0,
       outputCostPerMtokCents: 0,
       capabilities: ["audio"],
-      audioCostPerMinCents: 12,
+      audioCostPerMinCents: 0.5,
     });
-    await repo.setTierRole("voxtral-next", "premium");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("voxtral-next");
-    // Old audio premium cleared; chat premium untouched.
-    expect((await repo.getByModelId("voxtral-small-24b-2507"))?.tier_role).toBeNull();
+    await repo.setTierRole("whisper-next", "premium");
+    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-next");
+    // Old audio premium cleared; chat premium and the cheap audio model untouched.
+    expect((await repo.getByModelId("whisper-large-v3"))?.tier_role).toBeNull();
     expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
+    expect((await repo.getByModelId("voxtral-small-24b-2507"))?.tier_role).toBe("cheap");
   });
 
   it("upsertModel stores capabilities and an audio per-minute price", async () => {

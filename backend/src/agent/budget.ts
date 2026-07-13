@@ -58,9 +58,11 @@ export function computeCostCents(
 
 /**
  * Cost of a transcription in fractional cents. Audio models are billed by audio length,
- * not tokens (whisper per second, voxtral per audio-token), so aivo prices them uniformly
- * per audio-minute and derives the cost from the clip's known duration.
- * cost = ratePerMinCents * durationSeconds / 60.
+ * not text tokens, so aivo prices them uniformly per audio-minute and derives the cost
+ * from the clip's known duration: cost = ratePerMinCents * durationSeconds / 60.
+ * Exact for whisper (Scaleway bills it per audio minute); an approximation for voxtral,
+ * whose real bill is per token with audio rounded up to 30s chunks — its seeded rate is
+ * set slightly high to absorb that (see "Audio model pricing" in the README).
  */
 export function computeAudioCostCents(ratePerMinCents: number, durationSeconds: number): number {
   return (ratePerMinCents * durationSeconds) / 60;

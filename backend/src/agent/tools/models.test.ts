@@ -36,14 +36,14 @@ afterEach(async () => {
   });
   await repo.upsertModel({
     modelId: "voxtral-small-24b-2507",
-    inputCostPerMtokCents: 0,
-    outputCostPerMtokCents: 0,
+    inputCostPerMtokCents: 15,
+    outputCostPerMtokCents: 35,
     capabilities: ["audio"],
-    audioCostPerMinCents: 10,
+    audioCostPerMinCents: 0.03,
   });
   await repo.setTierRole("llama-3.1-8b-instruct", "cheap");
   await repo.setTierRole("llama-3.3-70b-instruct", "premium");
-  await repo.setTierRole("voxtral-small-24b-2507", "premium");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap");
 });
 
 describe("models tool authorization", () => {
@@ -91,7 +91,7 @@ describe("models tool authorization", () => {
     const rows = JSON.parse(await tool("models").execute({ action: "list" }, ctx));
     const voxtral = rows.find((r: { model_id: string }) => r.model_id === "voxtral-small-24b-2507");
     expect(voxtral.capabilities).toContain("audio");
-    expect(voxtral.audio_cents_per_min).toBe(10);
+    expect(voxtral.audio_cents_per_min).toBe(0.03);
     const chat = rows.find((r: { model_id: string }) => r.model_id === "llama-3.3-70b-instruct");
     expect(chat.capabilities).toEqual(["chat"]);
     expect(chat.audio_cents_per_min).toBeNull();

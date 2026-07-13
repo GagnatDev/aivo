@@ -13,20 +13,20 @@ afterEach(async () => {
   const repo = new ModelPricingRepository(testDb());
   await repo.upsertModel({
     modelId: "voxtral-small-24b-2507",
-    inputCostPerMtokCents: 0,
-    outputCostPerMtokCents: 0,
+    inputCostPerMtokCents: 15,
+    outputCostPerMtokCents: 35,
     capabilities: ["audio"],
-    audioCostPerMinCents: 10,
+    audioCostPerMinCents: 0.03,
   });
   await repo.upsertModel({
     modelId: "whisper-large-v3",
     inputCostPerMtokCents: 0,
     outputCostPerMtokCents: 0,
     capabilities: ["audio"],
-    audioCostPerMinCents: 3,
+    audioCostPerMinCents: 0.3,
   });
-  await repo.setTierRole("whisper-large-v3", "cheap");
-  await repo.setTierRole("voxtral-small-24b-2507", "premium");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap");
+  await repo.setTierRole("whisper-large-v3", "premium");
 });
 
 const voice = (over: Partial<VoiceAttachment> = {}): VoiceAttachment => ({
@@ -84,7 +84,7 @@ describe("transcribeVoiceMessage", () => {
     expect(dl.urls).toHaveLength(0);
   });
 
-  it("transcribes with the premium audio model and meters an stt ledger row", async () => {
+  it("transcribes with the cheap audio model and meters an stt ledger row", async () => {
     const llm = makeFakeLlm([], { transcript: { text: "  hello from a voice note  " } });
     const { deps, userId } = await setup(llm);
     const dl = stubDownload();
@@ -92,16 +92,17 @@ describe("transcribeVoiceMessage", () => {
 
     expect(out).toMatchObject({ kind: "ok", text: "hello from a voice note" });
     expect(dl.urls).toEqual(["https://cdn.example/voice.ogg"]);
-    // Normal budget → premium audio model (voxtral).
+    // Transcription requests the cheap tier outright → voxtral.
     expect(llm.transcribeCalls[0]?.model).toBe("voxtral-small-24b-2507");
-    // voxtral seed = 10¢/min; 30s → 5¢ on the stt ledger.
-    expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(5, 4);
+    // voxtral seed = 0.03¢/min; 30s → 0.015¢ on the stt ledger.
+    expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(0.015, 6);
   });
 
-  it("degrades to the cheap audio model under budget pressure", async () => {
+  it("stays on the cheap audio model under budget pressure", async () => {
     const llm = makeFakeLlm([], { transcript: { text: "cheap tier please" } });
     const { deps, userId } = await setup(llm);
-    // Push month-to-date to 85% of the ceiling → cheap_models degradation.
+    // Push month-to-date to 85% of the ceiling → cheap_models degradation. Transcription
+    // already requests cheap, so the coercion is a no-op and voxtral keeps transcribing.
     await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
     await deps.llmUsage.insert({
       userId,
@@ -111,6 +112,19 @@ describe("transcribeVoiceMessage", () => {
       tokensOut: 0,
       costCents: 85,
     });
+    const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
+    expect(out.kind).toBe("ok");
+    expect(llm.transcribeCalls[0]?.model).toBe("voxtral-small-24b-2507");
+  });
+
+  it("falls back to the premium audio model when the cheap role is unheld", async () => {
+    const llm = makeFakeLlm([], { transcript: { text: "premium fallback" } });
+    const { deps, userId } = await setup(llm);
+    await testDb()
+      .updateTable("model_pricing")
+      .set({ tier_role: null })
+      .where("model_id", "=", "voxtral-small-24b-2507")
+      .execute();
     const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
     expect(out.kind).toBe("ok");
     expect(llm.transcribeCalls[0]?.model).toBe("whisper-large-v3");

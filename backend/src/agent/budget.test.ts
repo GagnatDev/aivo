@@ -55,10 +55,10 @@ describe("computeAudioCostCents", () => {
 describe("recordTranscriptionUsage", () => {
   it("writes an stt ledger row with cost from duration and zero tokens", async () => {
     const { deps, userId } = await setup();
-    // whisper seed = 3¢/min audio; a 60s clip costs 3¢.
+    // whisper seed = 0.3¢/min audio; a 60s clip costs 0.3¢.
     const rec = await recordTranscriptionUsage(deps, userId, "whisper-large-v3", 60);
-    expect(rec.costCents).toBeCloseTo(3, 4);
-    expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(3, 4);
+    expect(rec.costCents).toBeCloseTo(0.3, 4);
+    expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(0.3, 4);
     const rows = await deps.llmUsage.listRows(userId, {
       from: new Date(0),
       to: new Date(Date.now() + 60_000),
@@ -76,10 +76,10 @@ describe("recordTranscriptionUsage", () => {
       model: "x",
       tokensIn: 0,
       tokensOut: 0,
-      costCents: 48,
+      costCents: 49.9,
     });
-    // voxtral seed = 10¢/min; a 60s clip adds 10¢ → 58% (crosses the 50 threshold).
-    const rec = await recordTranscriptionUsage(deps, userId, "voxtral-small-24b-2507", 60);
+    // whisper seed = 0.3¢/min; a 60s clip adds 0.3¢ → 50.2% (crosses the 50 threshold).
+    const rec = await recordTranscriptionUsage(deps, userId, "whisper-large-v3", 60);
     expect(rec.alertPct).toBe(50);
   });
 });

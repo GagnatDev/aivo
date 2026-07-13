@@ -79,9 +79,9 @@ async function resolveAudioModel(
 
 /**
  * Transcribe a Discord voice message to text, enforcing the size/duration caps and
- * metering the cost. The audio tier follows the same budget degradation as chat
- * (premium → cheap under pressure), so a voice note transcribes on the cheaper model
- * when the budget is tight rather than failing. `download` is injectable for tests.
+ * metering the cost. Requests the cheap audio tier outright (voxtral — cheapest AND
+ * strongest, so there is nothing to degrade to), while still running the budget
+ * pre-check so degradation state is persisted. `download` is injectable for tests.
  */
 export async function transcribeVoiceMessage(
   deps: AgentDeps,
@@ -97,9 +97,12 @@ export async function transcribeVoiceMessage(
     return { kind: "rejected", reply: TOO_BIG };
   }
 
-  // Audio transcription rides the chat budget degradation: premium (voxtral) normally,
-  // dropping to cheap (whisper) once the budget engine coerces the tier down.
-  const decision = await preCallCheck(deps, userId, "premium");
+  // Transcription always asks for the cheap audio tier: voxtral is both the cheapest
+  // audio model per minute (~10x under whisper) and the stronger transcriber, so
+  // cheap-first is also best-first. preCallCheck still runs so the degradation state is
+  // persisted; a budget coercion is a no-op on an already-cheap request, and
+  // resolveAudioModel falls back to the premium model if the cheap role is ever unheld.
+  const decision = await preCallCheck(deps, userId, "cheap");
   const model = await resolveAudioModel(deps, decision.coercedTier);
   if (!model) return { kind: "unavailable", reply: NO_MODEL };
 

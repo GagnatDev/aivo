@@ -54,7 +54,7 @@ describe("GET /api/dashboard/models", () => {
     const voxtral = res.body.models.find(
       (m: { modelId: string }) => m.modelId === "voxtral-small-24b-2507",
     );
-    expect(voxtral).toMatchObject({ capabilities: ["audio"], audioCentsPerMin: 10 });
+    expect(voxtral).toMatchObject({ capabilities: ["audio"], audioCentsPerMin: 0.03 });
     // Fresh settings row: auto preference resolves to premium; nothing degraded.
     expect(res.body.tierPreference).toBe("auto");
     expect(res.body.requestedTier).toBe("premium");
