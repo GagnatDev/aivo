@@ -8,14 +8,16 @@ import type { AgentDeps } from "./deps.js";
 
 useCleanDb();
 
-// model_pricing is not user-scoped; restore the audio seed after tests that mutate it.
+// model_pricing / model_tier_assignments are not user-scoped; restore the audio seed
+// (voxtral filling both audio slots, whisper priced but unassigned) after tests that
+// mutate it.
 afterEach(async () => {
   const repo = new ModelPricingRepository(testDb());
   await repo.upsertModel({
     modelId: "voxtral-small-24b-2507",
     inputCostPerMtokCents: 15,
     outputCostPerMtokCents: 35,
-    capabilities: ["audio"],
+    capabilities: ["chat", "audio"],
     audioCostPerMinCents: 0.03,
   });
   await repo.upsertModel({
@@ -25,8 +27,8 @@ afterEach(async () => {
     capabilities: ["audio"],
     audioCostPerMinCents: 0.3,
   });
-  await repo.setTierRole("voxtral-small-24b-2507", "cheap");
-  await repo.setTierRole("whisper-large-v3", "premium");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap", "audio");
+  await repo.setTierRole("voxtral-small-24b-2507", "premium", "audio");
 });
 
 const voice = (over: Partial<VoiceAttachment> = {}): VoiceAttachment => ({
@@ -117,28 +119,25 @@ describe("transcribeVoiceMessage", () => {
     expect(llm.transcribeCalls[0]?.model).toBe("voxtral-small-24b-2507");
   });
 
-  it("falls back to the premium audio model when the cheap role is unheld", async () => {
+  it("falls back to the premium audio slot when the cheap one is unassigned", async () => {
     const llm = makeFakeLlm([], { transcript: { text: "premium fallback" } });
     const { deps, userId } = await setup(llm);
+    // Point the premium audio slot at whisper and empty the cheap one.
+    await deps.modelPricing.setTierRole("whisper-large-v3", "premium", "audio");
     await testDb()
-      .updateTable("model_pricing")
-      .set({ tier_role: null })
-      .where("model_id", "=", "voxtral-small-24b-2507")
+      .deleteFrom("model_tier_assignments")
+      .where("capability", "=", "audio")
+      .where("tier_role", "=", "cheap")
       .execute();
     const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
     expect(out.kind).toBe("ok");
     expect(llm.transcribeCalls[0]?.model).toBe("whisper-large-v3");
   });
 
-  it("reports unavailable when no audio model is configured", async () => {
+  it("reports unavailable when no audio slot is assigned", async () => {
     const llm = makeFakeLlm([]);
     const { deps, userId } = await setup(llm);
-    // Clear the audio tier roles so neither audio tier resolves.
-    await testDb()
-      .updateTable("model_pricing")
-      .set({ tier_role: null })
-      .where("model_id", "in", ["voxtral-small-24b-2507", "whisper-large-v3"])
-      .execute();
+    await testDb().deleteFrom("model_tier_assignments").where("capability", "=", "audio").execute();
     const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
     expect(out.kind).toBe("unavailable");
     expect(llm.transcribeCalls).toHaveLength(0);

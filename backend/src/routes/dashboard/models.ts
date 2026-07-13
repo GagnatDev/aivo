@@ -28,8 +28,9 @@ export function modelsRoutes(deps: DashboardDeps): Router {
   // Pricing table + tier resolution + user preference (M-1, M-2, M-3).
   router.get("/api/dashboard/models", async (req, res) => {
     const userId = req.userId!;
-    const [rows, cheap, premium, settings, snapshot] = await Promise.all([
+    const [rows, assignments, cheap, premium, settings, snapshot] = await Promise.all([
       deps.modelPricing.listActive(),
+      deps.modelPricing.listAssignments(),
       deps.modelPricing.getByTier("cheap"),
       deps.modelPricing.getByTier("premium"),
       deps.settings.getOrCreate(userId),
@@ -42,7 +43,9 @@ export function modelsRoutes(deps: DashboardDeps): Router {
     res.json({
       models: rows.map((r) => ({
         modelId: r.model_id,
-        tierRole: r.tier_role,
+        roles: assignments
+          .filter((a) => a.model_id === r.model_id)
+          .map((a) => ({ capability: a.capability, role: a.tier_role })),
         capabilities: r.capabilities,
         inputCentsPerMtok: Number(r.input_cost_per_mtok_cents),
         outputCentsPerMtok: Number(r.output_cost_per_mtok_cents),
@@ -50,6 +53,8 @@ export function modelsRoutes(deps: DashboardDeps): Router {
           r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
         currency: r.currency,
       })),
+      // The CHAT slots (getByTier defaults to the chat capability) — what the tier
+      // cards show; audio slots surface per-model via `roles`.
       tiers: {
         cheap: cheap?.model_id ?? null,
         premium: premium?.model_id ?? null,

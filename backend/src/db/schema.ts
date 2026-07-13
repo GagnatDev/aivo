@@ -109,7 +109,13 @@ export interface ModelPricing {
   input_cost_per_mtok_cents: Numeric;
   model_id: string;
   output_cost_per_mtok_cents: Numeric;
-  tier_role: ModelTierRole | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface ModelTierAssignments {
+  capability: ModelCapability;
+  model_id: string;
+  tier_role: ModelTierRole;
   updated_at: Generated<Timestamp>;
 }
 
@@ -235,6 +241,7 @@ export interface DB {
   memories: Memories;
   messages: Messages;
   model_pricing: ModelPricing;
+  model_tier_assignments: ModelTierAssignments;
   pending_approvals: PendingApprovals;
   profiles: Profiles;
   reminders: Reminders;

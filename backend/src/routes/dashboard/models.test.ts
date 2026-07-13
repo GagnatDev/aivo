@@ -40,21 +40,29 @@ describe("GET /api/dashboard/models", () => {
     const cheap = res.body.models.find((m: { modelId: string }) => m.modelId === SEEDED_CHEAP);
     expect(cheap).toEqual({
       modelId: SEEDED_CHEAP,
-      tierRole: "cheap",
+      roles: [{ capability: "chat", role: "cheap" }],
       capabilities: ["chat"],
       inputCentsPerMtok: 20,
       outputCentsPerMtok: 20,
       audioCentsPerMin: null,
       currency: "EUR",
     });
-    // The chat tier mapping ignores audio-capable models (whisper/voxtral), so the
-    // cheap/premium chat holders stay the seeded llamas.
+    // The tier mapping reads the CHAT slots, so the cheap/premium holders stay the
+    // seeded llamas even though voxtral is chat-capable.
     expect(res.body.tiers).toEqual({ cheap: SEEDED_CHEAP, premium: SEEDED_PREMIUM });
-    // The seeded audio models surface with their capability + per-minute price.
+    // The seeded audio model surfaces with its capabilities, both audio slots, and the
+    // per-minute price.
     const voxtral = res.body.models.find(
       (m: { modelId: string }) => m.modelId === "voxtral-small-24b-2507",
     );
-    expect(voxtral).toMatchObject({ capabilities: ["audio"], audioCentsPerMin: 0.03 });
+    expect(voxtral).toMatchObject({
+      capabilities: ["chat", "audio"],
+      audioCentsPerMin: 0.03,
+      roles: [
+        { capability: "audio", role: "cheap" },
+        { capability: "audio", role: "premium" },
+      ],
+    });
     // Fresh settings row: auto preference resolves to premium; nothing degraded.
     expect(res.body.tierPreference).toBe("auto");
     expect(res.body.requestedTier).toBe("premium");

@@ -23,10 +23,11 @@ export function testDb(): Db {
  * `youtube_account`, `youtube_channels` and `unforked_connection` are account-scoped
  * rather than user-scoped (docs/data-model.md), so they're truncated explicitly — the
  * CASCADE from `youtube_channels` clears `videos` (and any digest_items). It deliberately does NOT
- * touch the two non-user-scoped, migration-seeded tables — `model_pricing`
- * (cheap/premium placeholder rows) and `settings_permissions` (the allow-list
- * singleton) — so their seed data survives across tests. A test that mutates pricing
- * should restore it or use distinct model ids.
+ * touch the non-user-scoped, migration-seeded tables — `model_pricing` (model prices +
+ * capabilities), `model_tier_assignments` (which model fills each slot), and
+ * `settings_permissions` (the allow-list singleton) — so their seed data survives
+ * across tests. A test that mutates pricing or assignments should restore them or use
+ * distinct model ids.
  */
 export async function resetDb(): Promise<void> {
   await sql`TRUNCATE users, youtube_account, youtube_channels, unforked_connection RESTART IDENTITY CASCADE`.execute(

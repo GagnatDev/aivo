@@ -19,8 +19,9 @@ const OVERRIDES = {
   columns: {
     "conversations.channel": "Channel",
     "messages.role": "MessageRole",
-    "model_pricing.tier_role": "ModelTierRole | null",
     "model_pricing.capabilities": "ColumnType<ModelCapability[], string | undefined, string>",
+    "model_tier_assignments.capability": "ModelCapability",
+    "model_tier_assignments.tier_role": "ModelTierRole",
     "budget_config.degradation_state": "ColumnType<DegradationState, string | undefined, string>",
     "pending_approvals.status": "ColumnType<ApprovalStatus, string | undefined, string>",
     "budget_config.alert_thresholds": "ColumnType<number[], string | undefined, string>",

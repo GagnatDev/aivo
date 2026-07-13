@@ -8,7 +8,7 @@ export function PricingTable({ models }: { models: ModelRow[] }) {
         <thead>
           <tr>
             <th>Model</th>
-            <th>Tier role</th>
+            <th>Roles</th>
             <th>Capabilities</th>
             <th className="num">Input / Mtok</th>
             <th className="num">Output / Mtok</th>
@@ -20,7 +20,15 @@ export function PricingTable({ models }: { models: ModelRow[] }) {
           {models.map((m) => (
             <tr key={m.modelId}>
               <td>{m.modelId}</td>
-              <td>{m.tierRole ? <span className="tier-badge">{m.tierRole}</span> : "—"}</td>
+              <td>
+                {m.roles.length > 0
+                  ? m.roles.map((r) => (
+                      <span className="tier-badge" key={`${r.capability}:${r.role}`}>
+                        {r.capability} {r.role}
+                      </span>
+                    ))
+                  : "—"}
+              </td>
               <td>{m.capabilities.join(", ")}</td>
               <td className="num">{formatPerMtok(m.inputCentsPerMtok)}</td>
               <td className="num">{formatPerMtok(m.outputCentsPerMtok)}</td>

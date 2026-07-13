@@ -89,12 +89,13 @@ async function estimateTurnCost(
 export async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
   const row = await deps.modelPricing.getByTier(tier);
   if (row) return row.model_id;
-  const fallback = await deps.modelPricing.getByTier(tier === "cheap" ? "premium" : "cheap");
+  const fallbackTier = tier === "cheap" ? "premium" : "cheap";
+  const fallback = await deps.modelPricing.getByTier(fallbackTier);
   if (fallback) {
-    // No model holds the requested role — running on the wrong tier degrades quality
-    // silently, so make it loud. Usually means a tier_role was never (re)assigned.
+    // No model fills the requested slot — running on the wrong tier degrades quality
+    // silently, so make it loud. Usually means the slot was never (re)assigned.
     logger.warn(
-      { requestedTier: tier, fallbackModel: fallback.model_id, fallbackRole: fallback.tier_role },
+      { requestedTier: tier, fallbackModel: fallback.model_id, fallbackTier },
       "no model configured for requested tier; falling back",
     );
     return fallback.model_id;

@@ -5,8 +5,7 @@ import type { ModelCapability, ModelTierRole } from "../db/schema.enums.js";
 export interface ModelPricingRow {
   id: string;
   model_id: string;
-  tier_role: ModelTierRole | null;
-  /** What the model can do (chat | audio | vision) — the modality axis, orthogonal to tier. */
+  /** What the model can do (chat | audio | vision) — metadata; usage is assigned separately. */
   capabilities: ModelCapability[];
   /** Cents per 1,000,000 input tokens. */
   input_cost_per_mtok_cents: string;
@@ -18,10 +17,21 @@ export interface ModelPricingRow {
   active: boolean;
 }
 
+/** One filled slot: "the <tier_role> <capability> model is <model_id>". */
+export interface TierAssignment {
+  capability: ModelCapability;
+  tier_role: ModelTierRole;
+  model_id: string;
+}
+
+/** Why a setTierRole call was refused, for the models tool to phrase a reply. */
+export type SetTierRoleResult =
+  | { ok: true; row: ModelPricingRow; capability: ModelCapability }
+  | { ok: false; reason: "unknown_model" | "ambiguous_capability" | "capability_not_held" };
+
 const PRICING_COLUMNS = [
   "id",
   "model_id",
-  "tier_role",
   "capabilities",
   "input_cost_per_mtok_cents",
   "output_cost_per_mtok_cents",
@@ -30,46 +40,61 @@ const PRICING_COLUMNS = [
   "active",
 ] as const;
 
-/** A `capabilities @> ["<capability>"]` predicate — the DB filter for "can do X". */
-function hasCapability(capability: ModelCapability) {
-  return sql<boolean>`capabilities @> ${JSON.stringify([capability])}::jsonb`;
-}
-
 /**
- * DB-backed model + pricing config. Reads are open to the agent; the mutating
- * methods here are only ever reached after the models tool has verified the caller
- * is the owner. `tier_role` resolves which model id is cheap vs premium.
+ * DB-backed model + pricing config. model_pricing holds facts about each model
+ * (capabilities, prices); model_tier_assignments holds which model fills each
+ * (capability, tier_role) slot — see migration 021. Reads are open to the agent; the
+ * mutating methods here are only ever reached after the models tool has verified the
+ * caller is the owner.
  */
 export class ModelPricingRepository {
   constructor(private readonly db: Db) {}
 
-  /** All active models, premium first then cheap, for the agent to inspect. */
+  /** All active models, for the agent and dashboard to inspect. */
   listActive(): Promise<ModelPricingRow[]> {
     return this.db
       .selectFrom("model_pricing")
       .select(PRICING_COLUMNS)
       .where("active", "=", true)
-      .orderBy("tier_role", "asc")
       .orderBy("model_id", "asc")
       .execute();
   }
 
+  /** Every filled slot, for display (models tool list, dashboard, !models). */
+  listAssignments(): Promise<TierAssignment[]> {
+    return this.db
+      .selectFrom("model_tier_assignments")
+      .select(["capability", "tier_role", "model_id"])
+      .orderBy("capability", "asc")
+      .orderBy("tier_role", "asc")
+      .execute();
+  }
+
   /**
-   * The active model filling a tier role (cheap/premium) for a given capability, if any.
-   * Defaults to `chat` so every existing caller (chat turn, digest stages) implicitly
-   * resolves a chat-capable model and can never pick a transcription-only model. Audio
-   * resolution passes `"audio"`.
+   * The active model filling a slot, if any. Defaults to `chat` so every existing
+   * caller (chat turn, digest stages) implicitly resolves the chat slot and can never
+   * pick a transcription-only model. Audio resolution passes `"audio"`.
    */
   getByTier(
     role: ModelTierRole,
     capability: ModelCapability = "chat",
   ): Promise<ModelPricingRow | undefined> {
     return this.db
-      .selectFrom("model_pricing")
-      .select(PRICING_COLUMNS)
-      .where("tier_role", "=", role)
-      .where("active", "=", true)
-      .where(hasCapability(capability))
+      .selectFrom("model_tier_assignments as a")
+      .innerJoin("model_pricing as p", "p.model_id", "a.model_id")
+      .select([
+        "p.id",
+        "p.model_id",
+        "p.capabilities",
+        "p.input_cost_per_mtok_cents",
+        "p.output_cost_per_mtok_cents",
+        "p.audio_cost_per_min_cents",
+        "p.currency",
+        "p.active",
+      ])
+      .where("a.tier_role", "=", role)
+      .where("a.capability", "=", capability)
+      .where("p.active", "=", true)
       .executeTakeFirst();
   }
 
@@ -86,7 +111,7 @@ export class ModelPricingRepository {
    * `audioCostPerMinCents` is set only for audio models. `capabilities` is applied on
    * insert (defaults to the DB's `["chat"]`); an existing row's capabilities are updated
    * only when the caller passes them explicitly, so a plain price refresh never changes
-   * what a model is declared able to do.
+   * what a model is declared able to do. Never touches slot assignments.
    */
   async upsertModel(input: {
     modelId: string;
@@ -140,38 +165,44 @@ export class ModelPricingRepository {
   }
 
   /**
-   * Assign a tier role (cheap/premium) to a model. The role is unique *per capability
-   * domain* (one cheap + one premium chat model, and independently one cheap + one
-   * premium audio model — see the two partial unique indexes in migration 021), so we
-   * first clear the role from any other model that shares a capability domain with the
-   * target, matching exactly what those indexes constrain. Done in a transaction so the
-   * swap is atomic. Returns the updated row, or undefined if the model id is unknown.
+   * Point a slot at a model: "make <modelId> the <role> <capability> model". The slot's
+   * primary key makes the swap a single upsert — whoever previously filled the slot
+   * simply stops being referenced, and no other slot is touched (a model may keep
+   * filling several). `capability` may be omitted when the model declares exactly one;
+   * with several it must be explicit, and a capability the model doesn't declare is
+   * refused — the guardrail that stops a chat-only model landing in an audio slot.
+   * Assigning also reactivates the model, matching the pre-021 behavior.
    */
-  async setTierRole(modelId: string, role: ModelTierRole): Promise<ModelPricingRow | undefined> {
-    return this.db.transaction().execute(async (tx) => {
-      const target = await tx
-        .selectFrom("model_pricing")
-        .select("capabilities")
-        .where("model_id", "=", modelId)
-        .executeTakeFirst();
-      if (!target) return undefined;
+  async setTierRole(
+    modelId: string,
+    role: ModelTierRole,
+    capability?: ModelCapability,
+  ): Promise<SetTierRoleResult> {
+    const target = await this.getByModelId(modelId);
+    if (!target) return { ok: false, reason: "unknown_model" };
 
-      // Clear the role only within the target's capability domain(s): assigning the
-      // premium *audio* model must not strip the premium *chat* model, and vice versa.
+    const resolved =
+      capability ?? (target.capabilities.length === 1 ? target.capabilities[0] : undefined);
+    if (!resolved) return { ok: false, reason: "ambiguous_capability" };
+    if (!target.capabilities.includes(resolved)) return { ok: false, reason: "capability_not_held" };
+
+    const row = await this.db.transaction().execute(async (tx) => {
       await tx
-        .updateTable("model_pricing")
-        .set({ tier_role: null, updated_at: sql`now()` })
-        .where("tier_role", "=", role)
-        .where("model_id", "!=", modelId)
-        .where((eb) => eb.or(target.capabilities.map((c) => hasCapability(c))))
+        .insertInto("model_tier_assignments")
+        .values({ capability: resolved, tier_role: role, model_id: modelId })
+        .onConflict((oc) =>
+          oc
+            .columns(["capability", "tier_role"])
+            .doUpdateSet({ model_id: modelId, updated_at: sql`now()` }),
+        )
         .execute();
-
       return tx
         .updateTable("model_pricing")
-        .set({ tier_role: role, active: true, updated_at: sql`now()` })
+        .set({ active: true, updated_at: sql`now()` })
         .where("model_id", "=", modelId)
         .returning(PRICING_COLUMNS)
-        .executeTakeFirst();
+        .executeTakeFirstOrThrow();
     });
+    return { ok: true, row, capability: resolved };
   }
 }

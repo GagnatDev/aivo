@@ -4,9 +4,9 @@ import { testDb, useCleanDb } from "../test/db.js";
 
 useCleanDb();
 
-// model_pricing is not user-scoped, so the per-test TRUNCATE doesn't reset it.
-// Restore the migration-seeded state (both the chat and audio tiers) after each test
-// that mutates it.
+// model_pricing / model_tier_assignments are not user-scoped, so the per-test TRUNCATE
+// doesn't reset them. Restore the migration-seeded state (models plus all four filled
+// slots) after each test that mutates it.
 afterEach(async () => {
   const repo = new ModelPricingRepository(testDb());
   await repo.upsertModel({
@@ -25,7 +25,7 @@ afterEach(async () => {
     modelId: "voxtral-small-24b-2507",
     inputCostPerMtokCents: 15,
     outputCostPerMtokCents: 35,
-    capabilities: ["audio"],
+    capabilities: ["chat", "audio"],
     audioCostPerMinCents: 0.03,
   });
   await repo.upsertModel({
@@ -35,10 +35,10 @@ afterEach(async () => {
     capabilities: ["audio"],
     audioCostPerMinCents: 0.3,
   });
-  await repo.setTierRole("llama-3.1-8b-instruct", "cheap");
-  await repo.setTierRole("llama-3.3-70b-instruct", "premium");
-  await repo.setTierRole("voxtral-small-24b-2507", "cheap");
-  await repo.setTierRole("whisper-large-v3", "premium");
+  await repo.setTierRole("llama-3.1-8b-instruct", "cheap", "chat");
+  await repo.setTierRole("llama-3.3-70b-instruct", "premium", "chat");
+  await repo.setTierRole("voxtral-small-24b-2507", "cheap", "audio");
+  await repo.setTierRole("voxtral-small-24b-2507", "premium", "audio");
 });
 
 describe("ModelPricingRepository", () => {
@@ -65,73 +65,93 @@ describe("ModelPricingRepository", () => {
     ).toBeUndefined();
   });
 
-  it("updatePricing / set_price preserves an existing tier_role", async () => {
+  it("updatePricing / set_price leaves slot assignments untouched", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // upsertModel is what the 'set_price' tool calls; it must not clear the role.
+    // upsertModel is what the 'set_price' tool calls; a price refresh must not move slots.
     await repo.upsertModel({
       modelId: "llama-3.3-70b-instruct",
       inputCostPerMtokCents: 81,
       outputCostPerMtokCents: 81,
     });
-    expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
+    expect((await repo.getByTier("premium"))?.model_id).toBe("llama-3.3-70b-instruct");
   });
 
-  it("setTierRole moves the role and clears it from the previous holder", async () => {
+  it("setTierRole points the slot at the new model, replacing the previous holder", async () => {
     const repo = new ModelPricingRepository(testDb());
     await repo.upsertModel({
       modelId: "new-cheap",
       inputCostPerMtokCents: 10,
       outputCostPerMtokCents: 10,
     });
-    await repo.setTierRole("new-cheap", "cheap");
+    // Single capability (the chat default) → no explicit capability needed.
+    const res = await repo.setTierRole("new-cheap", "cheap");
+    expect(res.ok).toBe(true);
     expect((await repo.getByTier("cheap"))?.model_id).toBe("new-cheap");
-    // The old cheap model no longer holds the role.
-    expect((await repo.getByModelId("llama-3.1-8b-instruct"))?.tier_role).toBeNull();
+    // The old cheap chat model no longer fills any slot.
+    const assignments = await repo.listAssignments();
+    expect(assignments.some((a) => a.model_id === "llama-3.1-8b-instruct")).toBe(false);
   });
 
-  it("getByTier defaults to chat and never returns an audio-only model", async () => {
+  it("setTierRole reports an unknown model id", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // voxtral is the cheap AUDIO model; the cheap CHAT model is still the llama.
+    expect(await repo.setTierRole("nope", "cheap")).toEqual({
+      ok: false,
+      reason: "unknown_model",
+    });
+  });
+
+  it("setTierRole requires an explicit capability for a multi-capability model", async () => {
+    const repo = new ModelPricingRepository(testDb());
+    // voxtral declares chat+audio, so the slot to assign is ambiguous without it.
+    expect(await repo.setTierRole("voxtral-small-24b-2507", "cheap")).toEqual({
+      ok: false,
+      reason: "ambiguous_capability",
+    });
+  });
+
+  it("setTierRole refuses a capability the model doesn't declare", async () => {
+    const repo = new ModelPricingRepository(testDb());
+    expect(await repo.setTierRole("llama-3.1-8b-instruct", "cheap", "audio")).toEqual({
+      ok: false,
+      reason: "capability_not_held",
+    });
+    // The audio slot is unchanged.
+    expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
+  });
+
+  it("getByTier defaults to chat and never resolves through audio slots", async () => {
+    const repo = new ModelPricingRepository(testDb());
+    // voxtral is chat-CAPABLE but only fills audio slots, so the chat slots stay llamas.
     expect((await repo.getByTier("cheap"))?.model_id).toBe("llama-3.1-8b-instruct");
     expect((await repo.getByTier("premium"))?.model_id).toBe("llama-3.3-70b-instruct");
   });
 
-  it("resolves audio models by tier via the capability filter", async () => {
+  it("one model may fill both audio slots", async () => {
     const repo = new ModelPricingRepository(testDb());
+    // The seed points cheap AND premium audio at voxtral (degradation is a no-op).
     expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-large-v3");
+    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
   });
 
-  it("keeps one premium chat and one premium audio model at once", async () => {
+  it("assigning an audio slot never touches the chat slots", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // The seed already has both premium roles filled in different capability domains.
+    const res = await repo.setTierRole("whisper-large-v3", "premium", "audio");
+    expect(res.ok && res.capability).toBe("audio");
+    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-large-v3");
+    // Chat premium and the other audio slot are untouched.
     expect((await repo.getByTier("premium", "chat"))?.model_id).toBe("llama-3.3-70b-instruct");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-large-v3");
+    expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
   });
 
-  it("assigning the premium audio role does not strip the premium chat model", async () => {
+  it("a dual-capability model can fill a chat slot alongside its audio slots", async () => {
     const repo = new ModelPricingRepository(testDb());
-    // Re-assert whisper as premium audio; the scoped clear must leave the chat premium alone.
-    await repo.setTierRole("whisper-large-v3", "premium");
-    expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
-    expect((await repo.getByModelId("whisper-large-v3"))?.tier_role).toBe("premium");
-  });
-
-  it("swapping the premium audio model clears the previous audio holder only", async () => {
-    const repo = new ModelPricingRepository(testDb());
-    await repo.upsertModel({
-      modelId: "whisper-next",
-      inputCostPerMtokCents: 0,
-      outputCostPerMtokCents: 0,
-      capabilities: ["audio"],
-      audioCostPerMinCents: 0.5,
-    });
-    await repo.setTierRole("whisper-next", "premium");
-    expect((await repo.getByTier("premium", "audio"))?.model_id).toBe("whisper-next");
-    // Old audio premium cleared; chat premium and the cheap audio model untouched.
-    expect((await repo.getByModelId("whisper-large-v3"))?.tier_role).toBeNull();
-    expect((await repo.getByModelId("llama-3.3-70b-instruct"))?.tier_role).toBe("premium");
-    expect((await repo.getByModelId("voxtral-small-24b-2507"))?.tier_role).toBe("cheap");
+    // The voxtral-for-chat case: declaring the capability did nothing; assigning does.
+    const res = await repo.setTierRole("voxtral-small-24b-2507", "cheap", "chat");
+    expect(res.ok).toBe(true);
+    expect((await repo.getByTier("cheap", "chat"))?.model_id).toBe("voxtral-small-24b-2507");
+    expect((await repo.getByTier("cheap", "audio"))?.model_id).toBe("voxtral-small-24b-2507");
+    // The premium chat slot is untouched.
+    expect((await repo.getByTier("premium", "chat"))?.model_id).toBe("llama-3.3-70b-instruct");
   });
 
   it("upsertModel stores capabilities and an audio per-minute price", async () => {

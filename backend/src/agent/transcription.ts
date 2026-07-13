@@ -97,11 +97,12 @@ export async function transcribeVoiceMessage(
     return { kind: "rejected", reply: TOO_BIG };
   }
 
-  // Transcription always asks for the cheap audio tier: voxtral is both the cheapest
+  // Transcription always asks for the cheap audio slot: voxtral is both the cheapest
   // audio model per minute (~10x under whisper) and the stronger transcriber, so
-  // cheap-first is also best-first. preCallCheck still runs so the degradation state is
-  // persisted; a budget coercion is a no-op on an already-cheap request, and
-  // resolveAudioModel falls back to the premium model if the cheap role is ever unheld.
+  // cheap-first is also best-first (the seed points both audio slots at it). preCallCheck
+  // still runs so the degradation state is persisted; a budget coercion is a no-op on an
+  // already-cheap request, and resolveAudioModel falls back to the premium slot if the
+  // cheap one is ever unassigned.
   const decision = await preCallCheck(deps, userId, "cheap");
   const model = await resolveAudioModel(deps, decision.coercedTier);
   if (!model) return { kind: "unavailable", reply: NO_MODEL };
