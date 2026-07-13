@@ -5,6 +5,7 @@ import {
   type UnforkedCompactRecipe,
   type UnforkedMe,
   type UnforkedMealPlan,
+  type UnforkedNewShoppingListItem,
   type UnforkedRecipe,
   type UnforkedShoppingList,
 } from "../unforked/client.js";
@@ -38,11 +39,14 @@ export interface FakeUnforkedOptions {
 export interface FakeUnforked extends UnforkedClient {
   /** Call log: method + argument, in order. */
   calls: { method: string; arg?: string }[];
+  /** The items passed to addShoppingListItems, across calls. */
+  addedItems: UnforkedNewShoppingListItem[];
 }
 
 /** An in-memory UnforkedClient for tool/route tests — no network, no key handling. */
 export function makeFakeUnforked(options: FakeUnforkedOptions = {}): FakeUnforked {
   const calls: { method: string; arg?: string }[] = [];
+  const addedItems: UnforkedNewShoppingListItem[] = [];
 
   function guard(method: string, arg?: string): void {
     calls.push({ method, arg });
@@ -53,6 +57,7 @@ export function makeFakeUnforked(options: FakeUnforkedOptions = {}): FakeUnforke
 
   return {
     calls,
+    addedItems,
     async verifyKey(apiKey) {
       guard("verifyKey", apiKey);
       return options.me ?? FAKE_ME;
@@ -75,6 +80,24 @@ export function makeFakeUnforked(options: FakeUnforkedOptions = {}): FakeUnforke
       guard("getRecipe", id);
       if (options.recipe) return options.recipe;
       throw new UnforkedApiError(404, "Recipe not found");
+    },
+    async addShoppingListItems(week, items) {
+      guard("addShoppingListItems", week);
+      addedItems.push(...items);
+      // Echo the created entries the way unforked does (manual, unchecked).
+      return {
+        weekIdentifier: options.shoppingList?.weekIdentifier ?? "2026-W29",
+        items: items.map((item, i) => ({
+          id: `00000000-0000-4000-8000-00000000000${i}`,
+          name: item.name,
+          quantity: item.quantity ?? "",
+          unit: item.unit ?? "",
+          recipeIds: [],
+          category: "other",
+          checked: false,
+          manual: true,
+        })),
+      };
     },
   };
 }

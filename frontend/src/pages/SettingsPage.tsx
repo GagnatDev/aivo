@@ -128,7 +128,9 @@ function UnforkedCard() {
           </form>
           <p className="muted settings-note">
             Create the key in unforked (More → API keys) and register it here — deliberately not via
-            Discord chat, so the secret never lands in the message history.
+            Discord chat, so the secret never lands in the message history. Tick “Allow changes”
+            when creating it if Aivo should be able to add shopping-list items from chat; read-only
+            keys can only look things up.
           </p>
         </>
       ) : null}
