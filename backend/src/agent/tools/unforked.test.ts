@@ -123,6 +123,69 @@ describe("unforked tool", () => {
     expect(out.doc.name).toBe("Pannekaker");
   });
 
+  describe("add_shopping_items", () => {
+    it("adds items to the current week by default and confirms what was added", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      const out = await tool().execute(
+        {
+          action: "add_shopping_items",
+          items: [{ name: "melk", quantity: "1", unit: "l" }, { name: "batterier" }],
+        },
+        ctx,
+      );
+      expect(out).toBe("Added to the 2026-W29 shopping list: melk (1 l), batterier.");
+      expect(fake.calls).toEqual([{ method: "addShoppingListItems", arg: "current" }]);
+      expect(fake.addedItems).toEqual([
+        { name: "melk", quantity: "1", unit: "l" },
+        { name: "batterier" },
+      ]);
+    });
+
+    it("adds to next week's list when asked", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      await tool().execute(
+        { action: "add_shopping_items", week: "next", items: [{ name: "melk" }] },
+        ctx,
+      );
+      expect(fake.calls).toEqual([{ method: "addShoppingListItems", arg: "next" }]);
+    });
+
+    it("requires items and rejects an empty list", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      const missing = await tool().execute({ action: "add_shopping_items" }, ctx);
+      expect(missing).toContain("Provide 'items'");
+      const empty = await tool().execute({ action: "add_shopping_items", items: [] }, ctx);
+      expect(empty).toContain("items must not be empty");
+      expect(fake.calls).toHaveLength(0);
+    });
+
+    it("refuses non-owners without calling unforked", async () => {
+      const fake = makeFakeUnforked();
+      const deps = makeAgentDeps(makeFakeLlm([]), {}, systemClock, fake);
+      const { userId, isOwner, conversationId } = await provisionUser(deps, "someone-else");
+      const out = await tool().execute(
+        { action: "add_shopping_items", items: [{ name: "melk" }] },
+        { deps, userId, isOwner, conversationId },
+      );
+      expect(out).toBe("Refused: only the owner can do that.");
+      expect(fake.calls).toHaveLength(0);
+    });
+
+    it("explains a read-only key when unforked answers 403", async () => {
+      const ctx = await ctxWith({ failStatus: 403 });
+      const out = await tool().execute(
+        { action: "add_shopping_items", items: [{ name: "melk" }] },
+        ctx,
+      );
+      expect(out).toContain("read-only");
+      expect(out).toContain("write access");
+      expect(out).toContain("Settings page");
+    });
+  });
+
   it("explains a rejected (revoked) key and points at the dashboard", async () => {
     const ctx = await ctxWith({ failStatus: 401 });
     const out = await tool().execute({ action: "recipes" }, ctx);

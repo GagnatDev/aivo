@@ -1,8 +1,10 @@
 // HTTP client for unforked's machine API (unforked docs/aivo-integration.md §5):
-// the family meal planner's in-cluster, API-key-authenticated read surface at
-// UNFORKED_BASE_URL (the ingress-less `unforked-machine` Service). The network
-// impl lives behind the UnforkedClient interface so the agent tool and the
-// dashboard route are testable against a fake (test/fakeUnforked.ts).
+// the family meal planner's in-cluster, API-key-authenticated surface at
+// UNFORKED_BASE_URL (the ingress-less `unforked-machine` Service). Reads work
+// with any key; the one write (adding shopping-list items) needs a key carrying
+// the `write` scope. The network impl lives behind the UnforkedClient interface
+// so the agent tool and the dashboard route are testable against a fake
+// (test/fakeUnforked.ts).
 
 /** Response of GET /machine/v1/me — the credential self-check. */
 export interface UnforkedMe {
@@ -39,6 +41,19 @@ export interface UnforkedShoppingListItem {
 }
 
 export interface UnforkedShoppingList {
+  weekIdentifier: string;
+  items: UnforkedShoppingListItem[];
+}
+
+/** An item to add to a week's list. quantity/unit are free-form ("2", "dl"). */
+export interface UnforkedNewShoppingListItem {
+  name: string;
+  quantity?: string;
+  unit?: string;
+}
+
+/** Response of the add call: the created entries only, not the whole list. */
+export interface UnforkedAddedShoppingListItems {
   weekIdentifier: string;
   items: UnforkedShoppingListItem[];
 }
@@ -90,6 +105,11 @@ export interface UnforkedClient {
   getShoppingList(week: string): Promise<UnforkedShoppingList>;
   getCompactRecipes(): Promise<UnforkedCompactRecipe[]>;
   getRecipe(id: string): Promise<UnforkedRecipe>;
+  /** Add manual items to a week's list. Requires a key with the `write` scope (403 otherwise). */
+  addShoppingListItems(
+    week: string,
+    items: UnforkedNewShoppingListItem[],
+  ): Promise<UnforkedAddedShoppingListItems>;
 }
 
 export interface UnforkedClientConfig {
@@ -102,15 +122,21 @@ export interface UnforkedClientConfig {
 export function createUnforkedClient(config: UnforkedClientConfig): UnforkedClient {
   const base = config.baseUrl.replace(/\/+$/, "");
 
-  async function get<T>(path: string, apiKey: string): Promise<T> {
+  async function call<T>(path: string, apiKey: string, body?: unknown): Promise<T> {
     const res = await fetch(`${base}/machine/v1${path}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       let message = `unforked responded ${res.status}`;
       try {
-        const body = (await res.json()) as { error?: string };
-        if (body.error) message = body.error;
+        const errBody = (await res.json()) as { error?: string };
+        if (errBody.error) message = errBody.error;
       } catch {
         // Non-JSON error body — keep the status message.
       }
@@ -119,17 +145,19 @@ export function createUnforkedClient(config: UnforkedClientConfig): UnforkedClie
     return (await res.json()) as T;
   }
 
-  async function authed<T>(path: string): Promise<T> {
+  async function authed<T>(path: string, body?: unknown): Promise<T> {
     const apiKey = await config.getApiKey();
     if (!apiKey) throw new UnforkedNotConnectedError();
-    return get<T>(path, apiKey);
+    return call<T>(path, apiKey, body);
   }
 
   return {
-    verifyKey: (apiKey) => get<UnforkedMe>("/me", apiKey),
+    verifyKey: (apiKey) => call<UnforkedMe>("/me", apiKey),
     getMealPlan: (week) => authed(`/meal-plans/${encodeURIComponent(week)}`),
     getShoppingList: (week) => authed(`/shopping-lists/${encodeURIComponent(week)}`),
     getCompactRecipes: () => authed("/recipes/compact"),
     getRecipe: (id) => authed(`/recipes/${encodeURIComponent(id)}`),
+    addShoppingListItems: (week, items) =>
+      authed(`/shopping-lists/${encodeURIComponent(week)}/items`, { items }),
   };
 }

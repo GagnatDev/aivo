@@ -51,6 +51,7 @@ describe("selectToolSchemas", () => {
     expect(names("what's for dinner on Thursday?")).toContain("unforked");
     expect(names("what meals are planned this week?")).toContain("unforked");
     expect(names("give me the shopping list for next week")).toContain("unforked");
+    expect(names("add milk and batteries to the shopping list")).toContain("unforked");
     expect(names("I have chicken thighs and leeks in the fridge, what can I make?")).toContain(
       "unforked",
     );
@@ -92,6 +93,7 @@ describe("selectToolSchemas", () => {
       expect(names("hva blir middag på torsdag?")).toContain("unforked");
       expect(names("hva står på ukemenyen?")).toContain("unforked");
       expect(names("vis handlelista for neste uke")).toContain("unforked");
+      expect(names("legg til melk og batterier på handlelista")).toContain("unforked");
       expect(names("jeg har kyllinglår og purre i kjøleskapet, hva kan jeg lage?")).toContain(
         "unforked",
       );

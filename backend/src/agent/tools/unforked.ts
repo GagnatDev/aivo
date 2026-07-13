@@ -4,15 +4,17 @@ import {
   UnforkedNotConnectedError,
   type UnforkedClient,
 } from "../../unforked/client.js";
-import { parse, type AgentTool } from "./index.js";
+import { OWNER_ONLY, parse, type AgentTool } from "./index.js";
 
 /**
- * Read access to unforked, the family's meal planner (unforked
+ * Access to unforked, the family's meal planner (unforked
  * docs/aivo-integration.md): meal plan and shopping list by week, the compact
  * recipe corpus for "what can I make with X?" matching (the model does the
  * ingredient matching itself — synonyms and near-matches are what it's good
- * at), and full recipes by id. v1 is read-only by design; the API key is
- * registered on the dashboard's Settings page, never over chat.
+ * at), full recipes by id, and one write: adding items to a week's shopping
+ * list ("add milk and batteries"), which is owner-only and needs a key with
+ * unforked's `write` scope. The API key is registered on the dashboard's
+ * Settings page, never over chat.
  */
 
 const NOT_CONFIGURED =
@@ -24,9 +26,20 @@ const NOT_CONNECTED =
 const WEEK_PATTERN = /^(current|next|\d{4}-W\d{2})$/;
 
 const unforkedArgs = z.object({
-  action: z.enum(["meal_plan", "shopping_list", "recipes", "recipe"]),
+  action: z.enum(["meal_plan", "shopping_list", "add_shopping_items", "recipes", "recipe"]),
   week: z.string().regex(WEEK_PATTERN, "week must be 'current', 'next' or 'YYYY-Wnn'").optional(),
   recipe_id: z.string().uuid("recipe_id must be a recipe uuid from an earlier result").optional(),
+  items: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1, "each item needs a name"),
+        quantity: z.string().optional(),
+        unit: z.string().optional(),
+      }),
+    )
+    .min(1, "items must not be empty")
+    .max(50, "at most 50 items at a time")
+    .optional(),
 });
 
 export const unforkedTool: AgentTool = {
@@ -37,23 +50,44 @@ export const unforkedTool: AgentTool = {
   schema: {
     name: "unforked",
     description:
-      "Read the family's unforked meal planner. Actions: 'meal_plan' (week's dinner plan, " +
+      "The family's unforked meal planner. Actions: 'meal_plan' (week's dinner plan, " +
       "answers 'what's for dinner?'); 'shopping_list' (week's list incl. what's already " +
-      "checked off); 'recipes' (compact corpus of ALL family recipes with ingredient names — " +
+      "checked off); 'add_shopping_items' (add one or more items to a week's shopping list — " +
+      "owner only); 'recipes' (compact corpus of ALL family recipes with ingredient names — " +
       "use it to suggest what to cook from ingredients on hand, matching synonyms yourself); " +
       "'recipe' (full recipe by recipe_id, with steps and quantities). week is 'current' " +
       "(default), 'next', or ISO 'YYYY-Wnn' — never compute week numbers yourself. " +
-      "Everything is read-only: you cannot change the plan or the list.",
+      "Apart from adding shopping-list items, everything is read-only: you cannot change " +
+      "the plan, check items off, or remove items.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["meal_plan", "shopping_list", "recipes", "recipe"] },
+        action: {
+          type: "string",
+          enum: ["meal_plan", "shopping_list", "add_shopping_items", "recipes", "recipe"],
+        },
         week: {
           type: "string",
           description:
-            "'current' (default), 'next', or 'YYYY-Wnn' (action=meal_plan/shopping_list)",
+            "'current' (default), 'next', or 'YYYY-Wnn' " +
+            "(action=meal_plan/shopping_list/add_shopping_items)",
         },
         recipe_id: { type: "string", description: "recipe uuid (action=recipe)" },
+        items: {
+          type: "array",
+          description:
+            "items to add (action=add_shopping_items); quantity/unit are free-form " +
+            "strings like '2' and 'l' and may be omitted",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              quantity: { type: "string" },
+              unit: { type: "string" },
+            },
+            required: ["name"],
+          },
+        },
       },
       required: ["action"],
     },
@@ -91,6 +125,16 @@ export const unforkedTool: AgentTool = {
             })),
           });
         }
+        case "add_shopping_items": {
+          if (!ctx.isOwner) return OWNER_ONLY;
+          if (!a.items) return "Provide 'items' (the items to add, each with at least a name).";
+          const added = await client.addShoppingListItems(a.week ?? "current", a.items);
+          const names = added.items.map((i) => {
+            const amount = [i.quantity, i.unit].filter(Boolean).join(" ");
+            return amount ? `${i.name} (${amount})` : i.name;
+          });
+          return `Added to the ${added.weekIdentifier} shopping list: ${names.join(", ")}.`;
+        }
         case "recipes": {
           const recipes = await client.getCompactRecipes();
           if (recipes.length === 0) return "The family has no recipes in unforked yet.";
@@ -109,6 +153,13 @@ export const unforkedTool: AgentTool = {
           return (
             "Unforked rejected the API key (it may have been revoked). The owner can " +
             "register a fresh key on the dashboard's Settings page."
+          );
+        }
+        if (err.status === 403) {
+          return (
+            "Unforked refused the write: the registered API key is read-only. The owner can " +
+            "create a new key in unforked with write access ('Allow changes') and register " +
+            "it on the dashboard's Settings page."
           );
         }
         if (err.status === 404) return "Not found in unforked (wrong recipe_id?).";
