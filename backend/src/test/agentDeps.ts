@@ -32,6 +32,8 @@ export const TEST_AGENT_CONFIG: AgentConfig = {
   contextMessageLimit: 15,
   memoryInjectLimit: 20,
   approvalTtlMinutes: 60,
+  voiceMaxDurationSecs: 60,
+  voiceMaxBytes: 8_000_000,
 };
 
 /**

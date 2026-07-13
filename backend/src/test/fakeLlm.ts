@@ -4,12 +4,16 @@ import type {
   ChatResult,
   LlmProvider,
   ToolSchema,
+  TranscriptionRequest,
+  TranscriptionResult,
 } from "../llm/provider.js";
 import { estimateRequestTokens } from "../llm/tokens.js";
 
 export interface FakeLlm extends LlmProvider {
   /** Requests captured in call order, for assertions. */
   readonly calls: ChatRequest[];
+  /** Transcription requests captured in call order, for assertions. */
+  readonly transcribeCalls: TranscriptionRequest[];
 }
 
 /**
@@ -18,16 +22,20 @@ export interface FakeLlm extends LlmProvider {
  * then a final answer). A scripted `Error` is thrown instead of returned, so a test can
  * simulate a provider failure of a specific taxonomy `kind`. `countTokens` uses the
  * real heuristic so estimates are deterministic. If `fixedInputTokens` is given,
- * countTokens returns it instead — handy for forcing the approval gate.
+ * countTokens returns it instead — handy for forcing the approval gate. `transcribe`
+ * returns `opts.transcript` (default a fixed string) and records the call; pass an
+ * `Error` as `transcript` to simulate a provider failure.
  */
 export function makeFakeLlm(
   script: (ChatResult | Error)[],
-  opts: { fixedInputTokens?: number } = {},
+  opts: { fixedInputTokens?: number; transcript?: TranscriptionResult | Error } = {},
 ): FakeLlm {
   const calls: ChatRequest[] = [];
+  const transcribeCalls: TranscriptionRequest[] = [];
   let i = 0;
   return {
     calls,
+    transcribeCalls,
     async chat(req: ChatRequest): Promise<ChatResult> {
       calls.push(req);
       const next = script[i++];
@@ -37,6 +45,12 @@ export function makeFakeLlm(
     },
     countTokens(messages: ChatMessage[], tools?: ToolSchema[]): number {
       return opts.fixedInputTokens ?? estimateRequestTokens(messages, tools);
+    },
+    async transcribe(req: TranscriptionRequest): Promise<TranscriptionResult> {
+      transcribeCalls.push(req);
+      const t = opts.transcript ?? { text: "transcribed text" };
+      if (t instanceof Error) throw t;
+      return t;
     },
   };
 }

@@ -111,6 +111,8 @@ export async function startServer(connectionString?: string): Promise<StartedSer
       contextMessageLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
       memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
       approvalTtlMinutes: env.APPROVAL_TTL_MINUTES,
+      voiceMaxDurationSecs: env.VOICE_MAX_DURATION_SECS,
+      voiceMaxBytes: env.VOICE_MAX_BYTES,
     },
   };
 

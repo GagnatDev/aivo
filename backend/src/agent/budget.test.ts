@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeAudioCostCents,
   computeCostCents,
   deriveState,
   loadBudgetSnapshot,
   preCallCheck,
+  recordTranscriptionUsage,
   recordUsageAndAlert,
   type BudgetDeps,
 } from "./budget.js";
@@ -38,6 +40,47 @@ describe("computeCostCents", () => {
       { tokensIn: 1000, tokensOut: 500 },
     );
     expect(cost).toBeCloseTo(0.135, 6);
+  });
+});
+
+describe("computeAudioCostCents", () => {
+  it("prorates the per-minute rate by the clip duration", () => {
+    // 3¢/min for a 30s clip = 1.5¢.
+    expect(computeAudioCostCents(3, 30)).toBeCloseTo(1.5, 6);
+    // 10¢/min for a 12s clip = 2¢.
+    expect(computeAudioCostCents(10, 12)).toBeCloseTo(2, 6);
+  });
+});
+
+describe("recordTranscriptionUsage", () => {
+  it("writes an stt ledger row with cost from duration and zero tokens", async () => {
+    const { deps, userId } = await setup();
+    // whisper seed = 3¢/min audio; a 60s clip costs 3¢.
+    const rec = await recordTranscriptionUsage(deps, userId, "whisper-large-v3", 60);
+    expect(rec.costCents).toBeCloseTo(3, 4);
+    expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(3, 4);
+    const rows = await deps.llmUsage.listRows(userId, {
+      from: new Date(0),
+      to: new Date(Date.now() + 60_000),
+      limit: 10,
+    });
+    expect(rows[0]).toMatchObject({ taskType: "stt", tokensIn: 0, tokensOut: 0 });
+  });
+
+  it("fires a budget alert when the stt cost crosses a threshold", async () => {
+    const { deps, userId } = await setup();
+    await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
+    await deps.llmUsage.insert({
+      userId,
+      taskType: "chat",
+      model: "x",
+      tokensIn: 0,
+      tokensOut: 0,
+      costCents: 48,
+    });
+    // voxtral seed = 10¢/min; a 60s clip adds 10¢ → 58% (crosses the 50 threshold).
+    const rec = await recordTranscriptionUsage(deps, userId, "voxtral-small-24b-2507", 60);
+    expect(rec.alertPct).toBe(50);
   });
 });
 

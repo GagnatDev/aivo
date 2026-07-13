@@ -13,6 +13,8 @@ export type Channel = "chat" | "youtube" | "mail";
 export type MessageRole = "user" | "assistant" | "tool" | "system";
 /** Which tier a model fills, or null when it is configured but inactive. */
 export type ModelTierRole = "cheap" | "premium";
+/** What a model can do — the modality axis, orthogonal to the cheap/premium cost tier. */
+export type ModelCapability = "chat" | "audio" | "vision";
 /** The cost-control behavior state machine (see docs/data-model.md). */
 export type DegradationState = "normal" | "cheap_models" | "proactive_paused" | "over_ceiling";
 /** Lifecycle of an interactive approval-gate prompt. */

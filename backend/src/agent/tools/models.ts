@@ -6,19 +6,24 @@ const modelsArgs = z.object({
   model_id: z.string().optional(),
   input_cost_per_mtok_cents: z.number().nonnegative().optional(),
   output_cost_per_mtok_cents: z.number().nonnegative().optional(),
+  audio_cost_per_min_cents: z.number().nonnegative().optional(),
+  capabilities: z.array(z.enum(["chat", "audio", "vision"])).optional(),
   role: z.enum(["cheap", "premium"]).optional(),
 });
 
 export const modelsTool: AgentTool = {
   // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
-  gate: /\b(models?|prices?|pricing|scaleway|llama|mtok|per[- ]?token|tier|premium|cheap|modell\w*|pris\w*)\b/i,
+  gate: /\b(models?|prices?|pricing|scaleway|llama|whisper|voxtral|mtok|per[- ]?token|tier|premium|cheap|capabilit\w*|audio|voice|transcri\w*|modell\w*|pris\w*|stemme|tale|lyd)\b/i,
   schema: {
     name: "models",
     description:
       "Inspect or configure the model/pricing table. 'list' shows models, their cheap/premium " +
-      "role, and prices in cents per 1,000,000 tokens (anyone). 'set_price' adds a model (new " +
-      "model_id) or updates its prices; 'set_tier_role' assigns the cheap/premium role (a model " +
-      "is used for chat only once it holds a role). set_price and set_tier_role are OWNER-ONLY: " +
+      "role, capabilities (chat|audio|vision), token prices (cents per 1,000,000 tokens) and, " +
+      "for audio models, the per-minute audio price (anyone). 'set_price' adds a model (new " +
+      "model_id, optionally with capabilities and an audio per-minute price) or updates prices; " +
+      "'set_tier_role' assigns the cheap/premium role within the model's capability domain (a " +
+      "model is used for chat/audio only once it holds a role). Audio models (e.g. Scaleway " +
+      "whisper/voxtral) transcribe voice messages. set_price and set_tier_role are OWNER-ONLY: " +
       "call them only when the owner explicitly asks. You cannot look up prices — never guess or " +
       "invent them; pass only figures the owner stated exactly, and ask if you don't have them.",
     parameters: {
@@ -33,6 +38,15 @@ export const modelsTool: AgentTool = {
         output_cost_per_mtok_cents: {
           type: "number",
           description: "cents per 1M output tokens (set_price)",
+        },
+        audio_cost_per_min_cents: {
+          type: "number",
+          description: "cents per minute of audio, for audio models (set_price)",
+        },
+        capabilities: {
+          type: "array",
+          items: { type: "string", enum: ["chat", "audio", "vision"] },
+          description: "what the model can do; defaults to chat when adding a model (set_price)",
         },
         role: {
           type: "string",
@@ -54,8 +68,11 @@ export const modelsTool: AgentTool = {
           rows.map((r) => ({
             model_id: r.model_id,
             role: r.tier_role,
+            capabilities: r.capabilities,
             input_cents_per_mtok: Number(r.input_cost_per_mtok_cents),
             output_cents_per_mtok: Number(r.output_cost_per_mtok_cents),
+            audio_cents_per_min:
+              r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
             currency: r.currency,
           })),
         );
@@ -73,8 +90,16 @@ export const modelsTool: AgentTool = {
           modelId: p.value.model_id,
           inputCostPerMtokCents: p.value.input_cost_per_mtok_cents,
           outputCostPerMtokCents: p.value.output_cost_per_mtok_cents,
+          ...(p.value.capabilities ? { capabilities: p.value.capabilities } : {}),
+          ...(p.value.audio_cost_per_min_cents !== undefined
+            ? { audioCostPerMinCents: p.value.audio_cost_per_min_cents }
+            : {}),
         });
-        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok.`;
+        const audioNote =
+          row.audio_cost_per_min_cents != null
+            ? `, audio ${Number(row.audio_cost_per_min_cents)}¢/min`
+            : "";
+        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok${audioNote}. Capabilities: ${row.capabilities.join(", ")}.`;
       }
       case "set_tier_role": {
         if (!ctx.isOwner) return OWNER_ONLY;

@@ -56,6 +56,16 @@ export function computeCostCents(
   );
 }
 
+/**
+ * Cost of a transcription in fractional cents. Audio models are billed by audio length,
+ * not tokens (whisper per second, voxtral per audio-token), so aivo prices them uniformly
+ * per audio-minute and derives the cost from the clip's known duration.
+ * cost = ratePerMinCents * durationSeconds / 60.
+ */
+export function computeAudioCostCents(ratePerMinCents: number, durationSeconds: number): number {
+  return (ratePerMinCents * durationSeconds) / 60;
+}
+
 /** Pure threshold→state machine. Spend only grows within a month, so this is monotonic. */
 export function deriveState(snap: {
   monthlyCeilingCents: number;
@@ -193,19 +203,59 @@ export async function recordUsageAndAlert(
     costCents,
   });
 
+  return { costCents, ...(await applyAlert(deps, userId)) };
+}
+
+/**
+ * Meter a transcription call: an `stt` ledger row whose cost comes from the audio model's
+ * per-minute rate and the clip's duration (token counts are 0 — audio isn't token-billed).
+ * Because budget state is derived from the summed `cost_cents`, never tokens, the ledger
+ * stays honest; the same alert bookkeeping as chat then runs.
+ */
+export async function recordTranscriptionUsage(
+  deps: BudgetDeps,
+  userId: string,
+  model: string,
+  durationSeconds: number,
+): Promise<UsageRecord> {
+  const pricing = await deps.modelPricing.getByModelId(model);
+  const ratePerMin =
+    pricing?.audio_cost_per_min_cents != null ? Number(pricing.audio_cost_per_min_cents) : 0;
+  const costCents = computeAudioCostCents(ratePerMin, durationSeconds);
+
+  await deps.llmUsage.insert({
+    userId,
+    taskType: "stt",
+    model,
+    tokensIn: 0,
+    tokensOut: 0,
+    costCents,
+  });
+
+  return { costCents, ...(await applyAlert(deps, userId)) };
+}
+
+/**
+ * After a ledger row is written, decide whether a budget alert should fire. An alert
+ * fires only when month-to-date spend newly crosses up through a configured threshold;
+ * the `last_alerted_pct` watermark debounces repeats and self-resets at month rollover
+ * (spend drops, the crossed threshold drops, the watermark follows it down). Shared by
+ * the chat and transcription metering paths so both alert identically.
+ */
+async function applyAlert(deps: BudgetDeps, userId: string): Promise<{ alertPct?: number }> {
   const config = await deps.budgetConfig.getOrCreate(userId);
-  if (config.monthly_ceiling_cents <= 0) return { costCents };
+  if (config.monthly_ceiling_cents <= 0) return {};
   const mtd = await deps.llmUsage.monthToDateCents(userId);
   const pct = (mtd / config.monthly_ceiling_cents) * 100;
   const crossed = crossedThreshold(config.alert_thresholds, pct);
 
   if (crossed > config.last_alerted_pct) {
     await deps.budgetConfig.recordAlert(userId, crossed);
-    return { alertPct: crossed, costCents };
+    return { alertPct: crossed };
   }
   if (crossed < config.last_alerted_pct) {
     // Month rolled over (spend reset) — lower the watermark so future climbs re-fire.
     await deps.budgetConfig.recordAlert(userId, crossed);
   }
-  return { costCents };
+  return {};
 }

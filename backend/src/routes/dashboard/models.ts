@@ -43,8 +43,11 @@ export function modelsRoutes(deps: DashboardDeps): Router {
       models: rows.map((r) => ({
         modelId: r.model_id,
         tierRole: r.tier_role,
+        capabilities: r.capabilities,
         inputCentsPerMtok: Number(r.input_cost_per_mtok_cents),
         outputCentsPerMtok: Number(r.output_cost_per_mtok_cents),
+        audioCentsPerMin:
+          r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
         currency: r.currency,
       })),
       tiers: {

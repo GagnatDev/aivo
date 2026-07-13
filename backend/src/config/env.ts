@@ -58,6 +58,13 @@ const EnvSchema = z.object({
   // A pending approval-gate prompt older than this is swept to `expired`.
   APPROVAL_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 
+  // Voice messages: Discord voice notes are transcribed by the audio model (see the
+  // model_pricing capabilities). Both caps are enforced before download (Discord reports
+  // the clip's duration + size up front), so an over-cap note is rejected with a friendly
+  // note and costs nothing. Kept modest at first to bound STT spend and latency.
+  VOICE_MAX_DURATION_SECS: z.coerce.number().int().positive().default(60),
+  VOICE_MAX_BYTES: z.coerce.number().int().positive().default(8_000_000),
+
   // unforked (family meal planner) machine API — the in-cluster, ingress-less
   // `unforked-machine` Service (unforked docs/aivo-integration.md), e.g.
   // http://unforked-machine.homectl. The API key deliberately does NOT live in
