@@ -184,7 +184,8 @@ export class ModelPricingRepository {
     const resolved =
       capability ?? (target.capabilities.length === 1 ? target.capabilities[0] : undefined);
     if (!resolved) return { ok: false, reason: "ambiguous_capability" };
-    if (!target.capabilities.includes(resolved)) return { ok: false, reason: "capability_not_held" };
+    if (!target.capabilities.includes(resolved))
+      return { ok: false, reason: "capability_not_held" };
 
     const row = await this.db.transaction().execute(async (tx) => {
       await tx
