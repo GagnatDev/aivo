@@ -100,6 +100,11 @@ describe("runAgent", () => {
     const stored = await deps.messages.listByConversation(conversationId);
     expect(stored.some((m) => m.role === "tool")).toBe(true);
     expect(llm.calls).toHaveLength(2);
+    // The tool-requesting assistant turn had no text of its own, so instead of a null
+    // ("(no content recorded)") row the activity log gets a description of what it did.
+    const toolTurn = stored.find((m) => m.role === "assistant" && m.content?.startsWith("Used "));
+    expect(toolTurn?.content).toContain("memory");
+    expect(toolTurn?.content).toContain("likes hiking");
   });
 
   it("forces a plain-text answer when the model repeats a tool call", async () => {
