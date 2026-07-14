@@ -104,4 +104,25 @@ describe("selectToolSchemas", () => {
       expect(names("hei, hvordan går det i dag?")).toEqual(["memory"]);
     });
   });
+
+  // Fuzzy matching: a garbled voice transcription or a manual typo must still trip the
+  // gate. The reported incident was a transcription that dropped an 'l' ("handeliste"),
+  // which the old exact-substring regex missed — so the tool was never advertised and the
+  // model confabulated success instead of adding the items.
+  describe("typo / transcription tolerance", () => {
+    it("advertises unforked despite a dropped letter in the transcription", () => {
+      expect(names("legg til melk på næste uges handeliste")).toContain("unforked");
+      expect(names("hva står på handlelista?")).toContain("unforked");
+    });
+
+    it("advertises reminder / settings despite common misspellings", () => {
+      expect(names("set a remidner for 5pm")).toContain("reminder");
+      expect(names("change my timezon please")).toContain("settings");
+    });
+
+    it("does not over-fire on short lookalike words", () => {
+      // "mat" (food) must not match "matematikk"; small talk stays memory-only.
+      expect(names("jeg regnet litt matematikk i dag")).toEqual(["memory"]);
+    });
+  });
 });
