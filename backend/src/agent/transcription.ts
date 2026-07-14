@@ -1,6 +1,7 @@
 import { logger } from "../logger.js";
 import { LlmProviderError } from "../llm/errors.js";
 import { preCallCheck, recordTranscriptionUsage } from "./budget.js";
+import { resolveTier } from "./tools/index.js";
 import type { AgentDeps } from "./deps.js";
 
 /**
@@ -79,9 +80,9 @@ async function resolveAudioModel(
 
 /**
  * Transcribe a Discord voice message to text, enforcing the size/duration caps and
- * metering the cost. Requests the cheap audio tier outright (voxtral — cheapest AND
- * strongest, so there is nothing to degrade to), while still running the budget
- * pre-check so degradation state is persisted. `download` is injectable for tests.
+ * metering the cost. Honors the user's model-tier preference (mirroring the chat path in
+ * prepareTurn.ts) and runs the budget pre-check, which may coerce the tier down under
+ * budget pressure and persists the degradation state. `download` is injectable for tests.
  */
 export async function transcribeVoiceMessage(
   deps: AgentDeps,
@@ -97,13 +98,14 @@ export async function transcribeVoiceMessage(
     return { kind: "rejected", reply: TOO_BIG };
   }
 
-  // Transcription always asks for the cheap audio slot: voxtral is both the cheapest
-  // audio model per minute (~10x under whisper) and the stronger transcriber, so
-  // cheap-first is also best-first (the seed points both audio slots at it). preCallCheck
-  // still runs so the degradation state is persisted; a budget coercion is a no-op on an
-  // already-cheap request, and resolveAudioModel falls back to the premium slot if the
-  // cheap one is ever unassigned.
-  const decision = await preCallCheck(deps, userId, "cheap");
+  // Resolve the tier from the user's model-tier preference, exactly as the chat path does
+  // (prepareTurn.ts). preCallCheck may still coerce it down to cheap under budget pressure
+  // and persists the degradation state; resolveAudioModel falls back to the other slot if
+  // the requested one is ever unassigned. The default seed points both audio slots at
+  // voxtral, so either tier lands on it until the owner assigns a distinct premium model.
+  const settings = await deps.settings.getOrCreate(userId);
+  const requestedTier = resolveTier(settings.model_tier);
+  const decision = await preCallCheck(deps, userId, requestedTier);
   const model = await resolveAudioModel(deps, decision.coercedTier);
   if (!model) return { kind: "unavailable", reply: NO_MODEL };
 
