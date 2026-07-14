@@ -142,6 +142,44 @@ describe("unforked tool", () => {
       ]);
     });
 
+    it("coerces items sent as a JSON-encoded string (a common open-model slip)", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      const out = await tool().execute(
+        {
+          action: "add_shopping_items",
+          items: '[{"name": "melk", "quantity": "2", "unit": "l"}, {"name": "dopapir"}]',
+        },
+        ctx,
+      );
+      expect(out).toBe("Added to the 2026-W29 shopping list: melk (2 l), dopapir.");
+      expect(fake.addedItems).toEqual([
+        { name: "melk", quantity: "2", unit: "l" },
+        { name: "dopapir" },
+      ]);
+    });
+
+    it("lifts bare-string entries to { name }", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      const out = await tool().execute(
+        { action: "add_shopping_items", items: ["melk", "dopapir"] },
+        ctx,
+      );
+      expect(out).toBe("Added to the 2026-W29 shopping list: melk, dopapir.");
+    });
+
+    it("still rejects a non-JSON string with the normal error", async () => {
+      const fake = makeFakeUnforked();
+      const ctx = await ctxFor(fake);
+      const out = await tool().execute(
+        { action: "add_shopping_items", items: "melk og dopapir" },
+        ctx,
+      );
+      expect(out).toContain("Invalid arguments");
+      expect(fake.calls).toHaveLength(0);
+    });
+
     it("adds to next week's list when asked", async () => {
       const fake = makeFakeUnforked();
       const ctx = await ctxFor(fake);

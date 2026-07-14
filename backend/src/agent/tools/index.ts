@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { ToolSchema } from "../../llm/provider.js";
 import type { Tier } from "../budget.js";
 import type { AgentDeps } from "../deps.js";
+import { gateMatches } from "./gate.js";
 import { memoryTool } from "./memory.js";
 import { budgetTool } from "./budget.js";
 import { modelsTool } from "./models.js";
@@ -22,11 +23,13 @@ export interface ToolContext {
 export interface AgentTool {
   schema: ToolSchema;
   /**
-   * Keyword gate deciding whether this tool's schema is advertised this turn (see
-   * {@link selectToolSchemas}). A tool with no gate is always advertised. Kept next to
-   * the tool definition so a tool and its gate can't drift apart.
+   * Trigger keywords deciding whether this tool's schema is advertised this turn (see
+   * {@link selectToolSchemas} and {@link gateMatches} for the matching rules). A tool
+   * with no gate is always advertised. Kept next to the tool definition so a tool and
+   * its gate can't drift apart. List both English and Norwegian triggers — the owner
+   * switches languages freely, and a missed word silently strips the capability.
    */
-  gate?: RegExp;
+  gate?: readonly string[];
   /** Execute the call and return a result string appended as a `tool` message. */
   execute(args: unknown, ctx: ToolContext): Promise<string>;
 }
@@ -70,9 +73,10 @@ export function buildToolRegistry(): AgentTool[] {
  * A tool with no `gate` is always advertised — `memory` is intentionally un-gated: aivo
  * is meant to capture facts the user drops in ordinary conversation ("I'm vegetarian")
  * without a trigger word, so gating it out would silently lose recall. Gated tools are
- * advertised only when the recent conversation matches their keyword regex; matching is
- * deliberately broad and biased toward inclusion — a false positive just wastes tokens,
- * a false negative loses a capability for that turn.
+ * advertised only when the recent conversation trips one of their keywords (see
+ * {@link gateMatches} — exact/stem/fuzzy, so a typo or a garbled transcription still
+ * matches); matching is deliberately broad and biased toward inclusion — a false positive
+ * just wastes tokens, a false negative loses a capability for that turn.
  *
  * The model can only *call* a tool whose schema was advertised, so a gate that misses the
  * user's phrasing silently strips the capability (the model just replies in prose). The
@@ -81,7 +85,9 @@ export function buildToolRegistry(): AgentTool[] {
  * non-English turns.
  */
 export function selectToolSchemas(registry: AgentTool[], recentText: string): ToolSchema[] {
-  return registry.filter((t) => (t.gate ? t.gate.test(recentText) : true)).map((t) => t.schema);
+  return registry
+    .filter((t) => (t.gate ? gateMatches(t.gate, recentText) : true))
+    .map((t) => t.schema);
 }
 
 /** Resolve a tier setting/string to a concrete cheap|premium tier. `auto` → premium. */

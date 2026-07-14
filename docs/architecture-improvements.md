@@ -191,9 +191,12 @@ the mechanical "fetch the referenced message" part.
 > `ToolContext`/`AgentTool` interfaces, and the shared `parse()`/`OWNER_ONLY` helpers),
 > `memory.ts`, `budget.ts`, `models.ts`, `settings.ts`, plus `index.test.ts`,
 > `memory.test.ts`, `budget.test.ts`, `models.test.ts`, `settings.test.ts`. Each tool's
-> keyword gate now lives on the tool itself as an optional `gate?: RegExp` field on
-> `AgentTool` — the parallel `TOOL_GATES` record and the `ALWAYS_ON` set are both gone.
-> `selectToolSchemas()` reads `t.gate` directly: a tool with no gate is always advertised,
+> keyword gate now lives on the tool itself as an optional `gate?` field on `AgentTool`
+> — the parallel `TOOL_GATES` record and the `ALWAYS_ON` set are both gone. (As of
+> 2026-07-14 the gate is a `readonly string[]` of trigger keywords matched fuzzily by
+> `gate.ts`, replacing the original `RegExp`, so a typo or garbled transcription still
+> trips it.) `selectToolSchemas()` reads `t.gate` directly: a tool with no gate is always
+> advertised,
 > which is exactly how `memory` stays always-on. `agent.ts` imports from
 > `./tools/index.js`; no other importers existed. Pure file moves plus one interface
 > field — no behavior change (verified: registry order and gating are identical).

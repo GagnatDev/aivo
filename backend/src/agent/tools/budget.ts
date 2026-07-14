@@ -11,8 +11,49 @@ const budgetArgs = z.object({
 });
 
 export const budgetTool: AgentTool = {
-  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
-  gate: /[$€]|\bkr\b|\b(budget|spend|spent|spending|cost|costs|cap|caps|ceiling|cents?|dollars?|euros?|money|bill|billing|afford|expensive|threshold|approval|tier|premium|cheap|budsjett\w*|brukt|bruke|kostnad\w*|koster|penger|kroner|dyr\w*|billig\w*|rimelig\w*|regning\w*|godkjenn\w*|grense\w*|tak)\b/i,
+  // Bilingual keyword gate (English + Norwegian, the owner's usual language) — see
+  // reminders.ts and gate.ts. "$"/"€" are literal symbol triggers; "kr"/"tak"/"dyr" stay
+  // whole-word (too short to stem safely, so suffixed forms are listed explicitly).
+  gate: [
+    "$",
+    "€",
+    "kr",
+    "budget",
+    "spend",
+    "spent",
+    "cost",
+    "cap",
+    "caps",
+    "ceiling",
+    "cents",
+    "dollar",
+    "euro",
+    "money",
+    "bill",
+    "afford",
+    "expensive",
+    "threshold",
+    "approval",
+    "tier",
+    "premium",
+    "cheap",
+    "budsjett",
+    "brukt",
+    "bruke",
+    "kostnad",
+    "koster",
+    "penger",
+    "kroner",
+    "dyr",
+    "dyrt",
+    "dyre",
+    "billig",
+    "rimelig",
+    "regning",
+    "godkjenn",
+    "grense",
+    "tak",
+  ],
   schema: {
     name: "budget",
     description:

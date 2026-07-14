@@ -13,8 +13,31 @@ const modelsArgs = z.object({
 });
 
 export const modelsTool: AgentTool = {
-  // Bilingual gate (English + Norwegian, the owner's usual language) — see reminders.ts.
-  gate: /\b(models?|prices?|pricing|scaleway|llama|whisper|voxtral|mtok|per[- ]?token|tier|premium|cheap|capabilit\w*|audio|voice|transcri\w*|modell\w*|pris\w*|stemme|tale|lyd)\b/i,
+  // Bilingual keyword gate (English + Norwegian, the owner's usual language) — see
+  // reminders.ts and gate.ts for how these match (exact/stem/fuzzy).
+  gate: [
+    "model",
+    "modell",
+    "price",
+    "pricing",
+    "pris",
+    "scaleway",
+    "llama",
+    "whisper",
+    "voxtral",
+    "mtok",
+    "per token",
+    "tier",
+    "premium",
+    "cheap",
+    "capabilit",
+    "audio",
+    "voice",
+    "stemme",
+    "tale",
+    "lyd",
+    "transcri",
+  ],
   schema: {
     name: "models",
     description:

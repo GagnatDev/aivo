@@ -42,11 +42,61 @@ const unforkedArgs = z.object({
     .optional(),
 });
 
+/**
+ * Normalize a raw args object before validation. Open-weight models routinely JSON-encode
+ * the `items` array into a *string* ("[{\"name\":…}]") instead of emitting a real array,
+ * which used to bounce off an "Expected array, received string" error and cost a wasted
+ * retry on every add. This undoes that (and lifts bare-string entries like ["melk"] to
+ * { name }); genuinely malformed input still falls through to the normal array error.
+ */
+function coerceArgs(args: unknown): unknown {
+  if (!args || typeof args !== "object" || !("items" in args)) return args;
+  let items: unknown = (args as Record<string, unknown>).items;
+  if (typeof items === "string") {
+    try {
+      items = JSON.parse(items.trim());
+    } catch {
+      return args; // not JSON — let the array validator report the real problem
+    }
+  }
+  if (Array.isArray(items)) {
+    items = items.map((el) => (typeof el === "string" ? { name: el } : el));
+  }
+  return { ...args, items };
+}
+
 export const unforkedTool: AgentTool = {
-  // Bilingual gate (see selectToolSchemas in index.js): the owner asks about food in
-  // Norwegian — middag/ukemeny/handleliste/oppskrift and friends must trip it, or the
-  // capability is silently dead for those turns.
-  gate: /\b(meal\w*|dinner|supper|lunch\w*|cook\w*|recipe\w*|grocer\w*|shopping\s?list\w*|ingredient\w*|fridge|middag\w*|kveldsmat\w*|lunsj\w*|meny\w*|ukemeny\w*|ukesmeny\w*|matplan\w*|mat|matrett\w*|oppskrift\w*|handleliste\w*|handlelista|ingrediens\w*|kjøleskap\w*|spis\w*)\b/i,
+  // Bilingual keyword gate (see selectToolSchemas + gateMatches in index.js/gate.js): the
+  // owner asks about food in Norwegian — middag/ukemeny/handleliste/oppskrift and friends
+  // must trip it, or the capability is silently dead for those turns. Fuzzy matching means
+  // a garbled transcription ("handeliste") or typo still hits "handleliste".
+  gate: [
+    "meal",
+    "dinner",
+    "supper",
+    "lunch",
+    "cook",
+    "recipe",
+    "grocer",
+    "shopping list",
+    "shoppinglist",
+    "ingredient",
+    "fridge",
+    "middag",
+    "kveldsmat",
+    "lunsj",
+    "meny",
+    "ukemeny",
+    "ukesmeny",
+    "matplan",
+    "mat",
+    "matrett",
+    "oppskrift",
+    "handleliste",
+    "ingrediens",
+    "kjøleskap",
+    "spis",
+  ],
   schema: {
     name: "unforked",
     description:
@@ -93,7 +143,7 @@ export const unforkedTool: AgentTool = {
     },
   },
   async execute(args, ctx) {
-    const p = parse(unforkedArgs, args);
+    const p = parse(unforkedArgs, coerceArgs(args));
     if (!p.ok) return p.error;
     const a = p.value;
 
