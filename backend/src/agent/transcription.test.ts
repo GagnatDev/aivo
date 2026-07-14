@@ -86,7 +86,7 @@ describe("transcribeVoiceMessage", () => {
     expect(dl.urls).toHaveLength(0);
   });
 
-  it("transcribes with the cheap audio model and meters an stt ledger row", async () => {
+  it("transcribes and meters an stt ledger row", async () => {
     const llm = makeFakeLlm([], { transcript: { text: "  hello from a voice note  " } });
     const { deps, userId } = await setup(llm);
     const dl = stubDownload();
@@ -94,17 +94,40 @@ describe("transcribeVoiceMessage", () => {
 
     expect(out).toMatchObject({ kind: "ok", text: "hello from a voice note" });
     expect(dl.urls).toEqual(["https://cdn.example/voice.ogg"]);
-    // Transcription requests the cheap tier outright → voxtral.
+    // Default tier is `auto` (→ premium), and the seed points both audio slots at voxtral.
     expect(llm.transcribeCalls[0]?.model).toBe("voxtral-small-24b-2507");
     // voxtral seed = 0.03¢/min; 30s → 0.015¢ on the stt ledger.
     expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(0.015, 6);
   });
 
-  it("stays on the cheap audio model under budget pressure", async () => {
+  it("respects the user's model-tier preference for the audio slot", async () => {
+    const llm = makeFakeLlm([], { transcript: { text: "premium please" } });
+    const { deps, userId } = await setup(llm);
+    // Give the premium and cheap audio slots distinct models, then set the user to premium.
+    await deps.modelPricing.setTierRole("whisper-large-v3", "premium", "audio");
+    await deps.settings.update(userId, { model_tier: "premium" });
+    const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
+    expect(out.kind).toBe("ok");
+    expect(llm.transcribeCalls[0]?.model).toBe("whisper-large-v3");
+  });
+
+  it("uses the cheap audio slot when the user prefers the cheap tier", async () => {
+    const llm = makeFakeLlm([], { transcript: { text: "cheap please" } });
+    const { deps, userId } = await setup(llm);
+    await deps.modelPricing.setTierRole("whisper-large-v3", "premium", "audio");
+    await deps.settings.update(userId, { model_tier: "cheap" });
+    const out = await transcribeVoiceMessage(deps, userId, voice(), stubDownload().fn);
+    expect(out.kind).toBe("ok");
+    expect(llm.transcribeCalls[0]?.model).toBe("voxtral-small-24b-2507");
+  });
+
+  it("coerces a premium preference down to the cheap audio slot under budget pressure", async () => {
     const llm = makeFakeLlm([], { transcript: { text: "cheap tier please" } });
     const { deps, userId } = await setup(llm);
-    // Push month-to-date to 85% of the ceiling → cheap_models degradation. Transcription
-    // already requests cheap, so the coercion is a no-op and voxtral keeps transcribing.
+    // Premium user + a distinct premium audio model; budget pressure must still force cheap.
+    await deps.modelPricing.setTierRole("whisper-large-v3", "premium", "audio");
+    await deps.settings.update(userId, { model_tier: "premium" });
+    // Push month-to-date to 85% of the ceiling → cheap_models degradation coerces to cheap.
     await deps.budgetConfig.update(userId, { monthly_ceiling_cents: 100 });
     await deps.llmUsage.insert({
       userId,
