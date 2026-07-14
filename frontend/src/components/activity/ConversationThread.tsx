@@ -90,22 +90,14 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     return <p className="muted empty-state">No messages in this conversation yet.</p>;
   }
 
+  // Messages are held oldest-first internally (so the `before` cursor keys off
+  // messages[0]); render newest-first so the latest message sits at the top.
+  const rendered = [...thread.messages].reverse();
+
   return (
     <div className="thread">
-      {thread.hasMore ? (
-        <button
-          type="button"
-          className="refresh thread-older"
-          disabled={thread.loading}
-          onClick={thread.loadOlder}
-        >
-          {thread.loading ? "Loading…" : "Load older messages"}
-        </button>
-      ) : (
-        <p className="muted thread-start">Start of recorded history</p>
-      )}
       <ol className="thread-list">
-        {thread.messages.map((m) => {
+        {rendered.map((m) => {
           const tokens = tokensNote(m);
           return (
             <li key={m.id} className={`thread-msg thread-${m.role}`}>
@@ -121,6 +113,18 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           );
         })}
       </ol>
+      {thread.hasMore ? (
+        <button
+          type="button"
+          className="refresh thread-older"
+          disabled={thread.loading}
+          onClick={thread.loadOlder}
+        >
+          {thread.loading ? "Loading…" : "Load older messages"}
+        </button>
+      ) : (
+        <p className="muted thread-start">Start of recorded history</p>
+      )}
     </div>
   );
 }
