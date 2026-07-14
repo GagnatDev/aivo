@@ -1,6 +1,6 @@
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
+import type { ChatMessage, ChatResult, ToolCall, ToolSchema } from "../llm/provider.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
@@ -117,12 +117,15 @@ export async function runToolLoop(
       return { reply: (result.content ?? "").trim() || EMPTY_REPLY_FALLBACK, alertPct };
     }
 
-    // Persist + replay the assistant message that requested the tools.
+    // Persist + replay the assistant message that requested the tools. The replayed
+    // message keeps the model's real (often null) content + structured tool_calls; the
+    // persisted row instead records what the turn actually did, since a bare null shows
+    // up in the activity log as an empty "(no content recorded)" line.
     messages.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
     await deps.messages.insert({
       conversationId: ctx.conversationId,
       role: "assistant",
-      content: result.content,
+      content: result.content?.trim() || describeToolCalls(result.toolCalls),
       discordMessageId: null,
     });
 
@@ -217,6 +220,23 @@ async function forceFinalAnswer(
 function preview(text: string | null, max = 200): string {
   if (!text) return "(none)";
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * A human-readable summary of the tools an assistant turn requested, persisted as the
+ * message content when the model returned tool calls but no text of its own. Without it
+ * the activity log renders these turns as an empty "(no content recorded)" line; with it
+ * the log shows what actually happened — which tools ran, with a compact argument preview
+ * (large payloads truncated so the thread stays readable).
+ */
+function describeToolCalls(toolCalls: ToolCall[]): string {
+  if (toolCalls.length === 0) return "";
+  const calls = toolCalls.map((c) => {
+    const args = c.arguments?.trim();
+    if (!args || args === "{}") return c.name;
+    return `${c.name}(${preview(args, 120)})`;
+  });
+  return `Used ${calls.length === 1 ? "tool" : "tools"}: ${calls.join(", ")}`;
 }
 
 async function executeToolCall(
