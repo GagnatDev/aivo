@@ -756,13 +756,13 @@ a {
 
 .thread-older {
   display: block;
-  margin: 0 auto 0.75rem;
+  margin: 0.75rem auto 0;
 }
 
 .thread-start {
   text-align: center;
   font-size: 0.8rem;
-  margin-bottom: 0.75rem;
+  margin-top: 0.75rem;
 }
 
 .thread-list {
