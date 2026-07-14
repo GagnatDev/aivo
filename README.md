@@ -43,10 +43,12 @@ is priced per *token* (€0.15/M in, €0.35/M out): audio input tokenizes at 1 
 80 ms (750 tokens per minute) and is **rounded up to 30-second chunks** — a 10 s clip
 bills as a full 30 s — plus the transcript itself as output tokens. Its seeded rate
 (0.03¢/min) is a flat equivalent of that shape, set slightly high so short clips' chunk
-round-up never under-counts. Voxtral — ~10× cheaper than whisper per minute *and* the
-stronger transcriber — fills both audio tier slots in `model_tier_assignments`, so
-transcription always uses it and budget degradation has nothing cheaper to reach for;
-whisper stays priced but unassigned, one `set_tier_role` away if ever wanted.
+round-up never under-counts. Transcription resolves the audio model from the user's
+model-tier preference (the same way chat does), then meters and degrades against the
+budget like any other call. By default both audio tier slots in `model_tier_assignments`
+are seeded to voxtral — ~10× cheaper than whisper per minute *and* the stronger
+transcriber — so either tier lands on it out of the box; whisper stays priced but
+unassigned, one `set_tier_role` away if you ever want to point a slot at it.
 
 ## Getting started
 
