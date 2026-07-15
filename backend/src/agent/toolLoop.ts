@@ -117,14 +117,18 @@ export async function runToolLoop(
       return { reply: (result.content ?? "").trim() || EMPTY_REPLY_FALLBACK, alertPct };
     }
 
-    // Persist + replay the assistant message that requested the tools. The replayed
-    // message keeps the model's real (often null) content + structured tool_calls; the
-    // persisted row instead records what the turn actually did, since a bare null shows
-    // up in the activity log as an empty "(no content recorded)" line.
+    // Replay the assistant message that requested the tools into THIS turn's context,
+    // keeping the model's real (often null) content + structured tool_calls.
     messages.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
+    // Persist a human-readable record of what the turn did (a bare null shows up in the
+    // activity log as an empty "(no content recorded)" line). This is an audit row under
+    // the `tool` role, NOT `assistant`: buildContext replays user/assistant text verbatim
+    // across turns, so recording this "Used tool: …" summary as an assistant turn taught
+    // the model to echo it as its own reply — which then went out to Discord. As a `tool`
+    // row it still renders in the dashboard thread but is excluded from the replayed context.
     await deps.messages.insert({
       conversationId: ctx.conversationId,
-      role: "assistant",
+      role: "tool",
       content: result.content?.trim() || describeToolCalls(result.toolCalls),
       discordMessageId: null,
     });

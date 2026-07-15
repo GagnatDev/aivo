@@ -63,6 +63,54 @@ describe("buildContext", () => {
     expect(memoryBlock(messages)).toBeUndefined();
   });
 
+  it("replays user + assistant text but never tool rows (incl. tool-call audit summaries)", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]));
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    // A turn that used a tool: the user asks, the loop records a "Used tool: …" audit
+    // summary (role `tool`) plus the tool result (role `tool`), then Aivo's real reply.
+    await deps.messages.insert({
+      conversationId,
+      role: "user",
+      content: "add milk",
+      discordMessageId: "m1",
+    });
+    await deps.messages.insert({
+      conversationId,
+      role: "tool",
+      content: 'Used tool: unforked({"action":"add_shopping_items","items":[{"name":"milk"}]})',
+      discordMessageId: null,
+    });
+    await deps.messages.insert({
+      conversationId,
+      role: "tool",
+      content: "Added to the 2026-W29 shopping list: milk.",
+      discordMessageId: null,
+    });
+    await deps.messages.insert({
+      conversationId,
+      role: "assistant",
+      content: "Done — milk's on the list.",
+      discordMessageId: "m2",
+    });
+    const settings = await deps.settings.getOrCreate(userId);
+
+    const messages = await buildContext(deps, {
+      userId,
+      conversationId,
+      settings,
+      historyLimit: 15,
+      memoryLimit: 20,
+    });
+
+    const replayed = messages.filter((m) => m.role === "user" || m.role === "assistant");
+    expect(replayed.map((m) => m.content)).toEqual(["add milk", "Done — milk's on the list."]);
+    // The audit summary and the tool result must not reach the model in any role — else the
+    // model learns to echo "Used tool: …" back to the user (the reported Discord bug).
+    expect(messages.some((m) => m.content?.includes("Used tool"))).toBe(false);
+    expect(messages.some((m) => m.role === "tool")).toBe(false);
+  });
+
   it("grounds the system prompt with the current local date/time", async () => {
     const deps = makeAgentDeps(
       makeFakeLlm([]),
