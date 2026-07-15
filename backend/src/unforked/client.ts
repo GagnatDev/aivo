@@ -97,6 +97,22 @@ export class UnforkedNotConnectedError extends Error {
   }
 }
 
+/**
+ * Thrown when a request to unforked exceeds the configured timeout. Without a
+ * timeout a slow or wedged machine API (e.g. a shopping-list write blocked on a
+ * row lock during a deploy) leaves the fetch hanging on undici's multi-minute
+ * default — long enough that the agent turn dies with no tool result and the
+ * model, seeing nothing come back, confabulates an explanation to the owner. A
+ * bounded timeout turns that silent hang into a prompt, honest failure the tool
+ * can report.
+ */
+export class UnforkedTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`unforked did not respond within ${timeoutMs}ms`);
+    this.name = "UnforkedTimeoutError";
+  }
+}
+
 export interface UnforkedClient {
   /** Self-check an explicit key — the dashboard registration path. */
   verifyKey(apiKey: string): Promise<UnforkedMe>;
@@ -112,26 +128,49 @@ export interface UnforkedClient {
   ): Promise<UnforkedAddedShoppingListItems>;
 }
 
+/** Default per-request timeout. Well under the agent's turn budget and Discord's
+ * interaction window, so a wedged unforked fails fast instead of hanging the turn. */
+export const DEFAULT_UNFORKED_TIMEOUT_MS = 10_000;
+
 export interface UnforkedClientConfig {
   /** e.g. http://unforked-machine.homectl (in-cluster service DNS). */
   baseUrl: string;
   /** The registered key, read per call so a dashboard (re-)registration applies immediately. */
   getApiKey: () => Promise<string | null>;
+  /** Per-request timeout in ms. Defaults to {@link DEFAULT_UNFORKED_TIMEOUT_MS}. */
+  timeoutMs?: number;
 }
 
 export function createUnforkedClient(config: UnforkedClientConfig): UnforkedClient {
   const base = config.baseUrl.replace(/\/+$/, "");
+  const timeoutMs = config.timeoutMs ?? DEFAULT_UNFORKED_TIMEOUT_MS;
 
   async function call<T>(path: string, apiKey: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${base}/machine/v1${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    let res: Response;
+    try {
+      // Every call is time-bounded (AbortSignal.timeout): a machine API that never
+      // answers — a write wedged on a row lock, a pod restarting mid-deploy — must not
+      // hang the fetch on undici's ~5-minute default and take the whole turn down with it.
+      res = await fetch(`${base}/machine/v1${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (err) {
+      // AbortSignal.timeout fires a "TimeoutError"; a caller-driven abort is "AbortError".
+      // Either way the request is over its budget — surface it as a timeout the tool can
+      // report, rather than the opaque DOMException. Other fetch errors (DNS, connection
+      // refused) fall through to the tool's "could not reach unforked" branch.
+      if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+        throw new UnforkedTimeoutError(timeoutMs);
+      }
+      throw err;
+    }
     if (!res.ok) {
       let message = `unforked responded ${res.status}`;
       try {

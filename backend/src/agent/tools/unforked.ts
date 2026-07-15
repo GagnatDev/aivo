@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   UnforkedApiError,
   UnforkedNotConnectedError,
+  UnforkedTimeoutError,
   type UnforkedClient,
 } from "../../unforked/client.js";
 import { OWNER_ONLY, parse, type AgentTool } from "./index.js";
@@ -198,6 +199,15 @@ export const unforkedTool: AgentTool = {
       }
     } catch (err) {
       if (err instanceof UnforkedNotConnectedError) return NOT_CONNECTED;
+      if (err instanceof UnforkedTimeoutError) {
+        // A timeout on a write is ambiguous — the change may or may not have landed — so
+        // never claim success and never claim nothing happened. Tell the owner plainly so
+        // they can check or retry, instead of the model inventing a reason it "failed".
+        return (
+          "Unforked didn't respond in time, so I can't confirm whether that went through. " +
+          "It may be busy or briefly unavailable — please check the list, or try again in a moment."
+        );
+      }
       if (err instanceof UnforkedApiError) {
         if (err.status === 401) {
           return (

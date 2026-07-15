@@ -79,6 +79,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     ? createUnforkedClient({
         baseUrl: env.UNFORKED_BASE_URL,
         getApiKey: () => unforkedConnection.findApiKey(),
+        timeoutMs: env.UNFORKED_TIMEOUT_MS,
       })
     : null;
 
