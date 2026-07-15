@@ -222,6 +222,21 @@ describe("unforked tool", () => {
       expect(out).toContain("write access");
       expect(out).toContain("Settings page");
     });
+
+    it("reports an honest, non-committal failure when unforked times out", async () => {
+      // A write that hangs (unforked wedged on a row lock / restarting mid-deploy) must
+      // not silently kill the turn: the tool returns a result that neither claims success
+      // nor claims nothing happened, so the model can't confabulate a "403 / only the
+      // owner" explanation the way it did in the reported incident.
+      const ctx = await ctxWith({ timeout: true });
+      const out = await tool().execute(
+        { action: "add_shopping_items", items: [{ name: "vannmelon" }] },
+        ctx,
+      );
+      expect(out).toContain("didn't respond in time");
+      expect(out).toContain("can't confirm");
+      expect(out).not.toContain("Added to");
+    });
   });
 
   it("explains a rejected (revoked) key and points at the dashboard", async () => {

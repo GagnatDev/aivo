@@ -1,6 +1,7 @@
 import {
   UnforkedApiError,
   UnforkedNotConnectedError,
+  UnforkedTimeoutError,
   type UnforkedClient,
   type UnforkedCompactRecipe,
   type UnforkedMe,
@@ -34,6 +35,8 @@ export interface FakeUnforkedOptions {
   failStatus?: number;
   /** All calls throw a network-level error (unforked unreachable). */
   unreachable?: boolean;
+  /** All calls throw UnforkedTimeoutError (unforked didn't answer in time). */
+  timeout?: boolean;
 }
 
 export interface FakeUnforked extends UnforkedClient {
@@ -50,6 +53,7 @@ export function makeFakeUnforked(options: FakeUnforkedOptions = {}): FakeUnforke
 
   function guard(method: string, arg?: string): void {
     calls.push({ method, arg });
+    if (options.timeout) throw new UnforkedTimeoutError(10_000);
     if (options.unreachable) throw new Error("fetch failed");
     if (options.failStatus) throw new UnforkedApiError(options.failStatus, "fake failure");
     if (options.notConnected && method !== "verifyKey") throw new UnforkedNotConnectedError();

@@ -77,9 +77,11 @@ export interface BuildContextInput {
  * Assemble the LLM message list: a system prompt (base persona + the user's
  * persona_prompt addendum), an optional block of known memories, then the recent
  * conversation transcript. Only user/assistant text is replayed from history — the
- * intermediate tool/assistant-with-tool-calls rows are persisted for audit but not
- * reconstructed across turns (they lack the structured tool_call linkage), which keeps
- * the replayed message list valid for the provider.
+ * intermediate tool rows (both tool results and the "Used tool: …" tool-call audit
+ * summaries the loop records for the dashboard) are persisted for audit but not
+ * reconstructed across turns: they lack the structured tool_call linkage, and replaying
+ * a tool-call summary as assistant text taught the model to echo "Used tool: …" back to
+ * the user. Excluding every tool row keeps the replayed list valid and in Aivo's voice.
  */
 export async function buildContext(
   deps: AgentDeps,

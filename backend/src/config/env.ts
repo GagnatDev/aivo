@@ -72,6 +72,12 @@ const EnvSchema = z.object({
   // is stored in the unforked_connection table. Unset disables the capability
   // (the tool and the dashboard section report "not configured").
   UNFORKED_BASE_URL: z.string().url().optional(),
+  // Per-request timeout (ms) for the unforked machine API. Bounds every call so a
+  // slow or wedged unforked (e.g. a write blocked on a row lock, or a pod restarting
+  // mid-deploy) fails fast with an honest error instead of hanging the agent turn on
+  // undici's multi-minute default — which used to leave the model with no result and
+  // confabulating an explanation to the owner.
+  UNFORKED_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
   // Dashboard auth. Aivo sits behind the homectl-auth-proxy sidecar
   // (homectl-auth docs/sidecar/integration.md): all OAuth config (PUBLIC_AUTH_URL,

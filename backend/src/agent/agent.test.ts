@@ -93,18 +93,26 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toMatch(/remember/i);
+    // The reply is the model's conversational text, never the "Used tool: …" audit
+    // summary (which used to leak into replies via replayed history — see below).
+    expect(result.reply).not.toContain("Used tool");
     // The memory was written.
     const memories = await deps.memories.listActive(userId);
     expect(memories.map((m) => m.content)).toContain("likes hiking");
-    // A tool-role message was persisted, and two model round-trips were metered.
-    const stored = await deps.messages.listByConversation(conversationId);
-    expect(stored.some((m) => m.role === "tool")).toBe(true);
     expect(llm.calls).toHaveLength(2);
-    // The tool-requesting assistant turn had no text of its own, so instead of a null
+    // The tool-requesting turn had no text of its own, so instead of a null
     // ("(no content recorded)") row the activity log gets a description of what it did.
-    const toolTurn = stored.find((m) => m.role === "assistant" && m.content?.startsWith("Used "));
-    expect(toolTurn?.content).toContain("memory");
-    expect(toolTurn?.content).toContain("likes hiking");
+    // It is recorded under the `tool` role — NOT `assistant` — so buildContext does not
+    // replay it as Aivo's speech (which taught the model to echo "Used tool: …" to Discord).
+    const stored = await deps.messages.listByConversation(conversationId);
+    const auditTurn = stored.find((m) => m.content?.startsWith("Used "));
+    expect(auditTurn?.role).toBe("tool");
+    expect(auditTurn?.content).toContain("memory");
+    expect(auditTurn?.content).toContain("likes hiking");
+    // No assistant row carries the audit summary — only genuine replies are assistant rows.
+    expect(stored.some((m) => m.role === "assistant" && m.content?.includes("Used tool"))).toBe(
+      false,
+    );
   });
 
   it("forces a plain-text answer when the model repeats a tool call", async () => {
