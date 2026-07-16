@@ -20,7 +20,10 @@ pnpm --filter @aivo/backend run build       # typecheck + tsup bundle
 
 Backend tests need **Docker** — they spin up Postgres via Testcontainers and are currently
 **serial** (`fileParallelism: false`; the suite shares one database reset with `TRUNCATE`).
-Without Docker, point `TEST_DATABASE_URL` at a disposable Postgres instead.
+Without Docker, point `TEST_DATABASE_URL` at a disposable Postgres instead. The schema
+codegen script (`pnpm --filter @aivo/backend db:codegen[:check]`) honours the same
+`TEST_DATABASE_URL` fallback, so it runs Docker-free too — it migrates the target before
+introspecting, so never point it at real data.
 
 ## Layout (`backend/src/`)
 
