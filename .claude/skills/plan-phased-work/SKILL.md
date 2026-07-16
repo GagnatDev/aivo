@@ -7,6 +7,19 @@ recording dependencies so an agent can reason about what may run in parallel.
 Exemplar to imitate: [`GagnatDev/unforked#84`](https://github.com/GagnatDev/unforked/issues/84)
 and its sub-issues #85–#90.
 
+## Planning principles
+
+- **Planning is planning only — never implement while planning.** Producing a plan means
+  writing the spec and sub-issues; it does **not** include code changes, edits, migrations,
+  or any implementation work. Investigation is read-only (reading files, `file:line`
+  grounding). Implementation happens later, one phase at a time, by the agent that picks up
+  a sub-issue.
+- **Plan so that risk decreases.** Slice the work to make each step as low-risk as
+  possible: prefer incremental upgrades and small, self-contained changes over big-bang
+  ones; sequence phases so a failure is isolated and easy to bisect; and **prioritize good
+  test coverage** — each phase should land with (or add) the tests that prove it, and its
+  "Done when" should include "no regression to X".
+
 ## Two-tier structure
 
 - **One spec issue** — the single source of truth for the design. All the detail lives
@@ -62,11 +75,14 @@ Each phase goes to one agent at a time. The agent should:
 4. **Verify** — run the repo's build/test/typecheck (per `AGENTS.md`) before committing.
   The change must merge to `main` without breaking existing functionality; if it can't
   be fully done that way, ship the largest self-consistent slice and note what deferred.
-5. **Open a PR into `main`** referencing the spec and the phase (`Closes #<phase>`),
-  reviewable and mergeable on its own.
-6. **Hand off** — post a **status comment on the phase sub-issue**: what shipped, what was
-  deferred, new modules/APIs/migrations, known gaps, and anything the next agent must
-  know. This comment is the contract the next agent reads in step 1.
+5. **Always open a PR into `main` when the sub-issue's implementation is done** —
+  reviewable and mergeable on its own. The PR body must include a sentence stating which
+  issue it closes (`Closes #<phase>`), referencing the spec as well. Opening the PR is not
+  optional and does not wait for the human to ask.
+6. **Hand off — always, without being prompted.** Post a **status comment on the phase
+  sub-issue** as soon as the work is done; never wait for the human to request it. Cover:
+  what shipped, what was deferred, new modules/APIs/migrations, known gaps, and anything
+  the next agent must know. This comment is the contract the next agent reads in step 1.
 7. **Improve the workflow** — if the phase surfaced friction in this process or a way to
   make it work better, propose it for the user to fold in (see below); don't self-edit.
 
