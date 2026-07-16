@@ -13,5 +13,14 @@
     "test": "pnpm -r run test",
     "dev:backend": "pnpm --filter @aivo/backend run dev",
     "dev:frontend": "pnpm --filter @aivo/frontend run dev"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "kysely-codegen": {
+        "dependencies": {
+          "typescript": "~6.0.3"
+        }
+      }
+    }
   }
 }
