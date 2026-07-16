@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { runSchemaCodegen } from "../src/db/codegen.js";
 import { runMigrations } from "../src/db/migrate.js";
 
@@ -9,14 +9,22 @@ import { runMigrations } from "../src/db/migrate.js";
 // verify the committed file is up to date (non-zero exit on drift) instead of rewriting
 // it — used by the drift-check test and available for manual/CI runs.
 //
+// Set TEST_DATABASE_URL to point at an already-running Postgres instead of Docker (same
+// fallback as the test suite's global-setup.ts, for environments without Docker); the
+// script migrates it before introspecting, so never point this at real data.
+//
 //   pnpm db:codegen         # rewrite schema.ts
 //   pnpm db:codegen:check   # fail if schema.ts is stale
 
 const verify = process.argv.slice(2).some((arg) => arg === "--check" || arg === "--verify");
 
-const container = await new PostgreSqlContainer("postgres:16-alpine").start();
+let container: StartedPostgreSqlContainer | undefined;
 try {
-  const url = container.getConnectionUri();
+  let url = process.env.TEST_DATABASE_URL;
+  if (!url) {
+    container = await new PostgreSqlContainer("postgres:16-alpine").start();
+    url = container.getConnectionUri();
+  }
   await runMigrations(url);
   await runSchemaCodegen(url, { verify });
   console.log(verify ? "✓ src/db/schema.ts is up to date." : "✓ Regenerated src/db/schema.ts.");
@@ -26,5 +34,5 @@ try {
   }
   throw error;
 } finally {
-  await container.stop();
+  await container?.stop();
 }
