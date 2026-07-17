@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
+import type { Logger } from "pino";
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
+import type { ChatMessage, ChatResult, FinishReason, ToolSchema } from "../llm/provider.js";
 import { truncateToTokens } from "../llm/tokens.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
@@ -62,6 +64,25 @@ export interface LoopResult {
   alertPct?: number;
 }
 
+/** How a turn ended, for the per-turn observability record. */
+export type TurnOutcome = "final_answer" | "forced_answer" | "iteration_cap" | "provider_error";
+
+/**
+ * Running totals for one turn, accumulated across every model round-trip (including
+ * the forced final answer) and emitted as a single info-level "agent turn completed"
+ * line. Debug logging is rich but off in production; this record is what makes a
+ * misbehaving turn ("why did that take 40 seconds / cost 12¢") diagnosable there.
+ */
+interface TurnStats {
+  iterations: number;
+  toolsCalled: string[];
+  toolErrors: number;
+  tokensIn: number;
+  tokensOut: number;
+  costCents: number;
+  finishReasons: FinishReason[];
+}
+
 /**
  * The in-house tool-calling loop. Each model round-trip is metered; tool calls are
  * executed and their results fed back until the model returns a final text answer or
@@ -74,6 +95,32 @@ export async function runToolLoop(
   registry: AgentTool[],
   params: LoopParams,
 ): Promise<LoopResult> {
+  // Every log line this turn emits carries the same turn id, so a turn's round-trips
+  // can be correlated in production output without debug-level reconstruction.
+  const log = logger.child({
+    turnId: randomUUID(),
+    userId: ctx.userId,
+    conversationId: ctx.conversationId,
+  });
+  const startedAtMs = deps.clock.now().getTime();
+  const stats: TurnStats = {
+    iterations: 0,
+    toolsCalled: [],
+    toolErrors: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    costCents: 0,
+    finishReasons: [],
+  };
+  // The one info-level record per turn — every exit path funnels through here.
+  const finish = (outcome: TurnOutcome, result: LoopResult): LoopResult => {
+    log.info(
+      { ...stats, outcome, latencyMs: deps.clock.now().getTime() - startedAtMs },
+      "agent turn completed",
+    );
+    return result;
+  };
+
   const messages = params.messages;
   let alertPct: number | undefined;
   // Signatures (name+args) of tool calls already executed this turn — used to detect
@@ -93,8 +140,8 @@ export async function runToolLoop(
       // Provider failure (auth/403, rate limit, outage). Surface a reply matched to the
       // cause rather than letting the turn throw and leave the user with no response.
       const kind = err instanceof LlmProviderError ? err.kind : "unknown";
-      logger.error({ err, kind }, "llm chat call failed");
-      return { reply: llmErrorReply(err), alertPct };
+      log.error({ err, kind }, "llm chat call failed");
+      return finish("provider_error", { reply: llmErrorReply(err), alertPct });
     }
 
     const record = await recordUsageAndAlert(
@@ -105,10 +152,14 @@ export async function runToolLoop(
       result.usage,
     );
     if (record.alertPct) alertPct = Math.max(alertPct ?? 0, record.alertPct);
+    stats.iterations = i + 1;
+    stats.tokensIn += result.usage.tokensIn;
+    stats.tokensOut += result.usage.tokensOut;
+    stats.costCents += record.costCents;
+    stats.finishReasons.push(result.finishReason);
 
-    logger.debug(
+    log.debug(
       {
-        userId: ctx.userId,
         iteration: i,
         tokensIn: result.usage.tokensIn,
         tokensOut: result.usage.tokensOut,
@@ -123,17 +174,16 @@ export async function runToolLoop(
     );
 
     if (result.toolCalls.length === 0) {
-      logger.debug({ userId: ctx.userId, iterations: i + 1 }, "agent final reply");
       const text = (result.content ?? "").trim();
       // A `length` stop mid-text would otherwise be sent as if it were complete.
       if (result.finishReason === "length" && text) {
-        logger.warn(
-          { userId: ctx.userId, model: params.model, maxTokens: params.maxTokens },
+        log.warn(
+          { model: params.model, maxTokens: params.maxTokens },
           "agent reply truncated by output token limit",
         );
-        return { reply: text + TRUNCATION_NOTE, alertPct };
+        return finish("final_answer", { reply: text + TRUNCATION_NOTE, alertPct });
       }
-      return { reply: text || EMPTY_REPLY_FALLBACK, alertPct };
+      return finish("final_answer", { reply: text || EMPTY_REPLY_FALLBACK, alertPct });
     }
 
     // Replay the assistant message that requested the tools into THIS turn's context,
@@ -158,9 +208,8 @@ export async function runToolLoop(
     // can shorten the call (or answer). The iteration cap still bounds a model that
     // keeps overrunning.
     if (result.finishReason === "length") {
-      logger.warn(
+      log.warn(
         {
-          userId: ctx.userId,
           model: params.model,
           iteration: i,
           maxTokens: params.maxTokens,
@@ -192,19 +241,20 @@ export async function runToolLoop(
       const signature = `${call.name}:${call.arguments}`;
       if (!executed.has(signature)) allRepeats = false;
       executed.add(signature);
-      const rawResult = await executeToolCall(registry, call.name, call.arguments, ctx);
+      const execution = await executeToolCall(registry, call.name, call.arguments, ctx, log);
+      stats.toolsCalled.push(call.name);
+      if (execution.isError) stats.toolErrors += 1;
       // Cap oversized results at the loop boundary: a large result would otherwise be
       // re-sent verbatim on every subsequent iteration, inflating every round-trip. The
       // capped text is what the model sees AND what we persist, so replay (see #52) stays
       // faithful to — and as bounded as — what actually happened this turn.
-      const toolResult = capToolResult(rawResult, deps.config.toolResultMaxTokens);
-      logger.debug(
+      const toolResult = capToolResult(execution.text, deps.config.toolResultMaxTokens);
+      log.debug(
         {
-          userId: ctx.userId,
           tool: call.name,
           arguments: call.arguments,
           resultPreview: preview(toolResult),
-          truncated: toolResult.length !== rawResult.length,
+          truncated: toolResult.length !== execution.text.length,
         },
         "agent tool executed",
       );
@@ -222,19 +272,22 @@ export async function runToolLoop(
     // The model re-issued only tool calls it had already made this turn — it's stuck.
     // Stop looping and force a plain-text answer from what it already has.
     if (allRepeats) {
-      logger.warn(
-        { userId: ctx.userId, model: params.model, iteration: i },
-        "agent repeated tool calls; forcing answer",
+      log.warn({ model: params.model, iteration: i }, "agent repeated tool calls; forcing answer");
+      return finish(
+        "forced_answer",
+        await forceFinalAnswer(deps, ctx, params, messages, alertPct, log, stats),
       );
-      return forceFinalAnswer(deps, ctx, params, messages, alertPct);
     }
   }
 
-  logger.warn(
-    { userId: ctx.userId, model: params.model, iterations: deps.config.agentMaxToolIterations },
+  log.warn(
+    { model: params.model, iterations: deps.config.agentMaxToolIterations },
     "agent hit tool-iteration cap; forcing answer",
   );
-  return forceFinalAnswer(deps, ctx, params, messages, alertPct);
+  return finish(
+    "iteration_cap",
+    await forceFinalAnswer(deps, ctx, params, messages, alertPct, log, stats),
+  );
 }
 
 /**
@@ -249,6 +302,8 @@ async function forceFinalAnswer(
   params: LoopParams,
   messages: ChatMessage[],
   alertPct: number | undefined,
+  log: Logger,
+  stats: TurnStats,
 ): Promise<LoopResult> {
   const nudged: ChatMessage[] = [
     ...messages,
@@ -272,6 +327,11 @@ async function forceFinalAnswer(
       params.model,
       result.usage,
     );
+    // The forced call is a real round-trip of the same turn — fold it into the record.
+    stats.tokensIn += result.usage.tokensIn;
+    stats.tokensOut += result.usage.tokensOut;
+    stats.costCents += record.costCents;
+    stats.finishReasons.push(result.finishReason);
     const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;
     const text = (result.content ?? "").trim();
     if (text) {
@@ -281,7 +341,7 @@ async function forceFinalAnswer(
     }
     return { reply: STUCK_FALLBACK, alertPct: nextAlert };
   } catch (err) {
-    logger.error(err, "forced final answer failed");
+    log.error(err, "forced final answer failed");
     return { reply: STUCK_FALLBACK, alertPct };
   }
 }
@@ -307,28 +367,32 @@ function preview(text: string | null, max = 200): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** A tool call's outcome: the text fed back to the model, and whether it was a failure
+ * (unknown tool, unparseable arguments, or the execute function throwing) — the error
+ * flag feeds the turn record's `toolErrors` count. */
 async function executeToolCall(
   registry: AgentTool[],
   name: string,
   rawArgs: string,
   ctx: ToolContext,
-): Promise<string> {
+  log: Logger,
+): Promise<{ text: string; isError: boolean }> {
   const tool = registry.find((t) => t.schema.name === name);
-  if (!tool) return `Unknown tool: ${name}`;
+  if (!tool) return { text: `Unknown tool: ${name}`, isError: true };
   let args: unknown = {};
   try {
     args = rawArgs ? JSON.parse(rawArgs) : {};
   } catch {
-    return "Could not parse tool arguments as JSON.";
+    return { text: "Could not parse tool arguments as JSON.", isError: true };
   }
   try {
-    return await tool.execute(args, ctx);
+    return { text: await tool.execute(args, ctx), isError: false };
   } catch (err) {
     // Wrap at the seam so the tool name and cause are captured as structured data, then
     // feed the failure back to the model (as a tool result) so it can recover, rather
     // than aborting the whole turn.
     const toolErr = new ToolExecutionError(name, { cause: err });
-    logger.error({ err, tool: name }, toolErr.message);
-    return `${toolErr.message}.`;
+    log.error({ err, tool: name }, toolErr.message);
+    return { text: `${toolErr.message}.`, isError: true };
   }
 }
