@@ -53,6 +53,7 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
     messages: plan.messages,
     tools: plan.tools,
     maxTokens: plan.maxTokens,
+    costCeilingCents: plan.costCeilingCents,
   });
 
   const reply = plan.overBudgetNote ? `${plan.overBudgetNote}\n\n${loop.reply}` : loop.reply;

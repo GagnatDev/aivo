@@ -26,6 +26,10 @@ const LLM_AUTH_FALLBACK =
   "The owner needs to check the API configuration.";
 // Last-resort reply when even the tools-disabled final answer yields nothing.
 const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
+// Appended when the turn was stopped by the in-flight cost ceiling, so the user knows
+// the answer may be partial and why (mirrors the truncation note's transparency).
+const COST_CEILING_NOTE =
+  "\n\n(I wrapped that up early — this turn was getting expensive. Ask again if you want me to dig deeper.)";
 // Appended when the model's text was cut off by the output-token cap (finishReason
 // `length`), so a truncated reply is never passed off as a complete one.
 const TRUNCATION_NOTE = "\n\n(…that got cut off by my reply-length limit.)";
@@ -57,6 +61,13 @@ export interface LoopParams {
   messages: ChatMessage[];
   tools: ToolSchema[];
   maxTokens: number;
+  /**
+   * Whole-turn spend ceiling in fractional cents (see PreparedTurn.costCeilingCents);
+   * null/undefined disables it. Checked against the turn's actual accumulated cost
+   * before each round-trip, so the loop's total stays bounded even though the pre-call
+   * approval gate only priced the first call.
+   */
+  costCeilingCents?: number | null;
 }
 
 export interface LoopResult {
@@ -65,7 +76,12 @@ export interface LoopResult {
 }
 
 /** How a turn ended, for the per-turn observability record. */
-export type TurnOutcome = "final_answer" | "forced_answer" | "iteration_cap" | "provider_error";
+export type TurnOutcome =
+  | "final_answer"
+  | "forced_answer"
+  | "iteration_cap"
+  | "cost_ceiling"
+  | "provider_error";
 
 /**
  * Running totals for one turn, accumulated across every model round-trip (including
@@ -128,6 +144,26 @@ export async function runToolLoop(
   const executed = new Set<string>();
 
   for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
+    // In-flight cost ceiling: the approval gate priced only the first call's worst
+    // case, so re-check the turn's ACTUAL accumulated cost before spending another
+    // round-trip on the ever-growing context. Checked at the top of the iteration so
+    // every continue-path (tool results fed back, truncated-call feedback) passes
+    // through it. The forced answer is one final, tools-disabled call — the bounded
+    // exit, same as the iteration cap.
+    if (params.costCeilingCents != null && stats.costCents >= params.costCeilingCents) {
+      log.warn(
+        {
+          model: params.model,
+          iteration: i,
+          costCents: stats.costCents,
+          costCeilingCents: params.costCeilingCents,
+        },
+        "agent turn reached in-flight cost ceiling; forcing answer",
+      );
+      const forced = await forceFinalAnswer(deps, ctx, params, messages, alertPct, log, stats);
+      return finish("cost_ceiling", { ...forced, reply: forced.reply + COST_CEILING_NOTE });
+    }
+
     let result: ChatResult;
     try {
       result = await deps.llm.chat({

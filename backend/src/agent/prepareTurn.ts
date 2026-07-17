@@ -42,6 +42,14 @@ export interface PreparedTurn {
   messages: ChatMessage[];
   tools: ToolSchema[];
   maxTokens: number;
+  /**
+   * Whole-turn spend ceiling in fractional cents (approval threshold × configured
+   * multiplier), or null when the approval gate is disabled. The tool loop stops and
+   * forces a final answer once the turn's actual accumulated cost reaches it — the
+   * in-flight complement to the pre-call approval gate, which only prices the first
+   * call's worst case.
+   */
+  costCeilingCents: number | null;
   /** Prepended to the final reply when the turn ran degraded over the budget ceiling. */
   overBudgetNote?: string;
 }
@@ -207,6 +215,13 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
     messages,
     tools,
     maxTokens,
+    // Derived here (the turn-policy boundary) so the loop just enforces a number. It
+    // deliberately applies to gate-bypassing (approved) turns too: approval covered
+    // the first call's estimate, not an unbounded run of tool round-trips.
+    costCeilingCents:
+      decision.approvalThresholdCents != null
+        ? decision.approvalThresholdCents * deps.config.turnCostCeilingMultiplier
+        : null,
     overBudgetNote: decision.overBudgetNote,
   };
 }

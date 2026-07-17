@@ -55,6 +55,13 @@ const EnvSchema = z.object({
   LLM_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
   // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
   AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
+  // In-flight cost ceiling for one turn, as a multiple of the user's approval
+  // threshold. The pre-call approval gate only prices the FIRST call's worst case; a
+  // turn then runs up to AGENT_MAX_TOOL_ITERATIONS round-trips, each re-sending the
+  // grown context. When a turn's actual accumulated cost reaches
+  // threshold × this multiplier, the loop stops and forces a final answer instead of
+  // spending another round-trip. Only applies when the approval threshold is set.
+  AGENT_TURN_COST_CEILING_MULTIPLIER: z.coerce.number().positive().default(3),
   // Keyword-gate tool advertisement (see agent/tools/index.ts). Off by default: all
   // tool schemas are advertised every turn — a stable prompt prefix that caches well
   // and can't silently strip a capability on a missed keyword. Set to "true" to

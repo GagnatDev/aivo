@@ -13,6 +13,18 @@ import { useCleanDb } from "../test/db.js";
 
 useCleanDb();
 
+/**
+ * A tool-call round-trip metering 1 Mtok of input: on the premium seed model
+ * (90¢/Mtok) that's 90¢ of real ledger cost per round-trip — enough to trip the
+ * in-flight cost ceiling without touching the pre-call gate's (small) estimate.
+ */
+function expensiveToolCall(term: string, id: string) {
+  return {
+    ...toolCallResult("memory", { action: "search", term }, id),
+    usage: { tokensIn: 1_000_000, tokensOut: 0 },
+  };
+}
+
 describe("runAgent", () => {
   it("returns a plain reply and meters one usage row", async () => {
     const llm = makeFakeLlm([textResult("Noted.")]);
@@ -289,6 +301,51 @@ describe("runAgent", () => {
     expect(resumed?.reply).toBe("here's the answer");
     expect(llm.calls).toHaveLength(1); // ran exactly once, on resume
   });
+
+  it("stops the loop and forces an answer when the turn's actual cost hits the ceiling", async () => {
+    const llm = makeFakeLlm([
+      expensiveToolCall("first", "call-1"),
+      expensiveToolCall("second", "call-2"),
+      textResult("Here's what I have so far."), // the tools-disabled forced answer
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    // Threshold 50¢ → in-flight ceiling 150¢ (3× default). The pre-call estimate is
+    // tiny so the gate passes, but two 90¢ round-trips put the actual cost at 180¢.
+    await deps.budgetConfig.update(userId, { approval_threshold_cents: 50 });
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toContain("Here's what I have so far.");
+    expect(result.reply).toMatch(/getting expensive/i); // the early-stop note
+    expect(llm.calls).toHaveLength(3); // 2 tool round-trips + 1 forced answer
+    expect(llm.calls.at(-1)?.tools).toBeUndefined(); // forced call has tools disabled
+  });
+
+  it("does not stop a cheap multi-step turn just because a threshold is set", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }),
+      textResult("All done."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    await deps.budgetConfig.update(userId, { approval_threshold_cents: 50 });
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("All done."); // no early-stop note
+    expect(llm.calls).toHaveLength(2);
+  });
 });
 
 describe("turn observability record", () => {
@@ -374,6 +431,28 @@ describe("turn observability record", () => {
       tokensIn: 60, // all three round-trips metered, forced one included
       finishReasons: ["tool_calls", "tool_calls", "stop"],
     });
+  });
+
+  it("records a cost-ceiling stop as its own outcome, folding the forced round-trip in", async () => {
+    const { record } = captureTurnLog();
+    const llm = makeFakeLlm([
+      expensiveToolCall("first", "call-1"),
+      expensiveToolCall("second", "call-2"),
+      textResult("Here's what I have so far."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    await deps.budgetConfig.update(userId, { approval_threshold_cents: 50 });
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    expect(record()).toMatchObject({
+      outcome: "cost_ceiling",
+      iterations: 2,
+      toolsCalled: ["memory", "memory"],
+      finishReasons: ["tool_calls", "tool_calls", "stop"],
+    });
+    expect(record().costCents as number).toBeGreaterThanOrEqual(150); // past the ceiling
   });
 
   it("records a provider failure as its own outcome", async () => {
