@@ -20,11 +20,18 @@ export type LlmErrorKind = "auth" | "rate_limit" | "server" | "network";
 /** A failed LLM provider call, tagged with the classified {@link LlmErrorKind}. */
 export class LlmProviderError extends Error {
   readonly kind: LlmErrorKind;
+  /** How long the provider asked us to wait before retrying (from `Retry-After`), if it said. */
+  readonly retryAfterMs?: number;
 
-  constructor(kind: LlmErrorKind, message: string, options?: { cause?: unknown }) {
-    super(message, options);
+  constructor(
+    kind: LlmErrorKind,
+    message: string,
+    options?: { cause?: unknown; retryAfterMs?: number },
+  ) {
+    super(message, options ? { cause: options.cause } : undefined);
     this.name = "LlmProviderError";
     this.kind = kind;
+    if (options?.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs;
   }
 }
 
@@ -48,6 +55,22 @@ export class ConfigError extends Error {
 }
 
 /**
+ * The provider-requested retry delay from an error's response headers, in milliseconds.
+ * OpenAI-compatible servers send `retry-after-ms` (already ms) and/or `retry-after`
+ * (whole seconds). The HTTP-date form of `Retry-After` is ignored — parsing it needs a
+ * wall clock, and no OpenAI-compatible provider is known to send it.
+ */
+function retryAfterMsFrom(headers: Headers | undefined): number | undefined {
+  // Headers.get returns null when absent, and Number(null) is 0 — so guard on the raw
+  // string before coercing, or a missing header would read as "retry immediately".
+  const ms = headers?.get("retry-after-ms");
+  if (ms && Number.isFinite(Number(ms)) && Number(ms) >= 0) return Number(ms);
+  const secs = headers?.get("retry-after");
+  if (secs && Number.isFinite(Number(secs)) && Number(secs) >= 0) return Number(secs) * 1000;
+  return undefined;
+}
+
+/**
  * Map an error thrown by the OpenAI SDK to an {@link LlmProviderError}. This is the one
  * place that understands the SDK's error shapes; everything downstream reasons over
  * `kind`. Non-SDK/unknown errors are treated as `server` (the safest "the provider side
@@ -64,11 +87,18 @@ export function toLlmProviderError(err: unknown): LlmProviderError {
     if (status === 401 || status === 403) {
       return new LlmProviderError("auth", `LLM provider auth failed (${status})`, { cause: err });
     }
+    // Carry the provider's requested wait (if any) so the retry policy can honor it
+    // instead of guessing — servers send Retry-After on 429 and sometimes 503.
+    const retryAfterMs = retryAfterMsFrom(err.headers);
     if (status === 429) {
-      return new LlmProviderError("rate_limit", "LLM provider rate limited (429)", { cause: err });
+      return new LlmProviderError("rate_limit", "LLM provider rate limited (429)", {
+        cause: err,
+        retryAfterMs,
+      });
     }
     return new LlmProviderError("server", `LLM provider error (${status ?? "unknown"})`, {
       cause: err,
+      retryAfterMs,
     });
   }
   return new LlmProviderError("server", "unexpected LLM provider failure", { cause: err });

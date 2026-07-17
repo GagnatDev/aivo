@@ -45,6 +45,14 @@ const EnvSchema = z.object({
   // Upper bound on completion tokens per call; also the worst-case the approval-gate
   // cost estimate assumes for output.
   LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+  // Per-call timeout (ms) for LLM calls. Explicit so a wedged provider fails fast
+  // (suited to chat UX) instead of the SDK's silent 10-minute default holding the
+  // Discord typing indicator.
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
+  // Retries for transient LLM failures (rate limit, 5xx, network) with exponential
+  // backoff + jitter, honoring Retry-After (llm/retry.ts). Auth errors never retry.
+  // 0 disables retrying entirely.
+  LLM_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
   // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
   AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
   // How many recent messages of conversation history to include as context.

@@ -102,7 +102,12 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     digests: new DigestRepository(db),
     digestItems: new DigestItemRepository(db),
     feedback: new FeedbackRepository(db),
-    llm: createOpenAiProvider({ apiKey: env.LLM_API_KEY, baseURL: env.LLM_BASE_URL }),
+    llm: createOpenAiProvider({
+      apiKey: env.LLM_API_KEY,
+      baseURL: env.LLM_BASE_URL,
+      timeoutMs: env.LLM_TIMEOUT_MS,
+      maxRetries: env.LLM_MAX_RETRIES,
+    }),
     unforked,
     clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,

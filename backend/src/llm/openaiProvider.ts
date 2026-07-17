@@ -5,6 +5,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { logger } from "../logger.js";
 import { toLlmProviderError } from "./errors.js";
+import { withLlmRetries } from "./retry.js";
 import type {
   ChatMessage,
   ChatRequest,
@@ -21,6 +22,18 @@ export interface OpenAiProviderOptions {
   apiKey: string;
   /** OpenAI-compatible endpoint base URL (e.g. Scaleway's generative API). */
   baseURL: string;
+  /**
+   * Per-call timeout (ms). Replaces the SDK's silent 10-minute default with something
+   * suited to chat UX — a wedged provider fails fast (as a `network` taxonomy error)
+   * instead of holding the Discord typing indicator for minutes. `LLM_TIMEOUT_MS`.
+   */
+  timeoutMs: number;
+  /**
+   * Retries for transient failures (rate limit, 5xx, network), with exponential
+   * backoff + jitter, honoring Retry-After (see retry.ts). Auth errors never retry.
+   * `LLM_MAX_RETRIES`.
+   */
+  maxRetries: number;
 }
 
 /** Map our provider-agnostic message to the OpenAI chat param shape. */
@@ -62,26 +75,37 @@ function toOpenAiTool(t: ToolSchema): ChatCompletionTool {
  * Swapping providers or faking this in tests touches nothing else.
  */
 export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
-  const client = new OpenAI({ apiKey: opts.apiKey, baseURL: opts.baseURL });
+  // maxRetries: 0 disables the SDK's implicit policy (2 silent retries) — retry.ts is
+  // the single retry decision-maker, keyed on our error taxonomy; timeout replaces the
+  // SDK's 10-minute default with an explicit chat-UX bound.
+  const client = new OpenAI({
+    apiKey: opts.apiKey,
+    baseURL: opts.baseURL,
+    timeout: opts.timeoutMs,
+    maxRetries: 0,
+  });
+  const retryOpts = { maxRetries: opts.maxRetries };
 
   return {
     async chat(req: ChatRequest): Promise<ChatResult> {
       // This is the only place that sees the SDK's error shapes, so it's where they get
       // classified into the taxonomy (auth/rate_limit/server/network); the agent then
-      // reasons over `kind` rather than re-inspecting SDK internals.
-      let res: OpenAI.Chat.Completions.ChatCompletion;
-      try {
-        res = await client.chat.completions.create({
-          model: req.model,
-          messages: req.messages.map(toOpenAiMessage),
-          ...(req.tools?.length
-            ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
-            : {}),
-          max_tokens: req.maxTokens,
-        });
-      } catch (err) {
-        throw toLlmProviderError(err);
-      }
+      // reasons over `kind` rather than re-inspecting SDK internals. Classification
+      // happens inside the retry wrapper so the policy can key on the taxonomy `kind`.
+      const res = await withLlmRetries(async () => {
+        try {
+          return await client.chat.completions.create({
+            model: req.model,
+            messages: req.messages.map(toOpenAiMessage),
+            ...(req.tools?.length
+              ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
+              : {}),
+            max_tokens: req.maxTokens,
+          });
+        } catch (err) {
+          throw toLlmProviderError(err);
+        }
+      }, retryOpts);
 
       const choice = res.choices[0];
       const rawToolCalls = choice?.message.tool_calls ?? [];
@@ -126,22 +150,26 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
     },
 
     async transcribe(req: TranscriptionRequest): Promise<TranscriptionResult> {
-      try {
-        // `toFile` wraps the in-memory buffer as the multipart upload the SDK expects;
-        // the filename's extension + contentType tell the provider the audio format.
-        const file = await toFile(req.audio, req.filename, { type: req.contentType });
-        const res = await client.audio.transcriptions.create({ file, model: req.model });
-        // Some OpenAI-compatible servers include a `duration` (seconds) in the response;
-        // it's optional in the SDK types, so read it defensively — the caller falls back
-        // to Discord's duration for cost metering when it's absent.
-        const duration = (res as { duration?: number }).duration;
-        return {
-          text: res.text ?? "",
-          ...(typeof duration === "number" ? { durationSeconds: duration } : {}),
-        };
-      } catch (err) {
-        throw toLlmProviderError(err);
-      }
+      // Same retry policy as chat — transcription is idempotent, so a transient
+      // failure is safe to retry.
+      const res = await withLlmRetries(async () => {
+        try {
+          // `toFile` wraps the in-memory buffer as the multipart upload the SDK expects;
+          // the filename's extension + contentType tell the provider the audio format.
+          const file = await toFile(req.audio, req.filename, { type: req.contentType });
+          return await client.audio.transcriptions.create({ file, model: req.model });
+        } catch (err) {
+          throw toLlmProviderError(err);
+        }
+      }, retryOpts);
+      // Some OpenAI-compatible servers include a `duration` (seconds) in the response;
+      // it's optional in the SDK types, so read it defensively — the caller falls back
+      // to Discord's duration for cost metering when it's absent.
+      const duration = (res as { duration?: number }).duration;
+      return {
+        text: res.text ?? "",
+        ...(typeof duration === "number" ? { durationSeconds: duration } : {}),
+      };
     },
   };
 }

@@ -45,4 +45,44 @@ describe("toLlmProviderError", () => {
     expect(mapped.kind).toBe("server");
     expect(mapped.cause).toBe(cause);
   });
+
+  it("carries retry-after seconds as retryAfterMs on 429", () => {
+    const mapped = toLlmProviderError(
+      new OpenAI.RateLimitError(429, undefined, "slow", new Headers({ "retry-after": "7" })),
+    );
+    expect(mapped.retryAfterMs).toBe(7000);
+  });
+
+  it("prefers the millisecond retry-after-ms header when both are present", () => {
+    const mapped = toLlmProviderError(
+      new OpenAI.RateLimitError(
+        429,
+        undefined,
+        "slow",
+        new Headers({ "retry-after-ms": "1500", "retry-after": "7" }),
+      ),
+    );
+    expect(mapped.retryAfterMs).toBe(1500);
+  });
+
+  it("carries retry-after on 5xx and omits it when absent or unparseable", () => {
+    const withHeader = toLlmProviderError(
+      new OpenAI.InternalServerError(503, undefined, "busy", new Headers({ "retry-after": "2" })),
+    );
+    expect(withHeader.retryAfterMs).toBe(2000);
+    const without = toLlmProviderError(
+      new OpenAI.RateLimitError(429, undefined, "slow", new Headers()),
+    );
+    expect(without.retryAfterMs).toBeUndefined();
+    // The HTTP-date form needs a wall clock, so it is deliberately not parsed.
+    const httpDate = toLlmProviderError(
+      new OpenAI.RateLimitError(
+        429,
+        undefined,
+        "slow",
+        new Headers({ "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT" }),
+      ),
+    );
+    expect(httpDate.retryAfterMs).toBeUndefined();
+  });
 });
