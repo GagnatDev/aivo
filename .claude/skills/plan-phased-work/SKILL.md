@@ -1,3 +1,8 @@
+---
+name: plan-phased-work
+description: Plan a medium-to-large task (new feature, technical upgrade, refactor) by writing one spec issue plus dependency-aware phased sub-issues that agents implement one phase at a time, each landing as its own PR on main. Use when the user wants to break down and plan sizeable work, not implement a small change.
+---
+
 # Plan phased work
 
 Turn a sizeable task into a **spec issue + phased sub-issues** that agents can pick up
