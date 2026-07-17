@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
 import { LlmProviderError } from "../llm/errors.js";
+import { logger } from "../logger.js";
 import {
   makeFakeLlm,
   textResult,
@@ -287,5 +288,102 @@ describe("runAgent", () => {
 
     expect(resumed?.reply).toBe("here's the answer");
     expect(llm.calls).toHaveLength(1); // ran exactly once, on resume
+  });
+});
+
+describe("turn observability record", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Stub the turn's child logger so the info-level record can be asserted. */
+  function captureTurnLog() {
+    const info = vi.fn();
+    const child = vi.spyOn(logger, "child").mockReturnValue({
+      info,
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as ReturnType<typeof logger.child>);
+    /** The single "agent turn completed" payload. */
+    const record = (): Record<string, unknown> => {
+      const completed = info.mock.calls.filter(([, msg]) => msg === "agent turn completed");
+      expect(completed).toHaveLength(1);
+      return completed[0]?.[0] as Record<string, unknown>;
+    };
+    return { child, record };
+  }
+
+  it("emits one info-level record per turn with totals and a correlating turn id", async () => {
+    const { child, record } = captureTurnLog();
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "write", content: "likes hiking" }),
+      textResult("Got it."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    // The child logger binds the turn id + ids to every line of the turn.
+    expect(child).toHaveBeenCalledWith({
+      turnId: expect.any(String),
+      userId,
+      conversationId,
+    });
+    expect(record()).toMatchObject({
+      outcome: "final_answer",
+      iterations: 2,
+      toolsCalled: ["memory"],
+      toolErrors: 0,
+      tokensIn: 40, // 20 per scripted round-trip
+      tokensOut: 15, // 5 (tool call) + 10 (final text)
+      finishReasons: ["tool_calls", "stop"],
+      latencyMs: expect.any(Number),
+    });
+    expect(record().costCents).toBeGreaterThan(0); // seeded pricing → real cost
+  });
+
+  it("counts a failed tool call in the record", async () => {
+    const { record } = captureTurnLog();
+    const llm = makeFakeLlm([toolCallResult("no_such_tool", {}), textResult("Sorry.")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    expect(record()).toMatchObject({ toolsCalled: ["no_such_tool"], toolErrors: 1 });
+  });
+
+  it("records a forced answer, folding the forced round-trip into the totals", async () => {
+    const { record } = captureTurnLog();
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }),
+      toolCallResult("memory", { action: "list" }), // identical repeat → stuck
+      textResult("Here's what I found."), // the tools-disabled forced answer
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    expect(record()).toMatchObject({
+      outcome: "forced_answer",
+      iterations: 2,
+      toolsCalled: ["memory", "memory"],
+      tokensIn: 60, // all three round-trips metered, forced one included
+      finishReasons: ["tool_calls", "tool_calls", "stop"],
+    });
+  });
+
+  it("records a provider failure as its own outcome", async () => {
+    const { record } = captureTurnLog();
+    const llm = makeFakeLlm([new LlmProviderError("server", "simulated outage")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    expect(record()).toMatchObject({ outcome: "provider_error", iterations: 0, tokensIn: 0 });
   });
 });
