@@ -28,6 +28,7 @@ export const OWNER_ID = "owner-discord-id";
 /** The `loadEnv()` defaults, so tests match production unless a case overrides them. */
 export const TEST_AGENT_CONFIG: AgentConfig = {
   agentMaxToolIterations: 5,
+  toolKeywordGating: false,
   llmMaxOutputTokens: 1024,
   contextMessageLimit: 30,
   contextTokenBudget: 4000,

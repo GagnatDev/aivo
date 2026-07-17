@@ -11,10 +11,24 @@ describe("resolveTier", () => {
 
 describe("selectToolSchemas", () => {
   const reg = buildToolRegistry();
+  const all = reg.map((t) => t.schema.name).sort();
   const names = (text: string) =>
-    selectToolSchemas(reg, text)
+    selectToolSchemas(reg, { enabled: true, recentText: text })
       .map((s) => s.name)
       .sort();
+
+  it("advertises the whole registry when keyword gating is disabled (the default)", () => {
+    expect(
+      selectToolSchemas(reg, { enabled: false, recentText: "how's it going today?" })
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(all);
+    expect(
+      selectToolSchemas(reg, { enabled: false, recentText: "" })
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(all);
+  });
 
   it("always advertises memory and gates the rest out of small talk", () => {
     expect(names("how's it going today?")).toEqual(["memory"]);

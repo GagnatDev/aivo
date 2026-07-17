@@ -26,7 +26,33 @@ describe("prepareTurn", () => {
     expect(plan.model).toBe("llama-3.3-70b-instruct"); // premium seed
     expect(plan.maxTokens).toBe(deps.config.llmMaxOutputTokens);
     expect(plan.overBudgetNote).toBeUndefined();
-    expect(plan.tools.some((t) => t.name === "memory")).toBe(true); // memory is always on
+    // Keyword gating is off by default, so the whole registry is advertised.
+    expect(plan.tools.map((t) => t.name).sort()).toEqual([
+      "budget",
+      "memory",
+      "models",
+      "reminder",
+      "settings",
+      "unforked",
+      "youtube_digest",
+    ]);
+  });
+
+  it("keyword-gates advertisement when AGENT_TOOL_KEYWORD_GATING is on", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]), { toolKeywordGating: true });
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    // No history yet → no trigger keywords → only the un-gated memory tool.
+    const plan = await prepareTurn(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(plan.kind).toBe("prepared");
+    if (plan.kind !== "prepared") throw new Error("expected prepared");
+    expect(plan.tools.map((t) => t.name)).toEqual(["memory"]);
   });
 
   it("coerces to the cheap tier and caps tokens when over the ceiling", async () => {

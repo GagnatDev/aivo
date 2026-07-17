@@ -56,7 +56,11 @@ export const youtubeDigestTool: AgentTool = {
   schema: {
     name: "youtube_digest",
     description:
-      "Manage the YouTube daily digest. Actions: 'status' (schedule, pause state, last run); " +
+      "Manage the YouTube daily digest. Call this when the conversation is about the digest " +
+      "or its videos/picks/channels/interests — checking or changing the schedule, pausing " +
+      "('pause the digest', 'stopp sammendraget'), asking for more picks ('vis flere videoer'), " +
+      "muting a channel ('demp den kanalen'), or giving digest feedback. " +
+      "Actions: 'status' (schedule, pause state, last run); " +
       "'configure' (digest_hour 0-23, digest_interval_days 1=daily/7=weekly, digest_cap picks " +
       "per digest); 'pause' (temporarily off — pause_days or pause_until date; neither = off " +
       "until resumed); 'resume' (turn back on); 'run_now' (deliver a digest within a minute); " +

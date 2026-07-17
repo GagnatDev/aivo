@@ -55,6 +55,14 @@ const EnvSchema = z.object({
   LLM_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
   // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
   AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
+  // Keyword-gate tool advertisement (see agent/tools/index.ts). Off by default: all
+  // tool schemas are advertised every turn — a stable prompt prefix that caches well
+  // and can't silently strip a capability on a missed keyword. Set to "true" to
+  // reinstate the gate and trade that robustness for ~1-2k input tokens per call.
+  AGENT_TOOL_KEYWORD_GATING: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   // Hard cap on how many recent history messages to replay — a backstop beneath the
   // token budget below, so a long run of tiny messages can't blow up prompt size.
   AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),

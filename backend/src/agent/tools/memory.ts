@@ -18,9 +18,12 @@ export const memoryTool: AgentTool = {
     name: "memory",
     description:
       "Read, write, or forget durable facts/preferences/context about the user. " +
+      "Call this whenever the user shares something durably true about themselves or the " +
+      "household ('I'm vegetarian', 'we have two kids') — even mid-conversation with no " +
+      "explicit 'remember this' — and when they ask what you remember or to forget something. " +
       "Use action 'list' for 'what do you remember about me?', 'search' to find by keyword, " +
       "'write' to remember something new, and 'forget' (with the memory id from a list/search) " +
-      "to soft-delete a memory.",
+      "to soft-delete a memory. Don't store one-off trivia or anything secret.",
     parameters: {
       type: "object",
       properties: {

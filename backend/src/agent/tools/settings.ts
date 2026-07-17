@@ -44,7 +44,9 @@ export const settingsTool: AgentTool = {
     name: "settings",
     description:
       "Read or change the user's settings (persona_prompt addendum, timezone, digest_hour, " +
-      "digest_cap, model_tier). action 'get' returns the current settings; 'update' changes " +
+      "digest_cap, model_tier). Call this when the user asks to see or change any of those " +
+      "('change my timezone', 'endre tidssonen min', 'update my digest hour') or asks what " +
+      "their current settings are. action 'get' returns the current settings; 'update' changes " +
       "one or more of them. A non-owner may only change keys the owner has allow-listed. " +
       "'set_member_editable_keys' replaces that allow-list and is OWNER-ONLY.",
     parameters: {

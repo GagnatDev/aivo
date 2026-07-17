@@ -1,7 +1,9 @@
 /**
  * Fuzzy keyword gating for tool advertisement (see {@link selectToolSchemas} in
- * index.ts). Each gated tool lists trigger *keywords* rather than a hand-tuned regex;
- * this module decides whether the recent conversation trips any of them.
+ * index.ts). Only in effect when `AGENT_TOOL_KEYWORD_GATING` is on — by default every
+ * schema is advertised and this module is dormant, kept so the gate can be reinstated
+ * by flipping that flag. Each gated tool lists trigger *keywords* rather than a
+ * hand-tuned regex; this module decides whether the recent conversation trips any of them.
  *
  * Why fuzzy and not a regex: the old gates matched exact substrings, so a single wrong
  * letter — a voice transcription that came back "handeliste" instead of "handleliste",

@@ -31,7 +31,10 @@ export const remindersTool: AgentTool = {
     name: "reminder",
     description:
       "Set, list, cancel, or reschedule the user's reminders (delivered proactively in " +
-      "Discord when due). Actions: 'set' (text + due_at); 'list' (upcoming reminders — " +
+      "Discord when due). Call this whenever the user asks to be reminded or nudged about " +
+      "something at/after a time ('remind me to…', 'minn meg på…', 'husk å ringe…'), asks " +
+      "what's coming up, or wants a reminder moved, snoozed ('utsett den'), or cancelled. " +
+      "Actions: 'set' (text + due_at); 'list' (upcoming reminders — " +
       "answer 'what reminders do I have?'); 'cancel' (id); 'reschedule' (id + due_at, also " +
       "for snoozing). due_at must be an absolute ISO-8601 timestamp WITH a UTC offset " +
       "(e.g. 2026-07-04T17:00:00+02:00) — compute it from the current date/time and " +
