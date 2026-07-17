@@ -23,6 +23,15 @@ const LLM_AUTH_FALLBACK =
   "The owner needs to check the API configuration.";
 // Last-resort reply when even the tools-disabled final answer yields nothing.
 const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
+// Appended when the model's text was cut off by the output-token cap (finishReason
+// `length`), so a truncated reply is never passed off as a complete one.
+const TRUNCATION_NOTE = "\n\n(…that got cut off by my reply-length limit.)";
+// Fed back as the tool result when a `length` stop truncated the tool call itself —
+// its arguments JSON is almost certainly incomplete, so executing it would only yield
+// a confusing parse error. Telling the model why lets it recover deliberately.
+const TOOL_CALL_TRUNCATED_FEEDBACK =
+  "Tool call not executed: it was cut off by the output token limit. " +
+  "Make a shorter tool call (smaller arguments), or answer in plain text.";
 
 /** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
 function llmErrorReply(err: unknown): string {
@@ -114,7 +123,16 @@ export async function runToolLoop(
 
     if (result.toolCalls.length === 0) {
       logger.debug({ userId: ctx.userId, iterations: i + 1 }, "agent final reply");
-      return { reply: (result.content ?? "").trim() || EMPTY_REPLY_FALLBACK, alertPct };
+      const text = (result.content ?? "").trim();
+      // A `length` stop mid-text would otherwise be sent as if it were complete.
+      if (result.finishReason === "length" && text) {
+        logger.warn(
+          { userId: ctx.userId, model: params.model, maxTokens: params.maxTokens },
+          "agent reply truncated by output token limit",
+        );
+        return { reply: text + TRUNCATION_NOTE, alertPct };
+      }
+      return { reply: text || EMPTY_REPLY_FALLBACK, alertPct };
     }
 
     // Replay the assistant message that requested the tools into THIS turn's context,
@@ -132,6 +150,39 @@ export async function runToolLoop(
       content: result.content?.trim() || describeToolCalls(result.toolCalls),
       discordMessageId: null,
     });
+
+    // A `length` stop that still carries tool calls means the output cap cut the call
+    // JSON off mid-generation. Executing it would just burn the iteration on a generic
+    // "Could not parse tool arguments" — feed back the real cause instead so the model
+    // can shorten the call (or answer). The iteration cap still bounds a model that
+    // keeps overrunning.
+    if (result.finishReason === "length") {
+      logger.warn(
+        {
+          userId: ctx.userId,
+          model: params.model,
+          iteration: i,
+          maxTokens: params.maxTokens,
+          toolCalls: result.toolCalls.map((c) => c.name),
+        },
+        "agent tool call truncated by output token limit; feeding back",
+      );
+      for (const call of result.toolCalls) {
+        await deps.messages.insert({
+          conversationId: ctx.conversationId,
+          role: "tool",
+          content: TOOL_CALL_TRUNCATED_FEEDBACK,
+          discordMessageId: null,
+        });
+        messages.push({
+          role: "tool",
+          content: TOOL_CALL_TRUNCATED_FEEDBACK,
+          tool_call_id: call.id,
+          name: call.name,
+        });
+      }
+      continue;
+    }
 
     let allRepeats = true;
     for (const call of result.toolCalls) {
@@ -212,7 +263,11 @@ async function forceFinalAnswer(
     );
     const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;
     const text = (result.content ?? "").trim();
-    if (text) return { reply: text, alertPct: nextAlert };
+    if (text) {
+      // The forced answer can be length-truncated too — flag it the same way.
+      const reply = result.finishReason === "length" ? text + TRUNCATION_NOTE : text;
+      return { reply, alertPct: nextAlert };
+    }
     return { reply: STUCK_FALLBACK, alertPct: nextAlert };
   } catch (err) {
     logger.error(err, "forced final answer failed");

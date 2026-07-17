@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
 import { LlmProviderError } from "../llm/errors.js";
-import { makeFakeLlm, textResult, toolCallResult } from "../test/fakeLlm.js";
+import {
+  makeFakeLlm,
+  textResult,
+  toolCallResult,
+  truncatedToolCallResult,
+} from "../test/fakeLlm.js";
 import { makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
 
@@ -64,7 +69,7 @@ describe("runAgent", () => {
 
   it("never returns an empty reply when the model gives no content", async () => {
     const llm = makeFakeLlm([
-      { content: null, toolCalls: [], usage: { tokensIn: 5, tokensOut: 0 } },
+      { content: null, toolCalls: [], finishReason: "stop", usage: { tokensIn: 5, tokensOut: 0 } },
     ]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
@@ -113,6 +118,47 @@ describe("runAgent", () => {
     expect(stored.some((m) => m.role === "assistant" && m.content?.includes("Used tool"))).toBe(
       false,
     );
+  });
+
+  it("flags a reply that was cut off by the output token limit", async () => {
+    const llm = makeFakeLlm([textResult("Here is the start of a very long ans", 1024, "length")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toContain("Here is the start of a very long ans");
+    expect(result.reply).toMatch(/cut off/i);
+  });
+
+  it("does not execute a truncated tool call; feeds back why instead", async () => {
+    const llm = makeFakeLlm([
+      // A `length` stop mid-tool-call: the arguments JSON is incomplete.
+      truncatedToolCallResult("memory", '{"action":"write","content":"likes hi'),
+      textResult("Let me keep that brief: noted."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("Let me keep that brief: noted.");
+    // The truncated call never executed — nothing was written.
+    expect(await deps.memories.listActive(userId)).toHaveLength(0);
+    // The model was told the real cause (not a generic JSON parse error).
+    const feedback = llm.calls[1]?.messages.find((m) => m.role === "tool");
+    expect(feedback?.content).toMatch(/cut off by the output token limit/i);
+    expect(feedback?.tool_call_id).toBe("call-1");
   });
 
   it("forces a plain-text answer when the model repeats a tool call", async () => {

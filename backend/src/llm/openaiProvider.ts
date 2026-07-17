@@ -10,6 +10,7 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResult,
+  FinishReason,
   LlmProvider,
   ToolCall,
   ToolSchema,
@@ -59,6 +60,26 @@ function toOpenAiMessage(m: ChatMessage): ChatCompletionMessageParam {
             }
           : {}),
       };
+  }
+}
+
+/**
+ * Normalize the provider's finish_reason to the {@link FinishReason} union. The legacy
+ * `function_call` value is folded into `tool_calls`; anything unrecognized (including a
+ * missing value from a lax OpenAI-compatible server) maps to `other` so downstream code
+ * never sees a raw provider string.
+ */
+function toFinishReason(raw: string | undefined): FinishReason {
+  switch (raw) {
+    case "stop":
+      return "stop";
+    case "length":
+      return "length";
+    case "tool_calls":
+    case "function_call":
+      return "tool_calls";
+    default:
+      return "other";
   }
 }
 
@@ -138,6 +159,7 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
       return {
         content: choice?.message.content ?? null,
         toolCalls,
+        finishReason: toFinishReason(choice?.finish_reason ?? undefined),
         usage: {
           tokensIn: res.usage?.prompt_tokens ?? 0,
           tokensOut: res.usage?.completion_tokens ?? 0,
