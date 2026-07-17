@@ -26,6 +26,8 @@ describe("prepareTurn", () => {
     expect(plan.model).toBe("llama-3.3-70b-instruct"); // premium seed
     expect(plan.maxTokens).toBe(deps.config.llmMaxOutputTokens);
     expect(plan.overBudgetNote).toBeUndefined();
+    // No approval threshold configured → no in-flight cost ceiling either.
+    expect(plan.costCeilingCents).toBeNull();
     // Keyword gating is off by default, so the whole registry is advertised.
     expect(plan.tools.map((t) => t.name).sort()).toEqual([
       "budget",
@@ -120,5 +122,26 @@ describe("prepareTurn", () => {
     });
 
     expect(plan.kind).toBe("prepared");
+    // The bypass skips the pre-call gate, not the in-flight ceiling: the approval
+    // covered the first call's estimate, so the whole-turn bound still applies.
+    if (plan.kind !== "prepared") throw new Error("expected prepared");
+    expect(plan.costCeilingCents).toBe(50 * deps.config.turnCostCeilingMultiplier);
+  });
+
+  it("derives the whole-turn cost ceiling from the approval threshold", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]), { turnCostCeilingMultiplier: 4 });
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    await deps.budgetConfig.update(userId, { approval_threshold_cents: 50 });
+
+    const plan = await prepareTurn(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(plan.kind).toBe("prepared");
+    if (plan.kind !== "prepared") throw new Error("expected prepared");
+    expect(plan.costCeilingCents).toBe(200);
   });
 });

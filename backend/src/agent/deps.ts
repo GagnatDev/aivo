@@ -30,6 +30,8 @@ import type { YoutubeChannelRepository } from "../storage/youtubeChannelReposito
 export interface AgentConfig {
   /** Hard cap on tool round-trips per turn (runaway backstop). `AGENT_MAX_TOOL_ITERATIONS`. */
   agentMaxToolIterations: number;
+  /** Whole-turn cost ceiling as a multiple of the approval threshold. `AGENT_TURN_COST_CEILING_MULTIPLIER`. */
+  turnCostCeilingMultiplier: number;
   /** Keyword-gate tool advertisement instead of advertising every schema. `AGENT_TOOL_KEYWORD_GATING`. */
   toolKeywordGating: boolean;
   /** Upper bound on completion tokens per LLM call. `LLM_MAX_OUTPUT_TOKENS`. */
