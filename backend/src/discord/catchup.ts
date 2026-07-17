@@ -11,6 +11,7 @@ import type { DiscordConfig } from "./config.js";
 import { isCommand } from "./commands.js";
 import type { HandleMessageDeps } from "./handleMessage.js";
 import { processAndReply, resolveMessageMeta, shouldRespond } from "./router.js";
+import { turnKey, type TurnQueue } from "./turnQueue.js";
 
 /** Discord's max messages per fetch request. */
 const FETCH_LIMIT = 100;
@@ -24,12 +25,15 @@ const MAX_PAGES = 10;
  * recorded anywhere, i.e. when it was last online — then scan every readable text
  * channel in the guild for messages newer than it and run each through the same
  * decision/reply path as a live message ({@link shouldRespond}/{@link processAndReply}).
- * With nothing on record there is no watermark and nothing to do.
+ * With nothing on record there is no watermark and nothing to do. Each reply goes
+ * through the gateway's shared {@link TurnQueue} so a catch-up turn can't interleave
+ * with a live turn on the same conversation.
  */
 export async function catchUpOnMissedMessages(
   deps: HandleMessageDeps,
   client: Client<true>,
   cfg: DiscordConfig,
+  turns: TurnQueue,
 ): Promise<void> {
   const watermark = await deps.messages.getLatestDiscordMessageId();
   if (!watermark) return;
@@ -41,7 +45,7 @@ export async function catchUpOnMissedMessages(
   let handled = 0;
   for (const channel of channels) {
     try {
-      handled += await catchUpChannel(deps, channel, watermark, cfg);
+      handled += await catchUpChannel(deps, channel, watermark, cfg, turns);
     } catch (err) {
       logger.error({ err, channelId: channel.id }, "catch-up failed for channel");
     }
@@ -55,6 +59,7 @@ async function catchUpChannel(
   channel: GuildTextBasedChannel,
   watermark: string,
   cfg: DiscordConfig,
+  turns: TurnQueue,
 ): Promise<number> {
   let handled = 0;
   for (const message of await missedSince(channel, watermark)) {
@@ -65,7 +70,9 @@ async function catchUpChannel(
     if (isCommand(message.content)) continue;
     const meta = await resolveMessageMeta(message);
     if (!shouldRespond(meta, cfg)) continue;
-    await processAndReply(deps, message, cfg, { acknowledgeIfStale: true, meta });
+    await turns.run(turnKey(message.author.id, message.channelId), () =>
+      processAndReply(deps, message, cfg, { acknowledgeIfStale: true, meta }),
+    );
     handled += 1;
   }
   return handled;

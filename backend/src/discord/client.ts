@@ -13,6 +13,7 @@ import {
   resolveMessageMeta,
   shouldRespond,
 } from "./router.js";
+import { TurnQueue, turnKey } from "./turnQueue.js";
 import { withTyping } from "./typing.js";
 
 export interface DiscordGateway {
@@ -28,6 +29,8 @@ export interface DiscordGateway {
  * stub, and persist the assistant reply linked to the sent message. Messages from
  * bots or from outside the configured guild are ignored. On connect we also catch
  * up on anything sent while the process was offline (see discord/catchup.ts).
+ * Turns are serialized per conversation through a shared {@link TurnQueue} so two
+ * quick messages (or a live message racing catch-up) can't interleave.
  */
 export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig): DiscordGateway {
   const client = new Client({
@@ -37,16 +40,17 @@ export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig
       GatewayIntentBits.MessageContent,
     ],
   });
+  const turns = new TurnQueue();
 
   client.once(Events.ClientReady, (ready) => {
     logger.info({ tag: ready.user.tag }, "discord gateway ready");
-    void catchUpOnMissedMessages(deps, ready, cfg).catch((err) => {
+    void catchUpOnMissedMessages(deps, ready, cfg, turns).catch((err) => {
       logger.error(err, "catch-up on missed messages failed");
     });
   });
 
   client.on(Events.MessageCreate, (message) => {
-    void onMessage(deps, message, cfg);
+    void onMessage(deps, message, cfg, turns);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
@@ -71,6 +75,7 @@ async function onMessage(
   deps: HandleMessageDeps,
   message: Message,
   cfg: DiscordConfig,
+  turns: TurnQueue,
 ): Promise<void> {
   const meta = await resolveMessageMeta(message);
   if (!shouldRespond(meta, cfg)) return;
@@ -81,7 +86,11 @@ async function onMessage(
       await message.reply(reply);
       return;
     }
-    await processAndReply(deps, message, cfg, { meta });
+    // Queued per conversation: a second message from the same user in the same channel
+    // waits for the previous turn, so its context includes that turn's reply.
+    await turns.run(turnKey(message.author.id, message.channelId), () =>
+      processAndReply(deps, message, cfg, { meta }),
+    );
   } catch (err) {
     logger.error(err, "failed to handle discord message");
     // Last resort: the agent already turns LLM failures into a friendly reply, so
