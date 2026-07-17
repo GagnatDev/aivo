@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateRequestTokens, estimateTokens } from "./tokens.js";
+import { estimateRequestTokens, estimateTokens, truncateToTokens } from "./tokens.js";
 
 describe("estimateTokens", () => {
   it("is zero for empty input and positive otherwise", () => {
@@ -29,5 +29,25 @@ describe("estimateRequestTokens", () => {
       [{ name: "memory", description: "read and write memories", parameters: { type: "object" } }],
     );
     expect(withTools).toBeGreaterThan(withoutTools);
+  });
+});
+
+describe("truncateToTokens", () => {
+  it("leaves text that already fits unchanged", () => {
+    const out = truncateToTokens("short", 100);
+    expect(out).toEqual({ text: "short", truncated: false });
+  });
+
+  it("cuts text over the budget and flags it", () => {
+    const long = "x".repeat(1000);
+    const out = truncateToTokens(long, 10); // 10 tokens ≈ 40 chars
+    expect(out.truncated).toBe(true);
+    expect(out.text).toHaveLength(40);
+    expect(estimateTokens(out.text)).toBeLessThanOrEqual(10);
+  });
+
+  it("truncates everything when the budget is zero", () => {
+    const out = truncateToTokens("anything", 0);
+    expect(out).toEqual({ text: "", truncated: true });
   });
 });

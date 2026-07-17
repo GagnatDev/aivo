@@ -1,6 +1,7 @@
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, ToolCall, ToolSchema } from "../llm/provider.js";
+import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
+import { truncateToTokens } from "../llm/tokens.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
@@ -23,6 +24,15 @@ const LLM_AUTH_FALLBACK =
   "The owner needs to check the API configuration.";
 // Last-resort reply when even the tools-disabled final answer yields nothing.
 const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
+// Appended when the model's text was cut off by the output-token cap (finishReason
+// `length`), so a truncated reply is never passed off as a complete one.
+const TRUNCATION_NOTE = "\n\n(…that got cut off by my reply-length limit.)";
+// Fed back as the tool result when a `length` stop truncated the tool call itself —
+// its arguments JSON is almost certainly incomplete, so executing it would only yield
+// a confusing parse error. Telling the model why lets it recover deliberately.
+const TOOL_CALL_TRUNCATED_FEEDBACK =
+  "Tool call not executed: it was cut off by the output token limit. " +
+  "Make a shorter tool call (smaller arguments), or answer in plain text.";
 
 /** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
 function llmErrorReply(err: unknown): string {
@@ -114,37 +124,87 @@ export async function runToolLoop(
 
     if (result.toolCalls.length === 0) {
       logger.debug({ userId: ctx.userId, iterations: i + 1 }, "agent final reply");
-      return { reply: (result.content ?? "").trim() || EMPTY_REPLY_FALLBACK, alertPct };
+      const text = (result.content ?? "").trim();
+      // A `length` stop mid-text would otherwise be sent as if it were complete.
+      if (result.finishReason === "length" && text) {
+        logger.warn(
+          { userId: ctx.userId, model: params.model, maxTokens: params.maxTokens },
+          "agent reply truncated by output token limit",
+        );
+        return { reply: text + TRUNCATION_NOTE, alertPct };
+      }
+      return { reply: text || EMPTY_REPLY_FALLBACK, alertPct };
     }
 
     // Replay the assistant message that requested the tools into THIS turn's context,
     // keeping the model's real (often null) content + structured tool_calls.
     messages.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
-    // Persist a human-readable record of what the turn did (a bare null shows up in the
-    // activity log as an empty "(no content recorded)" line). This is an audit row under
-    // the `tool` role, NOT `assistant`: buildContext replays user/assistant text verbatim
-    // across turns, so recording this "Used tool: …" summary as an assistant turn taught
-    // the model to echo it as its own reply — which then went out to Discord. As a `tool`
-    // row it still renders in the dashboard thread but is excluded from the replayed context.
+    // Persist the same structured shape: an assistant row with its tool_calls JSON, so
+    // buildContext can replay the exchange faithfully across turns. (This replaces the
+    // old flattened "Used tool: …" audit summary, which lacked the tool_call linkage
+    // and — when replayed as assistant text — taught the model to echo it to Discord;
+    // the dashboard renders the calls from the structured column instead.)
     await deps.messages.insert({
       conversationId: ctx.conversationId,
-      role: "tool",
-      content: result.content?.trim() || describeToolCalls(result.toolCalls),
+      role: "assistant",
+      content: result.content,
+      toolCalls: result.toolCalls,
       discordMessageId: null,
     });
+
+    // A `length` stop that still carries tool calls means the output cap cut the call
+    // JSON off mid-generation. Executing it would just burn the iteration on a generic
+    // "Could not parse tool arguments" — feed back the real cause instead so the model
+    // can shorten the call (or answer). The iteration cap still bounds a model that
+    // keeps overrunning.
+    if (result.finishReason === "length") {
+      logger.warn(
+        {
+          userId: ctx.userId,
+          model: params.model,
+          iteration: i,
+          maxTokens: params.maxTokens,
+          toolCalls: result.toolCalls.map((c) => c.name),
+        },
+        "agent tool call truncated by output token limit; feeding back",
+      );
+      for (const call of result.toolCalls) {
+        await deps.messages.insert({
+          conversationId: ctx.conversationId,
+          role: "tool",
+          content: TOOL_CALL_TRUNCATED_FEEDBACK,
+          toolCallId: call.id,
+          toolName: call.name,
+          discordMessageId: null,
+        });
+        messages.push({
+          role: "tool",
+          content: TOOL_CALL_TRUNCATED_FEEDBACK,
+          tool_call_id: call.id,
+          name: call.name,
+        });
+      }
+      continue;
+    }
 
     let allRepeats = true;
     for (const call of result.toolCalls) {
       const signature = `${call.name}:${call.arguments}`;
       if (!executed.has(signature)) allRepeats = false;
       executed.add(signature);
-      const toolResult = await executeToolCall(registry, call.name, call.arguments, ctx);
+      const rawResult = await executeToolCall(registry, call.name, call.arguments, ctx);
+      // Cap oversized results at the loop boundary: a large result would otherwise be
+      // re-sent verbatim on every subsequent iteration, inflating every round-trip. The
+      // capped text is what the model sees AND what we persist, so replay (see #52) stays
+      // faithful to — and as bounded as — what actually happened this turn.
+      const toolResult = capToolResult(rawResult, deps.config.toolResultMaxTokens);
       logger.debug(
         {
           userId: ctx.userId,
           tool: call.name,
           arguments: call.arguments,
           resultPreview: preview(toolResult),
+          truncated: toolResult.length !== rawResult.length,
         },
         "agent tool executed",
       );
@@ -152,6 +212,8 @@ export async function runToolLoop(
         conversationId: ctx.conversationId,
         role: "tool",
         content: toolResult,
+        toolCallId: call.id,
+        toolName: call.name,
         discordMessageId: null,
       });
       messages.push({ role: "tool", content: toolResult, tool_call_id: call.id, name: call.name });
@@ -212,7 +274,11 @@ async function forceFinalAnswer(
     );
     const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;
     const text = (result.content ?? "").trim();
-    if (text) return { reply: text, alertPct: nextAlert };
+    if (text) {
+      // The forced answer can be length-truncated too — flag it the same way.
+      const reply = result.finishReason === "length" ? text + TRUNCATION_NOTE : text;
+      return { reply, alertPct: nextAlert };
+    }
     return { reply: STUCK_FALLBACK, alertPct: nextAlert };
   } catch (err) {
     logger.error(err, "forced final answer failed");
@@ -220,27 +286,25 @@ async function forceFinalAnswer(
   }
 }
 
+/**
+ * Bound a single tool result to `maxTokens`, appending a notice when it had to be cut so
+ * the model knows the result is partial and how to get the rest (narrow the query) rather
+ * than treating the truncated text as the whole answer. A cap of 0 disables the bound.
+ */
+function capToolResult(result: string, maxTokens: number): string {
+  if (maxTokens <= 0) return result;
+  const { text, truncated } = truncateToTokens(result, maxTokens);
+  if (!truncated) return result;
+  return (
+    `${text}\n\n[Tool result truncated: it exceeded the ${maxTokens}-token cap. ` +
+    "Narrow the request (a search term, a specific item, or a smaller range) to see the rest.]"
+  );
+}
+
 /** Truncate a possibly-null string for log lines. */
 function preview(text: string | null, max = 200): string {
   if (!text) return "(none)";
   return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-/**
- * A human-readable summary of the tools an assistant turn requested, persisted as the
- * message content when the model returned tool calls but no text of its own. Without it
- * the activity log renders these turns as an empty "(no content recorded)" line; with it
- * the log shows what actually happened — which tools ran, with a compact argument preview
- * (large payloads truncated so the thread stays readable).
- */
-function describeToolCalls(toolCalls: ToolCall[]): string {
-  if (toolCalls.length === 0) return "";
-  const calls = toolCalls.map((c) => {
-    const args = c.arguments?.trim();
-    if (!args || args === "{}") return c.name;
-    return `${c.name}(${preview(args, 120)})`;
-  });
-  return `Used ${calls.length === 1 ? "tool" : "tools"}: ${calls.join(", ")}`;
 }
 
 async function executeToolCall(

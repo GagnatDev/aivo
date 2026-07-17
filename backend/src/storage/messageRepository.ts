@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { MessageRole } from "../db/schema.enums.js";
+import type { MessageRole, StoredToolCall } from "../db/schema.enums.js";
 
 export interface MessageRow {
   id: string;
@@ -8,6 +8,11 @@ export interface MessageRow {
   role: MessageRole;
   discord_message_id: string | null;
   content: string | null;
+  /** The calls an assistant turn requested; null on every other kind of row. */
+  tool_calls: StoredToolCall[] | null;
+  /** Links a `tool`-role result row to the assistant call it answers. */
+  tool_call_id: string | null;
+  tool_name: string | null;
   tokens_in: number | null;
   tokens_out: number | null;
   created_at: Date;
@@ -19,6 +24,9 @@ const MESSAGE_COLUMNS = [
   "role",
   "discord_message_id",
   "content",
+  "tool_calls",
+  "tool_call_id",
+  "tool_name",
   "tokens_in",
   "tokens_out",
   "created_at",
@@ -29,6 +37,11 @@ export interface InsertMessageInput {
   role: MessageRole;
   content: string | null;
   discordMessageId?: string | null;
+  /** Structured tool calls for an assistant turn that requested tools. */
+  toolCalls?: StoredToolCall[] | null;
+  /** For a `tool`-role result row: the call id (+ name) it answers. */
+  toolCallId?: string | null;
+  toolName?: string | null;
 }
 
 export class MessageRepository {
@@ -42,6 +55,10 @@ export class MessageRepository {
         role: input.role,
         content: input.content,
         discord_message_id: input.discordMessageId ?? null,
+        // JSONB is written as a JSON string (node-pg returns it parsed on read).
+        tool_calls: input.toolCalls?.length ? JSON.stringify(input.toolCalls) : null,
+        tool_call_id: input.toolCallId ?? null,
+        tool_name: input.toolName ?? null,
       })
       .returning(MESSAGE_COLUMNS)
       .executeTakeFirstOrThrow();

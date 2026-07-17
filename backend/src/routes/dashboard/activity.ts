@@ -56,6 +56,11 @@ export function activityRoutes(deps: DashboardDeps): Router {
         id: m.id,
         role: m.role,
         content: m.content,
+        // Structured tool data (since migration 022): an assistant turn that requested
+        // tools carries `toolCalls`, and a tool-result row carries the name it answers,
+        // so the thread can render what ran instead of a blank "(no content recorded)".
+        toolCalls: m.tool_calls,
+        toolName: m.tool_name,
         createdAt: m.created_at.toISOString(),
         tokensIn: m.tokens_in,
         tokensOut: m.tokens_out,

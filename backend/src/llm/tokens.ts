@@ -15,6 +15,21 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
+/**
+ * Cut `text` down to roughly `maxTokens` tokens, using the same chars-per-token
+ * heuristic as {@link estimateTokens} (so it's approximate by design — the point is a
+ * bound, not exactness). Returns the text unchanged when it already fits, and reports
+ * whether it was cut so the caller can attach a truncation notice.
+ */
+export function truncateToTokens(
+  text: string,
+  maxTokens: number,
+): { text: string; truncated: boolean } {
+  const maxChars = Math.max(0, maxTokens) * CHARS_PER_TOKEN;
+  if (text.length <= maxChars) return { text, truncated: false };
+  return { text: text.slice(0, maxChars), truncated: true };
+}
+
 /** Approximate input tokens for a prepared request (messages + tool schemas). */
 export function estimateRequestTokens(messages: ChatMessage[], tools?: ToolSchema[]): number {
   let total = 0;

@@ -47,10 +47,19 @@ export interface TokenUsage {
   tokensOut: number;
 }
 
+/**
+ * Why the model stopped, normalized to a provider-agnostic union: `stop` is a clean
+ * finish, `length` means the output-token cap cut the completion off mid-generation
+ * (text or tool-call JSON — never assume a clean finish), `tool_calls` means it stopped
+ * to call tools, `other` covers anything else (content filter, unknown provider values).
+ */
+export type FinishReason = "stop" | "length" | "tool_calls" | "other";
+
 export interface ChatResult {
   /** The assistant's text, or null when it only returned tool calls. */
   content: string | null;
   toolCalls: ToolCall[];
+  finishReason: FinishReason;
   usage: TokenUsage;
 }
 

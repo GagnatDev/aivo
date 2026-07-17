@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -98,6 +98,9 @@ export interface Messages {
   role: MessageRole;
   tokens_in: number | null;
   tokens_out: number | null;
+  tool_call_id: string | null;
+  tool_calls: ColumnType<StoredToolCall[] | null, string | null | undefined, string | null>;
+  tool_name: string | null;
 }
 
 export interface ModelPricing {

@@ -15,10 +15,21 @@ export interface Conversations {
   conversations: ConversationSummary[];
 }
 
+/** A tool call recorded on an assistant turn (mirrors the backend `StoredToolCall`). */
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
 export interface ThreadMessage {
   id: string;
   role: MessageRole;
   content: string | null;
+  /** Set on an assistant turn that requested tools (migration 022). */
+  toolCalls: ToolCall[] | null;
+  /** Set on a tool-result row: the tool that produced it. */
+  toolName: string | null;
   createdAt: string;
   tokensIn: number | null;
   tokensOut: number | null;

@@ -29,7 +29,9 @@ export const OWNER_ID = "owner-discord-id";
 export const TEST_AGENT_CONFIG: AgentConfig = {
   agentMaxToolIterations: 5,
   llmMaxOutputTokens: 1024,
-  contextMessageLimit: 15,
+  contextMessageLimit: 30,
+  contextTokenBudget: 4000,
+  toolResultMaxTokens: 2000,
   memoryInjectLimit: 20,
   approvalTtlMinutes: 60,
   voiceMaxDurationSecs: 60,

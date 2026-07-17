@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
 import { LlmProviderError } from "../llm/errors.js";
-import { makeFakeLlm, textResult, toolCallResult } from "../test/fakeLlm.js";
+import {
+  makeFakeLlm,
+  textResult,
+  toolCallResult,
+  truncatedToolCallResult,
+} from "../test/fakeLlm.js";
 import { makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
 
@@ -64,7 +69,7 @@ describe("runAgent", () => {
 
   it("never returns an empty reply when the model gives no content", async () => {
     const llm = makeFakeLlm([
-      { content: null, toolCalls: [], usage: { tokensIn: 5, tokensOut: 0 } },
+      { content: null, toolCalls: [], finishReason: "stop", usage: { tokensIn: 5, tokensOut: 0 } },
     ]);
     const deps = makeAgentDeps(llm);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
@@ -93,26 +98,91 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toMatch(/remember/i);
-    // The reply is the model's conversational text, never the "Used tool: …" audit
-    // summary (which used to leak into replies via replayed history — see below).
-    expect(result.reply).not.toContain("Used tool");
     // The memory was written.
     const memories = await deps.memories.listActive(userId);
     expect(memories.map((m) => m.content)).toContain("likes hiking");
     expect(llm.calls).toHaveLength(2);
-    // The tool-requesting turn had no text of its own, so instead of a null
-    // ("(no content recorded)") row the activity log gets a description of what it did.
-    // It is recorded under the `tool` role — NOT `assistant` — so buildContext does not
-    // replay it as Aivo's speech (which taught the model to echo "Used tool: …" to Discord).
+    // The tool-requesting turn is persisted structurally: an assistant row carrying the
+    // tool_calls JSON (no flattened "Used tool: …" summary), and a tool row linked to it
+    // by tool_call_id. buildContext can now replay this exchange across turns.
     const stored = await deps.messages.listByConversation(conversationId);
-    const auditTurn = stored.find((m) => m.content?.startsWith("Used "));
-    expect(auditTurn?.role).toBe("tool");
-    expect(auditTurn?.content).toContain("memory");
-    expect(auditTurn?.content).toContain("likes hiking");
-    // No assistant row carries the audit summary — only genuine replies are assistant rows.
-    expect(stored.some((m) => m.role === "assistant" && m.content?.includes("Used tool"))).toBe(
-      false,
-    );
+    const assistantCall = stored.find((m) => m.role === "assistant" && m.tool_calls?.length);
+    expect(assistantCall?.tool_calls?.[0]?.name).toBe("memory");
+    expect(assistantCall?.tool_calls?.[0]?.arguments).toContain("likes hiking");
+    const toolResult = stored.find((m) => m.role === "tool");
+    expect(toolResult?.tool_call_id).toBe(assistantCall?.tool_calls?.[0]?.id);
+    expect(toolResult?.tool_name).toBe("memory");
+    // No "Used tool: …" text is written anywhere anymore.
+    expect(stored.some((m) => m.content?.includes("Used tool"))).toBe(false);
+  });
+
+  it("flags a reply that was cut off by the output token limit", async () => {
+    const llm = makeFakeLlm([textResult("Here is the start of a very long ans", 1024, "length")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toContain("Here is the start of a very long ans");
+    expect(result.reply).toMatch(/cut off/i);
+  });
+
+  it("does not execute a truncated tool call; feeds back why instead", async () => {
+    const llm = makeFakeLlm([
+      // A `length` stop mid-tool-call: the arguments JSON is incomplete.
+      truncatedToolCallResult("memory", '{"action":"write","content":"likes hi'),
+      textResult("Let me keep that brief: noted."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("Let me keep that brief: noted.");
+    // The truncated call never executed — nothing was written.
+    expect(await deps.memories.listActive(userId)).toHaveLength(0);
+    // The model was told the real cause (not a generic JSON parse error).
+    const feedback = llm.calls[1]?.messages.find((m) => m.role === "tool");
+    expect(feedback?.content).toMatch(/cut off by the output token limit/i);
+    expect(feedback?.tool_call_id).toBe("call-1");
+  });
+
+  it("truncates an oversized tool result with a notice telling the model to narrow", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }),
+      textResult("You've got a lot saved — here's the gist."),
+    ]);
+    // A tight per-result cap so a handful of memories overflows it.
+    const deps = makeAgentDeps(llm, { toolResultMaxTokens: 40 });
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    for (let i = 0; i < 20; i++) {
+      await deps.memories.insert({
+        userId,
+        content: `a long remembered fact number ${i}`,
+        pinned: false,
+      });
+    }
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    // The tool result fed back on the second call is capped and carries the notice.
+    const toolMsg = llm.calls[1]?.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.content).toMatch(/truncated/i);
+    expect(toolMsg?.content).toMatch(/narrow/i);
+    // The persisted tool row matches what the model saw (bounded, faithful replay).
+    const stored = await deps.messages.listByConversation(conversationId);
+    const toolRow = stored.find((m) => m.role === "tool");
+    expect(toolRow?.content).toMatch(/truncated/i);
   });
 
   it("forces a plain-text answer when the model repeats a tool call", async () => {

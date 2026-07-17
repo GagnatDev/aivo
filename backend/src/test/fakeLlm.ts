@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResult,
+  FinishReason,
   LlmProvider,
   ToolSchema,
   TranscriptionRequest,
@@ -56,8 +57,12 @@ export function makeFakeLlm(
 }
 
 /** A ChatResult with plain text and no tool calls. */
-export function textResult(content: string, tokensOut = 10): ChatResult {
-  return { content, toolCalls: [], usage: { tokensIn: 20, tokensOut } };
+export function textResult(
+  content: string,
+  tokensOut = 10,
+  finishReason: FinishReason = "stop",
+): ChatResult {
+  return { content, toolCalls: [], finishReason, usage: { tokensIn: 20, tokensOut } };
 }
 
 /** A ChatResult asking to call a single tool. */
@@ -65,10 +70,22 @@ export function toolCallResult(
   name: string,
   args: Record<string, unknown>,
   id = "call-1",
+  finishReason: FinishReason = "tool_calls",
 ): ChatResult {
   return {
     content: null,
     toolCalls: [{ id, name, arguments: JSON.stringify(args) }],
+    finishReason,
+    usage: { tokensIn: 20, tokensOut: 5 },
+  };
+}
+
+/** A ChatResult whose tool call was cut off mid-JSON by the output-token cap. */
+export function truncatedToolCallResult(name: string, partialArgs: string): ChatResult {
+  return {
+    content: null,
+    toolCalls: [{ id: "call-1", name, arguments: partialArgs }],
+    finishReason: "length",
     usage: { tokensIn: 20, tokensOut: 5 },
   };
 }

@@ -69,6 +69,45 @@ describe("MessageRepository.getLatestDiscordMessageId", () => {
   });
 });
 
+describe("MessageRepository.insert (structured tool turns)", () => {
+  it("round-trips tool_calls as parsed JSON and the tool_call_id/name linkage", async () => {
+    const { conversations, messages, userId } = await setup();
+    const convo = await conversations.getOrCreate(userId, "chat", "chan-1");
+
+    const assistant = await messages.insert({
+      conversationId: convo.id,
+      role: "assistant",
+      content: null,
+      toolCalls: [{ id: "call-1", name: "reminder", arguments: '{"action":"list"}' }],
+    });
+    // node-pg returns JSONB already parsed — no JSON.parse at the call site.
+    expect(assistant.tool_calls).toEqual([
+      { id: "call-1", name: "reminder", arguments: '{"action":"list"}' },
+    ]);
+    expect(assistant.tool_call_id).toBeNull();
+
+    const result = await messages.insert({
+      conversationId: convo.id,
+      role: "tool",
+      content: "no reminders",
+      toolCallId: "call-1",
+      toolName: "reminder",
+    });
+    expect(result.tool_call_id).toBe("call-1");
+    expect(result.tool_name).toBe("reminder");
+    expect(result.tool_calls).toBeNull();
+  });
+
+  it("leaves all tool columns null for an ordinary message", async () => {
+    const { conversations, messages, userId } = await setup();
+    const convo = await conversations.getOrCreate(userId, "chat", "chan-1");
+    const row = await messages.insert({ conversationId: convo.id, role: "user", content: "hi" });
+    expect(row.tool_calls).toBeNull();
+    expect(row.tool_call_id).toBeNull();
+    expect(row.tool_name).toBeNull();
+  });
+});
+
 describe("MessageRepository.listPage", () => {
   // gen_random_uuid() ids + microsecond created_at mean a fast insert loop can leave
   // several rows in the same millisecond, where the (created_at, id) keyset the repo
