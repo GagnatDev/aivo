@@ -55,10 +55,18 @@ const EnvSchema = z.object({
   LLM_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
   // Agent tool-calling loop: hard cap on tool round-trips per turn (runaway backstop).
   AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().int().positive().default(5),
-  // How many recent messages of conversation history to include as context.
-  // Re-sent on every LLM call (and on every tool-loop round-trip), so this is a
-  // direct input-token lever — keep it as low as context quality allows.
-  AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(15),
+  // Hard cap on how many recent history messages to replay — a backstop beneath the
+  // token budget below, so a long run of tiny messages can't blow up prompt size.
+  AGENT_CONTEXT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
+  // Token budget for replayed conversation history (the primary context lever). History
+  // is re-sent on every LLM call and every tool-loop round-trip, so it's a direct
+  // input-token cost — budgeting by tokens rather than message count keeps one large
+  // message (e.g. a long tool result) from crowding out the rest of the window.
+  AGENT_CONTEXT_TOKEN_BUDGET: z.coerce.number().int().positive().default(4000),
+  // Per-tool-result token cap applied at the loop boundary: a result larger than this is
+  // truncated with a notice telling the model to narrow its request. Bounds the cost of a
+  // large result being re-sent on every subsequent iteration. 0 disables the cap.
+  AGENT_TOOL_RESULT_MAX_TOKENS: z.coerce.number().int().nonnegative().default(2000),
   // How many remembered facts to inject into the system prompt each turn (pinned
   // first, then newest). The rest stay reachable on demand via the memory tool;
   // this caps unbounded growth of the per-call prompt.

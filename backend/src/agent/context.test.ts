@@ -34,6 +34,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 15,
       memoryLimit: 5,
     });
@@ -56,6 +57,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 15,
       memoryLimit: 20,
     });
@@ -101,6 +103,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 15,
       memoryLimit: 20,
     });
@@ -148,6 +151,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 15,
       memoryLimit: 20,
     });
@@ -217,6 +221,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 3,
       memoryLimit: 20,
     });
@@ -228,6 +233,63 @@ describe("buildContext", () => {
       role: "assistant",
       content: "You've got the dentist Friday.",
     });
+  });
+
+  it("trims replayed history to the token budget, keeping the newest turns", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]));
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    // Five ~100-char (≈25-token) user messages. A tight token budget should keep only
+    // the newest couple, dropping the older ones even though the message-count cap is high.
+    for (let i = 0; i < 5; i++) {
+      await deps.messages.insert({
+        conversationId,
+        role: "user",
+        content: `msg${i} ${"x".repeat(100)}`,
+        discordMessageId: `m${i}`,
+      });
+    }
+    const settings = await deps.settings.getOrCreate(userId);
+
+    const messages = await buildContext(deps, {
+      userId,
+      conversationId,
+      settings,
+      historyTokenBudget: 60, // ~2 messages' worth
+      historyLimit: 30,
+      memoryLimit: 20,
+    });
+
+    const replayed = messages.filter((m) => m.role === "user");
+    expect(replayed.length).toBeLessThan(5); // older turns trimmed by the token budget
+    expect(replayed.length).toBeGreaterThan(0);
+    // The newest message is always kept; the oldest is dropped.
+    expect(replayed.at(-1)?.content).toContain("msg4");
+    expect(replayed.some((m) => m.content?.includes("msg0"))).toBe(false);
+  });
+
+  it("keeps at least the newest message even if it alone exceeds the budget", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]));
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+    await deps.messages.insert({
+      conversationId,
+      role: "user",
+      content: "x".repeat(1000), // far over the budget below
+      discordMessageId: "m1",
+    });
+    const settings = await deps.settings.getOrCreate(userId);
+
+    const messages = await buildContext(deps, {
+      userId,
+      conversationId,
+      settings,
+      historyTokenBudget: 10,
+      historyLimit: 30,
+      memoryLimit: 20,
+    });
+
+    // Dropping the latest turn entirely would be worse than overshooting once.
+    expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
   });
 
   it("grounds the system prompt with the current local date/time", async () => {
@@ -243,6 +305,7 @@ describe("buildContext", () => {
       userId,
       conversationId,
       settings,
+      historyTokenBudget: 100000,
       historyLimit: 15,
       memoryLimit: 20,
     });

@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../llm/provider.js";
+import { estimateTokens } from "../llm/tokens.js";
 import type { MessageRow } from "../storage/messageRepository.js";
 import type { SettingsRow } from "../storage/settingsRepository.js";
 import type { AgentDeps } from "./deps.js";
@@ -67,11 +68,54 @@ export interface BuildContextInput {
   userId: string;
   conversationId: string;
   settings: SettingsRow;
-  /** Most recent messages to include (oldest-first), already capped by the caller. */
+  /**
+   * Token budget for replayed history: newest-first, messages are included until the
+   * next one would exceed this, so budgeting tracks message *size*, not just count (one
+   * large tool result no longer crowds the window the way a fixed message count let it).
+   */
+  historyTokenBudget: number;
+  /**
+   * Hard cap on the number of replayed messages, regardless of the token budget — a
+   * backstop so a long run of tiny messages can't blow up per-call latency/prompt size.
+   */
   historyLimit: number;
   /** Max remembered facts to inject (pinned first, then newest); the rest stay
    * reachable via the memory tool. Bounds per-call prompt growth. */
   memoryLimit: number;
+}
+
+/**
+ * Take the newest run of `messages` (already oldest-first) that fits within
+ * `tokenBudget`, stopping at `maxCount` messages either way. Walks from the newest
+ * backwards, summing per-message token estimates, and keeps at least the single newest
+ * message even if it alone exceeds the budget (dropping the latest turn would be worse
+ * than briefly overshooting). Returns the kept messages oldest-first.
+ */
+function trimToTokenBudget(
+  messages: ChatMessage[],
+  tokenBudget: number,
+  maxCount: number,
+): ChatMessage[] {
+  const kept: ChatMessage[] = [];
+  let used = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m) continue;
+    const cost = messageTokens(m);
+    if (kept.length > 0 && (used + cost > tokenBudget || kept.length >= maxCount)) break;
+    kept.push(m);
+    used += cost;
+  }
+  return kept.reverse();
+}
+
+/** Approximate token cost of a single replayed message (text + any tool-call payload). */
+function messageTokens(m: ChatMessage): number {
+  let total = estimateTokens(m.content ?? "");
+  for (const tc of m.tool_calls ?? []) {
+    total += estimateTokens(tc.name) + estimateTokens(tc.arguments);
+  }
+  return total;
 }
 
 /**
@@ -166,11 +210,9 @@ export async function buildContext(
   }
 
   const history = await deps.messages.listByConversation(input.conversationId);
-  const replayable = history
-    .map(toReplayMessage)
-    .filter((m): m is ChatMessage => m !== null)
-    .slice(-input.historyLimit);
-  for (const m of dropLeadingOrphanToolResults(replayable)) {
+  const replayable = history.map(toReplayMessage).filter((m): m is ChatMessage => m !== null);
+  const windowed = trimToTokenBudget(replayable, input.historyTokenBudget, input.historyLimit);
+  for (const m of dropLeadingOrphanToolResults(windowed)) {
     messages.push(m);
   }
 

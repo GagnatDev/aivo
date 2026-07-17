@@ -72,7 +72,9 @@ describe("loadEnv", () => {
     expect(env.LLM_TIMEOUT_MS).toBe(45_000);
     expect(env.LLM_MAX_RETRIES).toBe(2);
     expect(env.AGENT_MAX_TOOL_ITERATIONS).toBe(5);
-    expect(env.AGENT_CONTEXT_MESSAGE_LIMIT).toBe(15);
+    expect(env.AGENT_CONTEXT_MESSAGE_LIMIT).toBe(30);
+    expect(env.AGENT_CONTEXT_TOKEN_BUDGET).toBe(4000);
+    expect(env.AGENT_TOOL_RESULT_MAX_TOKENS).toBe(2000);
     expect(env.AGENT_MEMORY_INJECT_LIMIT).toBe(20);
     expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });

@@ -157,6 +157,34 @@ describe("runAgent", () => {
     expect(feedback?.tool_call_id).toBe("call-1");
   });
 
+  it("truncates an oversized tool result with a notice telling the model to narrow", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }),
+      textResult("You've got a lot saved — here's the gist."),
+    ]);
+    // A tight per-result cap so a handful of memories overflows it.
+    const deps = makeAgentDeps(llm, { toolResultMaxTokens: 40 });
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    for (let i = 0; i < 20; i++) {
+      await deps.memories.insert({
+        userId,
+        content: `a long remembered fact number ${i}`,
+        pinned: false,
+      });
+    }
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    // The tool result fed back on the second call is capped and carries the notice.
+    const toolMsg = llm.calls[1]?.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.content).toMatch(/truncated/i);
+    expect(toolMsg?.content).toMatch(/narrow/i);
+    // The persisted tool row matches what the model saw (bounded, faithful replay).
+    const stored = await deps.messages.listByConversation(conversationId);
+    const toolRow = stored.find((m) => m.role === "tool");
+    expect(toolRow?.content).toMatch(/truncated/i);
+  });
+
   it("forces a plain-text answer when the model repeats a tool call", async () => {
     const llm = makeFakeLlm([
       toolCallResult("memory", { action: "list" }),

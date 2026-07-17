@@ -1,6 +1,7 @@
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
 import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
+import { truncateToTokens } from "../llm/tokens.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
@@ -191,13 +192,19 @@ export async function runToolLoop(
       const signature = `${call.name}:${call.arguments}`;
       if (!executed.has(signature)) allRepeats = false;
       executed.add(signature);
-      const toolResult = await executeToolCall(registry, call.name, call.arguments, ctx);
+      const rawResult = await executeToolCall(registry, call.name, call.arguments, ctx);
+      // Cap oversized results at the loop boundary: a large result would otherwise be
+      // re-sent verbatim on every subsequent iteration, inflating every round-trip. The
+      // capped text is what the model sees AND what we persist, so replay (see #52) stays
+      // faithful to — and as bounded as — what actually happened this turn.
+      const toolResult = capToolResult(rawResult, deps.config.toolResultMaxTokens);
       logger.debug(
         {
           userId: ctx.userId,
           tool: call.name,
           arguments: call.arguments,
           resultPreview: preview(toolResult),
+          truncated: toolResult.length !== rawResult.length,
         },
         "agent tool executed",
       );
@@ -277,6 +284,21 @@ async function forceFinalAnswer(
     logger.error(err, "forced final answer failed");
     return { reply: STUCK_FALLBACK, alertPct };
   }
+}
+
+/**
+ * Bound a single tool result to `maxTokens`, appending a notice when it had to be cut so
+ * the model knows the result is partial and how to get the rest (narrow the query) rather
+ * than treating the truncated text as the whole answer. A cap of 0 disables the bound.
+ */
+function capToolResult(result: string, maxTokens: number): string {
+  if (maxTokens <= 0) return result;
+  const { text, truncated } = truncateToTokens(result, maxTokens);
+  if (!truncated) return result;
+  return (
+    `${text}\n\n[Tool result truncated: it exceeded the ${maxTokens}-token cap. ` +
+    "Narrow the request (a search term, a specific item, or a smaller range) to see the rest.]"
+  );
 }
 
 /** Truncate a possibly-null string for log lines. */

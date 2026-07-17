@@ -32,8 +32,12 @@ export interface AgentConfig {
   agentMaxToolIterations: number;
   /** Upper bound on completion tokens per LLM call. `LLM_MAX_OUTPUT_TOKENS`. */
   llmMaxOutputTokens: number;
-  /** Recent conversation messages to replay as context. `AGENT_CONTEXT_MESSAGE_LIMIT`. */
+  /** Hard cap on replayed message count (backstop under the token budget). `AGENT_CONTEXT_MESSAGE_LIMIT`. */
   contextMessageLimit: number;
+  /** Token budget for replayed conversation history. `AGENT_CONTEXT_TOKEN_BUDGET`. */
+  contextTokenBudget: number;
+  /** Per-tool-result token cap at the loop boundary; 0 disables. `AGENT_TOOL_RESULT_MAX_TOKENS`. */
+  toolResultMaxTokens: number;
   /** Remembered facts injected into the system prompt each turn. `AGENT_MEMORY_INJECT_LIMIT`. */
   memoryInjectLimit: number;
   /** Pending approval prompts older than this are swept to expired. `APPROVAL_TTL_MINUTES`. */

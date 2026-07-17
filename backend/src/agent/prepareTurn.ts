@@ -135,6 +135,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
     userId: input.userId,
     conversationId: input.conversationId,
     settings,
+    historyTokenBudget: deps.config.contextTokenBudget,
     historyLimit: deps.config.contextMessageLimit,
     memoryLimit: deps.config.memoryInjectLimit,
   });
