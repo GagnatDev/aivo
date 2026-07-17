@@ -101,7 +101,11 @@ export const unforkedTool: AgentTool = {
   schema: {
     name: "unforked",
     description:
-      "The family's unforked meal planner. Actions: 'meal_plan' (week's dinner plan, " +
+      "The family's unforked meal planner. Call this for anything about meals, dinner plans, " +
+      "recipes, ingredients, or the shopping list — 'what's for dinner?' / 'hva blir middag?', " +
+      "'what can I make with what's in the fridge?', 'add milk to the shopping list' / 'legg " +
+      "melk på handlelista' — never answer such questions from memory or by guessing. " +
+      "Actions: 'meal_plan' (week's dinner plan, " +
       "answers 'what's for dinner?'); 'shopping_list' (week's list incl. what's already " +
       "checked off); 'add_shopping_items' (add one or more items to a week's shopping list — " +
       "owner only); 'recipes' (compact corpus of ALL family recipes with ingredient names — " +

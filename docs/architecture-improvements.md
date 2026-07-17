@@ -200,6 +200,11 @@ the mechanical "fetch the referenced message" part.
 > which is exactly how `memory` stays always-on. `agent.ts` imports from
 > `./tools/index.js`; no other importers existed. Pure file moves plus one interface
 > field — no behavior change (verified: registry order and gating are identical).
+> (As of 2026-07-17, per issue #55, keyword gating is **off by default**: all schemas
+> are advertised every turn — a stable, cache-friendly prompt prefix that can't silently
+> strip a capability — and each description carries explicit "call this when…" triggers.
+> Set `AGENT_TOOL_KEYWORD_GATING=true` to reinstate the gate; `gate.ts` and the per-tool
+> bilingual keyword lists are kept for that.)
 
 **Problem.** `agent/tools.ts` is 378 lines holding four tools (memory, budget, models,
 settings), their Zod schemas, their JSON tool schemas, the keyword-gating regexes, and

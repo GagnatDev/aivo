@@ -79,6 +79,22 @@ describe("loadEnv", () => {
     expect(env.APPROVAL_TTL_MINUTES).toBe(60);
   });
 
+  it("defaults AGENT_TOOL_KEYWORD_GATING off and parses it strictly", () => {
+    expect(loadEnv(validEnv as NodeJS.ProcessEnv).AGENT_TOOL_KEYWORD_GATING).toBe(false);
+    expect(
+      loadEnv({ ...validEnv, AGENT_TOOL_KEYWORD_GATING: "true" } as NodeJS.ProcessEnv)
+        .AGENT_TOOL_KEYWORD_GATING,
+    ).toBe(true);
+    expect(
+      loadEnv({ ...validEnv, AGENT_TOOL_KEYWORD_GATING: "false" } as NodeJS.ProcessEnv)
+        .AGENT_TOOL_KEYWORD_GATING,
+    ).toBe(false);
+    // "1"/"yes"/"TRUE" would silently mean the wrong thing under coercion — reject instead.
+    expect(() =>
+      loadEnv({ ...validEnv, AGENT_TOOL_KEYWORD_GATING: "1" } as NodeJS.ProcessEnv),
+    ).toThrow();
+  });
+
   it("derives dev mode outside production", () => {
     const env = loadEnv(validEnv as NodeJS.ProcessEnv);
     expect(env.authMode).toBe("dev");

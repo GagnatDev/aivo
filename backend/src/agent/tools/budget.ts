@@ -57,8 +57,11 @@ export const budgetTool: AgentTool = {
   schema: {
     name: "budget",
     description:
-      "Report spend or change budget settings. 'report' shows today's and month-to-date spend " +
-      "vs the monthly ceiling plus top drivers (anyone). 'set_caps' updates caps and the " +
+      "Report spend or change budget settings. Call this whenever the conversation is about " +
+      "aivo's own cost or budget — what's been spent ('how much have I spent?', 'hvor mye har " +
+      "jeg brukt?'), what things cost, or changing caps/thresholds/tier ('set my cap to $20') — " +
+      "never answer spend questions from memory. 'report' shows today's and month-to-date " +
+      "spend vs the monthly ceiling plus top drivers (anyone). 'set_caps' updates caps and the " +
       "per-request approval threshold in whole cents ($15/mo = 1500); 'set_tier' forces the " +
       "model tier auto|cheap|premium. set_caps and set_tier are owner-only.",
     parameters: {

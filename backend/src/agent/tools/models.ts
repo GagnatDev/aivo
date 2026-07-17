@@ -41,7 +41,10 @@ export const modelsTool: AgentTool = {
   schema: {
     name: "models",
     description:
-      "Inspect or configure the model/pricing table. 'list' shows models with their " +
+      "Inspect or configure the model/pricing table. Call this when the conversation is about " +
+      "the LLM models themselves — which model fills a tier ('which llama is premium?'), " +
+      "adding one, or their token prices ('hva er prisen per token?'). For how much has been " +
+      "SPENT, use the budget tool instead. 'list' shows models with their " +
       "capabilities (chat|audio|vision), the slots they fill (e.g. chat:cheap — aivo uses a " +
       "model only for slots it holds), token prices (cents per 1,000,000 tokens) and, for " +
       "audio models, the per-minute audio price (anyone). 'set_price' adds a model (new " +

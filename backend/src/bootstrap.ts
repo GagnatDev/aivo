@@ -113,6 +113,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
     config: {
       agentMaxToolIterations: env.AGENT_MAX_TOOL_ITERATIONS,
+      toolKeywordGating: env.AGENT_TOOL_KEYWORD_GATING,
       llmMaxOutputTokens: env.LLM_MAX_OUTPUT_TOKENS,
       contextMessageLimit: env.AGENT_CONTEXT_MESSAGE_LIMIT,
       contextTokenBudget: env.AGENT_CONTEXT_TOKEN_BUDGET,

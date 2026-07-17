@@ -12,8 +12,9 @@ import {
   type ToolContext,
 } from "./tools/index.js";
 
-// How many recent user/assistant messages to scan when deciding which tools to
-// advertise — enough to catch an immediate follow-up that omits the keyword.
+// When keyword gating is enabled: how many recent user/assistant messages to scan when
+// deciding which tools to advertise — enough to catch an immediate follow-up that omits
+// the keyword.
 const TOOL_GATING_LOOKBACK = 4;
 
 // The approval gate records pending approvals under this task type (kept in step with
@@ -140,16 +141,22 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
     memoryLimit: deps.config.memoryInjectLimit,
   });
 
-  // Advertise only the tools the recent conversation looks like it needs (the 4 schemas
-  // are ~1.1k tokens, re-sent on every call). `memory` is always on; the management
-  // tools are keyword-gated. The full registry still backs execution, so a tool the
-  // model somehow calls without it being advertised is handled, not lost.
+  // By default every tool schema is advertised every turn — a stable prompt prefix
+  // that caches well and can't silently strip a capability on a missed keyword; the
+  // "call this when…" guidance in each description does the triggering work. With
+  // AGENT_TOOL_KEYWORD_GATING on, only tools the recent conversation looks like it
+  // needs are advertised (smaller prompt, at the documented risk of a missed keyword).
+  // The full registry still backs execution either way, so a tool the model somehow
+  // calls without it being advertised is handled, not lost.
   const recentText = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-TOOL_GATING_LOOKBACK)
     .map((m) => m.content ?? "")
     .join("\n");
-  const tools = selectToolSchemas(registry, recentText);
+  const tools = selectToolSchemas(registry, {
+    enabled: deps.config.toolKeywordGating,
+    recentText,
+  });
 
   const maxTokens = decision.overBudgetNote
     ? Math.min(deps.config.llmMaxOutputTokens, OVER_BUDGET_MAX_TOKENS)

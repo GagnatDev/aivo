@@ -23,11 +23,13 @@ export interface ToolContext {
 export interface AgentTool {
   schema: ToolSchema;
   /**
-   * Trigger keywords deciding whether this tool's schema is advertised this turn (see
-   * {@link selectToolSchemas} and {@link gateMatches} for the matching rules). A tool
-   * with no gate is always advertised. Kept next to the tool definition so a tool and
-   * its gate can't drift apart. List both English and Norwegian triggers — the owner
-   * switches languages freely, and a missed word silently strips the capability.
+   * Trigger keywords deciding whether this tool's schema is advertised this turn — but
+   * ONLY when keyword gating is enabled (`AGENT_TOOL_KEYWORD_GATING`, off by default;
+   * see {@link selectToolSchemas} and {@link gateMatches} for the matching rules). With
+   * gating off every schema is advertised and this field is inert. A tool with no gate
+   * is always advertised even when gating is on. Kept next to the tool definition so a
+   * tool and its gate can't drift apart. List both English and Norwegian triggers — the
+   * owner switches languages freely, and a missed word silently strips the capability.
    */
   gate?: readonly string[];
   /** Execute the call and return a result string appended as a `tool` message. */
@@ -63,30 +65,44 @@ export function buildToolRegistry(): AgentTool[] {
   ];
 }
 
+/** How {@link selectToolSchemas} decides what to advertise this turn. */
+export interface ToolGating {
+  /**
+   * Keyword-gate advertisement (`AGENT_TOOL_KEYWORD_GATING`). Off by default: every
+   * schema is advertised every turn, so the toolset is a stable prompt prefix (caches
+   * well) and a capability can never be silently stripped by a missed keyword — the
+   * "call this when…" guidance in each description does the triggering work instead.
+   * Flip on to trade that robustness for a smaller per-call prompt (~1-2k input tokens).
+   */
+  enabled: boolean;
+  /** Recent conversation text scanned for trigger keywords (only read when enabled). */
+  recentText: string;
+}
+
 /**
- * Pick which tool schemas to advertise this turn from the recent conversation text. The
- * full registry is still used to *execute* whatever the model calls; this only controls
- * what the model is shown, to keep the per-call prompt small (the 4 schemas are ~1.1k
- * tokens sent on every call). Scanning a few recent messages — not just the latest —
- * keeps a tool on across an immediate follow-up ("actually make it $30").
+ * Pick which tool schemas to advertise this turn. The full registry is still used to
+ * *execute* whatever the model calls; this only controls what the model is shown.
  *
- * A tool with no `gate` is always advertised — `memory` is intentionally un-gated: aivo
- * is meant to capture facts the user drops in ordinary conversation ("I'm vegetarian")
- * without a trigger word, so gating it out would silently lose recall. Gated tools are
- * advertised only when the recent conversation trips one of their keywords (see
- * {@link gateMatches} — exact/stem/fuzzy, so a typo or a garbled transcription still
- * matches); matching is deliberately broad and biased toward inclusion — a false positive
- * just wastes tokens, a false negative loses a capability for that turn.
+ * With gating disabled (the default — see {@link ToolGating}) the whole registry is
+ * advertised. With it enabled, gated tools are advertised only when the recent
+ * conversation trips one of their keywords (see {@link gateMatches} — exact/stem/fuzzy,
+ * so a typo or a garbled transcription still matches); matching is deliberately broad
+ * and biased toward inclusion — a false positive just wastes tokens, a false negative
+ * loses a capability for that turn. A tool with no `gate` is always advertised —
+ * `memory` is intentionally un-gated: aivo is meant to capture facts the user drops in
+ * ordinary conversation ("I'm vegetarian") without a trigger word, so gating it out
+ * would silently lose recall.
  *
- * The model can only *call* a tool whose schema was advertised, so a gate that misses the
- * user's phrasing silently strips the capability (the model just replies in prose). The
- * owner writes in Norwegian as often as English, so every gate is bilingual: it lists both
- * English and Norwegian trigger words. New tools MUST do the same, or they'll be dead for
- * non-English turns.
+ * When gating is on, the model can only *call* a tool whose schema was advertised, so a
+ * gate that misses the user's phrasing silently strips the capability (the model just
+ * replies in prose). The owner writes in Norwegian as often as English, so every gate is
+ * bilingual: it lists both English and Norwegian trigger words. New tools MUST do the
+ * same while gating remains available, or they'll be dead for non-English turns.
  */
-export function selectToolSchemas(registry: AgentTool[], recentText: string): ToolSchema[] {
+export function selectToolSchemas(registry: AgentTool[], gating: ToolGating): ToolSchema[] {
+  if (!gating.enabled) return registry.map((t) => t.schema);
   return registry
-    .filter((t) => (t.gate ? gateMatches(t.gate, recentText) : true))
+    .filter((t) => (t.gate ? gateMatches(t.gate, gating.recentText) : true))
     .map((t) => t.schema);
 }
 
