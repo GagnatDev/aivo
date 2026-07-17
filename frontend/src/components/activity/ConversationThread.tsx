@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { getJson } from "../../api/client.js";
 import {
   formatTimestamp,
@@ -80,6 +80,29 @@ function tokensNote(m: ThreadMessage): string | null {
   return `${m.tokensIn ?? 0} in / ${m.tokensOut ?? 0} out tokens`;
 }
 
+/** A compact "name({args})" line per requested tool, args truncated so the row stays readable. */
+function toolCallSummary(calls: NonNullable<ThreadMessage["toolCalls"]>): string {
+  return calls
+    .map((c) => {
+      const args = c.arguments?.trim();
+      return !args || args === "{}" ? c.name : `${c.name}(${args.slice(0, 120)})`;
+    })
+    .join(", ");
+}
+
+/**
+ * The message body: an assistant turn that only requested tools has null content, so
+ * render the structured tool calls; a tool-result row is labelled with the tool it
+ * answers; everything else shows its text (or a muted placeholder when truly empty).
+ */
+function messageBody(m: ThreadMessage): ReactElement {
+  if (m.content) return <>{m.content}</>;
+  if (m.role === "assistant" && m.toolCalls?.length) {
+    return <span className="thread-tool-calls">→ {toolCallSummary(m.toolCalls)}</span>;
+  }
+  return <span className="muted">(no content recorded)</span>;
+}
+
 /** A-2/A-3/A-4: the message thread — roles, timestamps, token counts, tool calls highlighted. */
 export function ConversationThread({ conversationId }: { conversationId: string }) {
   const thread = useThread(conversationId);
@@ -102,13 +125,14 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           return (
             <li key={m.id} className={`thread-msg thread-${m.role}`}>
               <div className="thread-meta">
-                <span className="thread-role">{ROLE_LABELS[m.role]}</span>
+                <span className="thread-role">
+                  {ROLE_LABELS[m.role]}
+                  {m.role === "tool" && m.toolName ? `: ${m.toolName}` : ""}
+                </span>
                 <span>{formatTimestamp(m.createdAt)}</span>
                 {tokens ? <span>{tokens}</span> : null}
               </div>
-              <div className="thread-content">
-                {m.content ?? <span className="muted">(no content recorded)</span>}
-              </div>
+              <div className="thread-content">{messageBody(m)}</div>
             </li>
           );
         })}

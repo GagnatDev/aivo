@@ -98,26 +98,22 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toMatch(/remember/i);
-    // The reply is the model's conversational text, never the "Used tool: …" audit
-    // summary (which used to leak into replies via replayed history — see below).
-    expect(result.reply).not.toContain("Used tool");
     // The memory was written.
     const memories = await deps.memories.listActive(userId);
     expect(memories.map((m) => m.content)).toContain("likes hiking");
     expect(llm.calls).toHaveLength(2);
-    // The tool-requesting turn had no text of its own, so instead of a null
-    // ("(no content recorded)") row the activity log gets a description of what it did.
-    // It is recorded under the `tool` role — NOT `assistant` — so buildContext does not
-    // replay it as Aivo's speech (which taught the model to echo "Used tool: …" to Discord).
+    // The tool-requesting turn is persisted structurally: an assistant row carrying the
+    // tool_calls JSON (no flattened "Used tool: …" summary), and a tool row linked to it
+    // by tool_call_id. buildContext can now replay this exchange across turns.
     const stored = await deps.messages.listByConversation(conversationId);
-    const auditTurn = stored.find((m) => m.content?.startsWith("Used "));
-    expect(auditTurn?.role).toBe("tool");
-    expect(auditTurn?.content).toContain("memory");
-    expect(auditTurn?.content).toContain("likes hiking");
-    // No assistant row carries the audit summary — only genuine replies are assistant rows.
-    expect(stored.some((m) => m.role === "assistant" && m.content?.includes("Used tool"))).toBe(
-      false,
-    );
+    const assistantCall = stored.find((m) => m.role === "assistant" && m.tool_calls?.length);
+    expect(assistantCall?.tool_calls?.[0]?.name).toBe("memory");
+    expect(assistantCall?.tool_calls?.[0]?.arguments).toContain("likes hiking");
+    const toolResult = stored.find((m) => m.role === "tool");
+    expect(toolResult?.tool_call_id).toBe(assistantCall?.tool_calls?.[0]?.id);
+    expect(toolResult?.tool_name).toBe("memory");
+    // No "Used tool: …" text is written anywhere anymore.
+    expect(stored.some((m) => m.content?.includes("Used tool"))).toBe(false);
   });
 
   it("flags a reply that was cut off by the output token limit", async () => {

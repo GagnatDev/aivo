@@ -1,6 +1,6 @@
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, ToolCall, ToolSchema } from "../llm/provider.js";
+import type { ChatMessage, ChatResult, ToolSchema } from "../llm/provider.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
@@ -138,16 +138,16 @@ export async function runToolLoop(
     // Replay the assistant message that requested the tools into THIS turn's context,
     // keeping the model's real (often null) content + structured tool_calls.
     messages.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
-    // Persist a human-readable record of what the turn did (a bare null shows up in the
-    // activity log as an empty "(no content recorded)" line). This is an audit row under
-    // the `tool` role, NOT `assistant`: buildContext replays user/assistant text verbatim
-    // across turns, so recording this "Used tool: …" summary as an assistant turn taught
-    // the model to echo it as its own reply — which then went out to Discord. As a `tool`
-    // row it still renders in the dashboard thread but is excluded from the replayed context.
+    // Persist the same structured shape: an assistant row with its tool_calls JSON, so
+    // buildContext can replay the exchange faithfully across turns. (This replaces the
+    // old flattened "Used tool: …" audit summary, which lacked the tool_call linkage
+    // and — when replayed as assistant text — taught the model to echo it to Discord;
+    // the dashboard renders the calls from the structured column instead.)
     await deps.messages.insert({
       conversationId: ctx.conversationId,
-      role: "tool",
-      content: result.content?.trim() || describeToolCalls(result.toolCalls),
+      role: "assistant",
+      content: result.content,
+      toolCalls: result.toolCalls,
       discordMessageId: null,
     });
 
@@ -172,6 +172,8 @@ export async function runToolLoop(
           conversationId: ctx.conversationId,
           role: "tool",
           content: TOOL_CALL_TRUNCATED_FEEDBACK,
+          toolCallId: call.id,
+          toolName: call.name,
           discordMessageId: null,
         });
         messages.push({
@@ -203,6 +205,8 @@ export async function runToolLoop(
         conversationId: ctx.conversationId,
         role: "tool",
         content: toolResult,
+        toolCallId: call.id,
+        toolName: call.name,
         discordMessageId: null,
       });
       messages.push({ role: "tool", content: toolResult, tool_call_id: call.id, name: call.name });
@@ -279,23 +283,6 @@ async function forceFinalAnswer(
 function preview(text: string | null, max = 200): string {
   if (!text) return "(none)";
   return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-/**
- * A human-readable summary of the tools an assistant turn requested, persisted as the
- * message content when the model returned tool calls but no text of its own. Without it
- * the activity log renders these turns as an empty "(no content recorded)" line; with it
- * the log shows what actually happened — which tools ran, with a compact argument preview
- * (large payloads truncated so the thread stays readable).
- */
-function describeToolCalls(toolCalls: ToolCall[]): string {
-  if (toolCalls.length === 0) return "";
-  const calls = toolCalls.map((c) => {
-    const args = c.arguments?.trim();
-    if (!args || args === "{}") return c.name;
-    return `${c.name}(${preview(args, 120)})`;
-  });
-  return `Used ${calls.length === 1 ? "tool" : "tools"}: ${calls.join(", ")}`;
 }
 
 async function executeToolCall(

@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../llm/provider.js";
+import type { MessageRow } from "../storage/messageRepository.js";
 import type { SettingsRow } from "../storage/settingsRepository.js";
 import type { AgentDeps } from "./deps.js";
 
@@ -74,14 +75,65 @@ export interface BuildContextInput {
 }
 
 /**
+ * Reconstruct the running exchange from stored rows, preserving tool structure so the
+ * model can see what tools returned in earlier turns. Each persisted row maps back to
+ * its provider-agnostic {@link ChatMessage}:
+ * - `user` / plain `assistant` → text, as before.
+ * - `assistant` with a `tool_calls` array → the structured tool-request turn (its
+ *   content is often null, which is valid and kept).
+ * - `tool` with a `tool_call_id` → a tool result linked to the call it answers.
+ *
+ * Rows that can't form a valid message are dropped: a degenerate assistant row with
+ * neither text nor tool calls, and — crucially — any `tool` row without a
+ * `tool_call_id`. The latter covers every pre-022 row (the old flattened "Used tool: …"
+ * audit summaries and bare tool results), so historical conversations replay exactly as
+ * they did before structured persistence existed: user/assistant text only.
+ */
+function toReplayMessage(row: MessageRow): ChatMessage | null {
+  switch (row.role) {
+    case "user":
+      return row.content === null ? null : { role: "user", content: row.content };
+    case "assistant": {
+      if (row.tool_calls?.length) {
+        return { role: "assistant", content: row.content, tool_calls: row.tool_calls };
+      }
+      return row.content === null ? null : { role: "assistant", content: row.content };
+    }
+    case "tool":
+      // No tool_call_id ⇒ a legacy/audit row with no structured linkage; the model can't
+      // consume it as a tool result, so it stays out of the replayed context.
+      if (!row.tool_call_id) return null;
+      return {
+        role: "tool",
+        content: row.content ?? "",
+        tool_call_id: row.tool_call_id,
+        ...(row.tool_name ? { name: row.tool_name } : {}),
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Drop leading `tool` messages from a windowed slice. A recent-history window is a
+ * contiguous suffix of the conversation, so the only way tool linkage breaks is at the
+ * front: a tool result whose assistant tool-call turn fell before the window boundary.
+ * Such an orphan would make the message list invalid (a `tool` message with no
+ * preceding matching `tool_calls`). Every other tool row in the suffix is still preceded
+ * by its assistant turn — they're persisted consecutively — so trimming the front is
+ * sufficient to keep the whole window valid.
+ */
+function dropLeadingOrphanToolResults(messages: ChatMessage[]): ChatMessage[] {
+  let start = 0;
+  while (start < messages.length && messages[start]?.role === "tool") start++;
+  return messages.slice(start);
+}
+
+/**
  * Assemble the LLM message list: a system prompt (base persona + the user's
  * persona_prompt addendum), an optional block of known memories, then the recent
- * conversation transcript. Only user/assistant text is replayed from history — the
- * intermediate tool rows (both tool results and the "Used tool: …" tool-call audit
- * summaries the loop records for the dashboard) are persisted for audit but not
- * reconstructed across turns: they lack the structured tool_call linkage, and replaying
- * a tool-call summary as assistant text taught the model to echo "Used tool: …" back to
- * the user. Excluding every tool row keeps the replayed list valid and in Aivo's voice.
+ * conversation transcript replayed with its tool structure intact (see
+ * {@link toReplayMessage}).
  */
 export async function buildContext(
   deps: AgentDeps,
@@ -114,11 +166,12 @@ export async function buildContext(
   }
 
   const history = await deps.messages.listByConversation(input.conversationId);
-  const recent = history
-    .filter((m) => (m.role === "user" || m.role === "assistant") && m.content !== null)
+  const replayable = history
+    .map(toReplayMessage)
+    .filter((m): m is ChatMessage => m !== null)
     .slice(-input.historyLimit);
-  for (const m of recent) {
-    messages.push({ role: m.role as "user" | "assistant", content: m.content });
+  for (const m of dropLeadingOrphanToolResults(replayable)) {
+    messages.push(m);
   }
 
   return messages;

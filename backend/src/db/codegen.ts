@@ -19,6 +19,8 @@ const OVERRIDES = {
   columns: {
     "conversations.channel": "Channel",
     "messages.role": "MessageRole",
+    "messages.tool_calls":
+      "ColumnType<StoredToolCall[] | null, string | null | undefined, string | null>",
     "model_pricing.capabilities": "ColumnType<ModelCapability[], string | undefined, string>",
     "model_tier_assignments.capability": "ModelCapability",
     "model_tier_assignments.tier_role": "ModelTierRole",
@@ -42,6 +44,7 @@ const OVERRIDES = {
 const CUSTOM_IMPORTS = {
   Channel: "./schema.enums.js",
   MessageRole: "./schema.enums.js",
+  StoredToolCall: "./schema.enums.js",
   ModelTierRole: "./schema.enums.js",
   ModelCapability: "./schema.enums.js",
   DegradationState: "./schema.enums.js",

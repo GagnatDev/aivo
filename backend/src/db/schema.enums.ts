@@ -11,6 +11,17 @@
 export type Channel = "chat" | "youtube" | "mail";
 /** Message author role. */
 export type MessageRole = "user" | "assistant" | "tool" | "system";
+/**
+ * A tool call recorded on an assistant message (`messages.tool_calls`), mirroring the
+ * provider-agnostic `ToolCall` in llm/provider.ts — mirrored rather than imported so
+ * `db/` stays at the edge of the layering (nothing in db/ reaches up into llm/).
+ */
+export interface StoredToolCall {
+  id: string;
+  name: string;
+  /** Raw JSON string, exactly as the model produced it. */
+  arguments: string;
+}
 /** Which tier a model fills, or null when it is configured but inactive. */
 export type ModelTierRole = "cheap" | "premium";
 /** What a model can do — the modality axis, orthogonal to the cheap/premium cost tier. */
