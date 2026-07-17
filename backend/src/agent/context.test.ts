@@ -292,7 +292,7 @@ describe("buildContext", () => {
     expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
   });
 
-  it("grounds the system prompt with the current local date/time", async () => {
+  it("grounds the prompt with the current local date/time", async () => {
     const deps = makeAgentDeps(
       makeFakeLlm([]),
       {},
@@ -301,7 +301,7 @@ describe("buildContext", () => {
     const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
     const settings = await deps.settings.getOrCreate(userId);
 
-    const [system] = await buildContext(deps, {
+    const messages = await buildContext(deps, {
       userId,
       conversationId,
       settings,
@@ -310,9 +310,48 @@ describe("buildContext", () => {
       memoryLimit: 20,
     });
     // 12:34Z = 14:34 in Europe/Oslo (default timezone) in July.
-    expect(system.content).toContain(
+    const timeLine = messages.find((m) => m.content?.startsWith("Current date/time:"));
+    expect(timeLine?.role).toBe("system");
+    expect(timeLine?.content).toBe(
       "Current date/time: Friday 2026-07-03 14:34 (Europe/Oslo, GMT+02:00)",
     );
+  });
+
+  it("orders the prompt most-stable-first so the static head stays prefix-cacheable", async () => {
+    const clock = new FakeClock(new Date("2026-07-03T12:34:00Z"));
+    const deps = makeAgentDeps(makeFakeLlm([]), {}, clock);
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+    await deps.memories.insert({ userId, content: "likes coffee", pinned: false });
+    await deps.messages.insert({
+      conversationId,
+      role: "user",
+      content: "hi",
+      discordMessageId: "m1",
+    });
+    const settings = await deps.settings.getOrCreate(userId);
+    const input = {
+      userId,
+      conversationId,
+      settings,
+      historyTokenBudget: 100000,
+      historyLimit: 15,
+      memoryLimit: 20,
+    };
+
+    const first = await buildContext(deps, input);
+    // Static persona first, then memories, then the volatile time line, then history —
+    // so the per-minute time churn invalidates as little of the cached prefix as possible.
+    expect(first.map((m) => m.role)).toEqual(["system", "system", "system", "user"]);
+    expect(first[0]?.content).not.toContain("Current date/time:");
+    expect(first[1]?.content).toContain("What you remember");
+    expect(first[2]?.content).toContain("Current date/time:");
+
+    // A minute passing and a new memory arriving must leave the static head untouched.
+    clock.advance(60_000);
+    await deps.memories.insert({ userId, content: "afraid of spiders", pinned: false });
+    const second = await buildContext(deps, input);
+    expect(second[0]).toEqual(first[0]);
+    expect(second[2]?.content).not.toEqual(first[2]?.content);
   });
 });
 

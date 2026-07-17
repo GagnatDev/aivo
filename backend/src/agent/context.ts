@@ -174,10 +174,16 @@ function dropLeadingOrphanToolResults(messages: ChatMessage[]): ChatMessage[] {
 }
 
 /**
- * Assemble the LLM message list: a system prompt (base persona + the user's
- * persona_prompt addendum), an optional block of known memories, then the recent
- * conversation transcript replayed with its tool structure intact (see
- * {@link toReplayMessage}).
+ * Assemble the LLM message list: a static system prompt (base persona + the user's
+ * persona_prompt addendum), an optional block of known memories, a small volatile
+ * system message with the current time, then the recent conversation transcript
+ * replayed with its tool structure intact (see {@link toReplayMessage}).
+ *
+ * The ordering is deliberate: prefix caching (vLLM-style automatic caching on
+ * Scaleway) is a strict token-prefix match, so the prompt is laid out
+ * most-stable-first — persona (changes only on config edits), then memories (mutate
+ * as facts are added), then the current time (changes every minute, so it would
+ * invalidate everything after it on every call if it sat any earlier).
  */
 export async function buildContext(
   deps: AgentDeps,
@@ -186,9 +192,6 @@ export async function buildContext(
   const messages: ChatMessage[] = [];
 
   let system = BASE_PERSONA;
-  // Ground relative time ("in 20 minutes", "tomorrow at 5") — without this line the
-  // model cannot produce the absolute due_at the reminder tool requires.
-  system += `\n\nCurrent date/time: ${currentTimeLine(deps.clock.now(), input.settings.timezone)}`;
   if (input.settings.persona_prompt) {
     system += `\n\nUser's style preference: ${input.settings.persona_prompt}`;
   }
@@ -208,6 +211,14 @@ export async function buildContext(
       content: `What you remember about this user:\n${lines.join("\n")}`,
     });
   }
+
+  // Ground relative time ("in 20 minutes", "tomorrow at 5") — without this line the
+  // model cannot produce the absolute due_at the reminder tool requires. Last of the
+  // system messages: it changes every minute, so everything before it stays cacheable.
+  messages.push({
+    role: "system",
+    content: `Current date/time: ${currentTimeLine(deps.clock.now(), input.settings.timezone)}`,
+  });
 
   const history = await deps.messages.listByConversation(input.conversationId);
   const replayable = history.map(toReplayMessage).filter((m): m is ChatMessage => m !== null);
