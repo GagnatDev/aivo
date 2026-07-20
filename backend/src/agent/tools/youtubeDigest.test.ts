@@ -88,6 +88,18 @@ describe("youtube_digest tool", () => {
     expect((await lane(ctx)).runRequestedAt?.toISOString()).toBe(NOW.toISOString());
   });
 
+  it("resync_subscriptions clears the sync watermarks and arms a run", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    await ctx.deps.youtubeAccount.markSubscriptionsSynced(new Date("2026-06-30T06:00:00Z"));
+    await ctx.deps.youtubeAccount.markVideosPolled(new Date("2026-06-30T07:00:00Z"));
+    const res = await tool().execute({ action: "resync_subscriptions" }, ctx);
+    expect(res).toMatch(/[Rr]e-sync/);
+    const account = await ctx.deps.youtubeAccount.find();
+    expect(account?.subscriptions_synced_at).toBeNull();
+    expect(account?.videos_polled_at).toBeNull();
+    expect((await lane(ctx)).runRequestedAt?.toISOString()).toBe(NOW.toISOString());
+  });
+
   it("set_interests writes a versioned profile", async () => {
     const ctx = await ctxFor(OWNER_ID);
     await tool().execute({ action: "set_interests", interests: "woodworking, no shorts" }, ctx);
@@ -119,7 +131,14 @@ describe("youtube_digest tool", () => {
 
   it("refuses mutating actions from a non-owner but allows status and feedback", async () => {
     const ctx = await ctxFor("member-1");
-    for (const action of ["configure", "pause", "resume", "run_now", "set_interests"]) {
+    for (const action of [
+      "configure",
+      "pause",
+      "resume",
+      "run_now",
+      "resync_subscriptions",
+      "set_interests",
+    ]) {
       expect(await tool().execute({ action, digest_hour: 9 }, ctx)).toMatch(/Refused/);
     }
     expect(await tool().execute({ action: "status" }, ctx)).toMatch(/enabled/);

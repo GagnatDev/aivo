@@ -31,4 +31,14 @@ describe("YoutubeAccountRepository", () => {
     expect(row.subscriptions_synced_at?.toISOString()).toBe(subsAt.toISOString());
     expect(row.videos_polled_at?.toISOString()).toBe(pollAt.toISOString());
   });
+
+  it("resetSyncWatermarks clears both watermarks so the next ingest re-syncs", async () => {
+    const repo = new YoutubeAccountRepository(testDb());
+    await repo.markSubscriptionsSynced(new Date("2026-07-01T06:00:00Z"));
+    await repo.markVideosPolled(new Date("2026-07-01T07:00:00Z"));
+    await repo.resetSyncWatermarks();
+    const row = await repo.getOrCreate();
+    expect(row.subscriptions_synced_at).toBeNull();
+    expect(row.videos_polled_at).toBeNull();
+  });
 });

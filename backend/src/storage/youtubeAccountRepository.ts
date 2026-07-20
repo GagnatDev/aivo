@@ -86,4 +86,20 @@ export class YoutubeAccountRepository {
       .where("id", "=", 1)
       .execute();
   }
+
+  /**
+   * Clear both sync watermarks so the next ingest re-syncs from scratch: nulling
+   * `subscriptions_synced_at` bypasses the 20h subscription-sync throttle, and nulling
+   * `videos_polled_at` makes the new-video poll fall back to the digest's `coversSince`
+   * look-back rather than "since the last poll". Recovery hook for when the connected
+   * account changed (e.g. the refresh token was swapped for a different channel).
+   */
+  async resetSyncWatermarks(): Promise<void> {
+    await this.getOrCreate();
+    await this.db
+      .updateTable("youtube_account")
+      .set({ subscriptions_synced_at: null, videos_polled_at: null, updated_at: sql`now()` })
+      .where("id", "=", 1)
+      .execute();
+  }
 }
