@@ -54,10 +54,27 @@ export function buildApp(options: AppOptions = {}): Express {
 
   if (options.webRoot) {
     const webRoot = path.resolve(options.webRoot);
-    app.use(express.static(webRoot));
+    app.use(
+      express.static(webRoot, {
+        setHeaders(res, filePath) {
+          // The PWA service worker must always be revalidated, or a client
+          // pins itself to a stale build: a cached sw.js means the browser
+          // never discovers a new worker (and its fresh precache manifest).
+          // Same for the SW registration shim. index.html is the SPA's version
+          // anchor — it references hashed assets, so it too must never be
+          // cached. Everything else (hashed JS/CSS, /static/ icons) keeps the
+          // default long-lived caching.
+          const base = path.basename(filePath);
+          if (base === "sw.js" || base === "registerSW.js" || base === "index.html") {
+            res.setHeader("Cache-Control", "no-cache");
+          }
+        },
+      }),
+    );
     app.use((req, res, next) => {
       if (req.method !== "GET") return next();
       if (NON_SPA_PREFIXES.some((p) => req.path.startsWith(p))) return next();
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(webRoot, "index.html"));
     });
   }
