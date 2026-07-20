@@ -29,14 +29,37 @@ const disableAuth = import.meta.env.VITE_DISABLE_AUTH === "true";
 /** Path the sidecar handles for logout (its LOGOUT_PATH default). */
 const LOGOUT_PATH = "/auth/logout";
 
+/**
+ * Full-page navigation to `to` that is guaranteed to reach the auth sidecar.
+ *
+ * The PWA service worker answers navigations from its precache
+ * (`navigateFallback: index.html`), so a plain `location.href = "/"` is served
+ * from cache and never produces a network request — the sidecar never gets the
+ * chance to 302 an expired session to central login, and an installed PWA would
+ * sit on the cached shell forever (unforked docs/auth-sidecar-migration.md).
+ * Unregistering the service worker(s) first makes the next top-level navigation
+ * hit the network; the worker re-registers (and re-precaches) after login.
+ */
+async function navigateThroughSidecar(to: string): Promise<void> {
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((r) => r.unregister()));
+    } catch {
+      // Best effort — navigate regardless.
+    }
+  }
+  window.location.href = to;
+}
+
 export const auth: AuthClient = {
   fetch: (input, init) => fetch(input, init),
   // A full page load at "/" lets the sidecar 302 an unauthenticated top-level
   // navigation to central login before the shell is served.
   login: () => {
-    window.location.href = "/";
+    void navigateThroughSidecar("/");
   },
   logout: () => {
-    window.location.href = disableAuth ? "/" : LOGOUT_PATH;
+    void navigateThroughSidecar(disableAuth ? "/" : LOGOUT_PATH);
   },
 };
