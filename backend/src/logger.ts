@@ -1,4 +1,5 @@
-import { pino } from "pino";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { pino, type Level } from "pino";
 import { pinoHttp } from "pino-http";
 
 // The logger is the one piece of infrastructure that exists beneath the DI graph — it
@@ -30,10 +31,26 @@ function resolveLevel(): string {
 // also keeps the tsup bundle self-contained.
 const usePretty = NODE_ENV === "development";
 
+function isHealthProbe(req: IncomingMessage): boolean {
+  const url = req.url ?? "";
+  return url === "/health" || url.startsWith("/health?");
+}
+
+function httpLogLevel(res: ServerResponse, err: Error | undefined, quiet = false): Level {
+  if (res.statusCode >= 500 || err) return "error";
+  if (res.statusCode >= 400) return "warn";
+  return quiet ? "debug" : "info";
+}
+
 export const logger = pino({
   level: resolveLevel(),
   redact,
   ...(usePretty ? { transport: { target: "pino-pretty", options: { colorize: true } } } : {}),
 });
 
-export const httpLogger = pinoHttp({ logger });
+export const httpLogger = pinoHttp({
+  logger,
+  customLogLevel(req, res, err) {
+    return httpLogLevel(res, err, isHealthProbe(req));
+  },
+});
