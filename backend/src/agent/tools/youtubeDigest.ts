@@ -19,6 +19,7 @@ const digestArgs = z.object({
     "pause",
     "resume",
     "run_now",
+    "resync_subscriptions",
     "set_interests",
     "show_more_picks",
     "record_feedback",
@@ -64,6 +65,9 @@ export const youtubeDigestTool: AgentTool = {
       "'configure' (digest_hour 0-23, digest_interval_days 1=daily/7=weekly, digest_cap picks " +
       "per digest); 'pause' (temporarily off — pause_days or pause_until date; neither = off " +
       "until resumed); 'resume' (turn back on); 'run_now' (deliver a digest within a minute); " +
+      "'resync_subscriptions' (force a full re-sync of the subscribed-channel list, then run " +
+      "now — use when the connected YouTube account changed, e.g. the refresh token was swapped, " +
+      "and the digest finds no channels); " +
       "'set_interests' (replace the interest profile with the interests text); " +
       "'show_more_picks' (lower-confidence picks from the latest digest); 'record_feedback' " +
       "(freeform digest feedback to fold into the profile); 'mute_channel'/'unmute_channel' " +
@@ -80,6 +84,7 @@ export const youtubeDigestTool: AgentTool = {
             "pause",
             "resume",
             "run_now",
+            "resync_subscriptions",
             "set_interests",
             "show_more_picks",
             "record_feedback",
@@ -132,6 +137,17 @@ export const youtubeDigestTool: AgentTool = {
           ctx,
           { runRequestedAt: ctx.deps.clock.now() },
           "Digest run requested — it will arrive within a minute.",
+        );
+      case "resync_subscriptions":
+        // Clear the sync watermarks so the next ingest refetches the full subscription
+        // list (bypassing the 20h throttle) and polls videos over the digest look-back,
+        // then arm a run to do it now.
+        await ctx.deps.youtubeAccount.resetSyncWatermarks();
+        return setLane(
+          ctx,
+          { runRequestedAt: ctx.deps.clock.now() },
+          "Re-syncing your YouTube subscriptions and running a digest now — it will arrive " +
+            "within a minute.",
         );
       case "set_interests": {
         if (!a.interests) return "Provide the interests text.";
