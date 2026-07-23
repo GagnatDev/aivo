@@ -1,5 +1,6 @@
 import type { AgentDeps } from "../agent/deps.js";
 import type { FeedbackSignal } from "../db/schema.enums.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { FEEDBACK_PREFIX } from "./digestDelivery.js";
 
 /**
@@ -12,12 +13,22 @@ import { FEEDBACK_PREFIX } from "./digestDelivery.js";
 
 const BUTTON_SIGNALS = new Set<FeedbackSignal>(["keep", "drop", "too_long", "wrong_topic"]);
 
-const ACKS: Record<string, string> = {
-  keep: "Noted — more like this.",
-  drop: "Noted — fewer like this.",
-  too_long: "Noted — I'll favour shorter ones.",
-  wrong_topic: "Noted — wrong topic, I'll recalibrate.",
-};
+/** The ack for a feedback signal, in the given language. */
+function ackFor(signal: FeedbackSignal, lang: Language): string {
+  const f = messages(lang).feedback;
+  switch (signal) {
+    case "keep":
+      return f.keep;
+    case "drop":
+      return f.drop;
+    case "too_long":
+      return f.tooLong;
+    case "wrong_topic":
+      return f.wrongTopic;
+    default:
+      return f.noted;
+  }
+}
 
 export interface FeedbackClick {
   customId: string;
@@ -34,18 +45,21 @@ export async function resolveFeedbackClick(
   if (prefix !== FEEDBACK_PREFIX || !itemId) return null;
   if (!BUTTON_SIGNALS.has(signal as FeedbackSignal)) return null;
 
-  const item = await deps.digestItems.findById(itemId);
-  if (!item) return { ack: "That digest entry is gone — feedback not recorded." };
-
   const user = await deps.users.upsertByDiscordId({
     discordUserId: click.clickerDiscordId,
     displayName: click.clickerDisplayName,
     isOwner: click.clickerDiscordId === deps.ownerDiscordUserId,
   });
+  const settings = await deps.settings.getOrCreate(user.id);
+  const lang = asLanguage(settings.language);
+
+  const item = await deps.digestItems.findById(itemId);
+  if (!item) return { ack: messages(lang).feedback.gone };
+
   await deps.feedback.insert({
     userId: user.id,
     digestItemId: itemId,
     signal: signal as FeedbackSignal,
   });
-  return { ack: ACKS[signal] ?? "Noted." };
+  return { ack: ackFor(signal as FeedbackSignal, lang) };
 }

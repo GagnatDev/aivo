@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type Client } from "discord.js";
 import type { AgentDeps } from "../agent/deps.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import type { ReminderRow } from "../storage/reminderRepository.js";
 import { logger } from "../logger.js";
 import type { ReminderDeliverer } from "../scheduler/tick.js";
@@ -19,24 +20,37 @@ export const REMINDER_PREFIX = "rem";
 
 export type SnoozeOption = "10m" | "1h" | "tomorrow";
 
-const BUTTONS: Array<{ option: SnoozeOption; label: string }> = [
-  { option: "10m", label: "😴 10 min" },
-  { option: "1h", label: "😴 1 hour" },
-  { option: "tomorrow", label: "😴 Tomorrow" },
-];
+const SNOOZE_OPTIONS: readonly SnoozeOption[] = ["10m", "1h", "tomorrow"];
 
-/** The delivery text. The mention is what makes a reminder a ping, not ambient noise. */
-export function reminderMessage(reminder: ReminderRow, discordUserId: string | null): string {
-  const mention = discordUserId ? `<@${discordUserId}> ` : "";
-  return `${mention}⏰ **Reminder:** ${reminder.text}`;
+/** The snooze-button label for an option, in the given language. */
+function snoozeLabel(option: SnoozeOption, lang: Language): string {
+  const r = messages(lang).reminder;
+  switch (option) {
+    case "10m":
+      return r.btn10m;
+    case "1h":
+      return r.btn1h;
+    case "tomorrow":
+      return r.btnTomorrow;
+  }
 }
 
-export function snoozeButtons(reminderId: string): ActionRowBuilder<ButtonBuilder> {
+/** The delivery text. The mention is what makes a reminder a ping, not ambient noise. */
+export function reminderMessage(
+  reminder: ReminderRow,
+  discordUserId: string | null,
+  lang: Language,
+): string {
+  const mention = discordUserId ? `<@${discordUserId}> ` : "";
+  return `${mention}${messages(lang).reminder.label} ${reminder.text}`;
+}
+
+export function snoozeButtons(reminderId: string, lang: Language): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    BUTTONS.map((b) =>
+    SNOOZE_OPTIONS.map((option) =>
       new ButtonBuilder()
-        .setCustomId(`${REMINDER_PREFIX}:${b.option}:${reminderId}`)
-        .setLabel(b.label)
+        .setCustomId(`${REMINDER_PREFIX}:${option}:${reminderId}`)
+        .setLabel(snoozeLabel(option, lang))
         .setStyle(ButtonStyle.Secondary),
     ),
   );
@@ -55,9 +69,11 @@ export function createReminderDeliverer(
         throw new Error(`reminder channel ${cfg.homeChannelId} is not sendable`);
       }
       const user = await deps.users.findById(reminder.user_id);
+      const settings = await deps.settings.getOrCreate(reminder.user_id);
+      const lang = asLanguage(settings.language);
       const sent = await channel.send({
-        content: reminderMessage(reminder, user?.discord_user_id ?? null),
-        components: [snoozeButtons(reminder.id)],
+        content: reminderMessage(reminder, user?.discord_user_id ?? null, lang),
+        components: [snoozeButtons(reminder.id, lang)],
       });
 
       const conversation = await deps.conversations.getOrCreate(

@@ -56,15 +56,15 @@ describe("runAgent", () => {
       conversationId,
       triggerMessageId: "m1",
     });
-    expect(result.reply).toMatch(/couldn't reach the language model/i);
+    expect(result.reply).toMatch(/kontakt med språkmodellen/i);
   });
 
   it("picks the reply from the LLM error taxonomy kind", async () => {
     const cases: Array<{ kind: "auth" | "rate_limit" | "server" | "network"; match: RegExp }> = [
-      { kind: "auth", match: /credentials problem/i },
-      { kind: "rate_limit", match: /busy right now/i },
-      { kind: "server", match: /couldn't reach the language model/i },
-      { kind: "network", match: /couldn't reach the language model/i },
+      { kind: "auth", match: /legitimasjonsproblem/i },
+      { kind: "rate_limit", match: /opptatt akkurat nå/i },
+      { kind: "server", match: /kontakt med språkmodellen/i },
+      { kind: "network", match: /kontakt med språkmodellen/i },
     ];
     for (const { kind, match } of cases) {
       const llm = makeFakeLlm([new LlmProviderError(kind, `simulated ${kind}`)]);
@@ -142,7 +142,7 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toContain("Here is the start of a very long ans");
-    expect(result.reply).toMatch(/cut off/i);
+    expect(result.reply).toMatch(/kuttet av/i);
   });
 
   it("does not execute a truncated tool call; feeds back why instead", async () => {
@@ -262,7 +262,7 @@ describe("runAgent", () => {
       triggerMessageId: "m1",
     });
 
-    expect(result.reply).toMatch(/over this month's budget/i);
+    expect(result.reply).toMatch(/over månedens budsjett/i);
     expect(llm.calls[0]?.model).toBe("llama-3.1-8b-instruct"); // cheap seed
     expect(llm.calls[0]?.maxTokens).toBeLessThanOrEqual(256);
   });
@@ -282,7 +282,7 @@ describe("runAgent", () => {
     });
 
     expect(result.pendingApprovalId).toBeTruthy();
-    expect(result.reply).toMatch(/approve/i);
+    expect(result.reply).toMatch(/[Gg]odkjenn/);
     expect(llm.calls).toHaveLength(0); // not run yet
     expect(await deps.llmUsage.monthToDateCents(userId)).toBe(0); // nothing metered
     const row = await deps.pendingApprovals.findById(result.pendingApprovalId!);
@@ -322,7 +322,7 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toContain("Here's what I have so far.");
-    expect(result.reply).toMatch(/getting expensive/i); // the early-stop note
+    expect(result.reply).toMatch(/ble dyr/i); // the early-stop note
     expect(llm.calls).toHaveLength(3); // 2 tool round-trips + 1 forced answer
     expect(llm.calls.at(-1)?.tools).toBeUndefined(); // forced call has tools disabled
   });

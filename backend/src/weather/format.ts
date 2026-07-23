@@ -1,4 +1,5 @@
 import { localDate } from "../digest/due.js";
+import { type Language, localeFor, messages } from "../i18n/index.js";
 import type { Forecast, ForecastInstant } from "./client.js";
 
 /**
@@ -18,48 +19,23 @@ export interface ForecastDay {
   symbolCode: string | null;
 }
 
-// Base MET symbol tokens (after stripping _day/_night/_polartwilight and any _and_thunder
-// suffix) → human labels. Anything not listed is prettified from the token itself, so a
-// new/rare code still renders readably instead of blank.
-const SYMBOL_LABELS: Record<string, string> = {
-  clearsky: "Clear sky",
-  fair: "Fair",
-  partlycloudy: "Partly cloudy",
-  cloudy: "Cloudy",
-  fog: "Fog",
-  lightrainshowers: "Light rain showers",
-  rainshowers: "Rain showers",
-  heavyrainshowers: "Heavy rain showers",
-  lightrain: "Light rain",
-  rain: "Rain",
-  heavyrain: "Heavy rain",
-  lightsleetshowers: "Light sleet showers",
-  sleetshowers: "Sleet showers",
-  heavysleetshowers: "Heavy sleet showers",
-  lightsleet: "Light sleet",
-  sleet: "Sleet",
-  heavysleet: "Heavy sleet",
-  lightsnowshowers: "Light snow showers",
-  snowshowers: "Snow showers",
-  heavysnowshowers: "Heavy snow showers",
-  lightsnow: "Light snow",
-  snow: "Snow",
-  heavysnow: "Heavy snow",
-};
-
 /** Strip the day/night variant and the (glued) "andthunder" suffix, returning the base
  * token — MET codes read like "rainshowersandthunder_day", not "..._and_thunder". */
 function baseSymbol(code: string): string {
   return code.replace(/_(day|night|polartwilight)$/, "").replace(/andthunder$/, "");
 }
 
-/** Friendly label for a MET symbol code (e.g. "partlycloudy_day" → "Partly cloudy"). */
-export function symbolLabel(code: string | null): string {
+/**
+ * Friendly label for a MET symbol code (e.g. "partlycloudy_day" → "Partly cloudy"),
+ * localized. Base tokens map through the i18n weather.symbols catalog; anything not
+ * listed is prettified from the token itself, so a new/rare code still renders readably.
+ */
+export function symbolLabel(code: string | null, lang: Language): string {
   if (!code) return "—";
   const base = baseSymbol(code);
-  const label =
-    SYMBOL_LABELS[base] ?? base.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-  return code.includes("thunder") ? `${label} with thunder` : label;
+  const w = messages(lang).weather;
+  const label = w.symbols[base] ?? base.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  return code.includes("thunder") ? w.withThunder(label) : label;
 }
 
 /** A weather emoji for a MET symbol code; day/night aware for clear/fair conditions. */
@@ -102,8 +78,9 @@ export function localTime(iso: string, timeZone: string): string {
   }
 }
 
-/** "Thursday 24 Jul" for a local YYYY-MM-DD (used in the report header/day lines). */
-export function labelDay(localYmd: string, timeZone: string): string {
+/** "Thursday 24 Jul" for a local YYYY-MM-DD (used in the report header/day lines),
+ * with weekday/month names in the given language's locale. */
+export function labelDay(localYmd: string, timeZone: string, lang: Language): string {
   const opts: Intl.DateTimeFormatOptions = {
     weekday: "long",
     day: "numeric",
@@ -113,7 +90,7 @@ export function labelDay(localYmd: string, timeZone: string): string {
   // Anchor at local noon so the weekday can't slip across a DST/offset boundary.
   const at = new Date(`${localYmd}T12:00:00Z`);
   try {
-    return new Intl.DateTimeFormat("en-GB", opts).format(at);
+    return new Intl.DateTimeFormat(localeFor(lang), opts).format(at);
   } catch {
     return localYmd;
   }
@@ -179,23 +156,23 @@ function hourOf(iso: string, timeZone: string): number {
 }
 
 /** One "now" / current-conditions line from the first forecast step. */
-function currentLine(cur: ForecastInstant): string {
+function currentLine(cur: ForecastInstant, lang: Language): string {
   const wind =
     cur.windSpeedMps === null
       ? ""
-      : `, wind ${Math.round(cur.windSpeedMps)} m/s ${compass(cur.windFromDirectionDeg)}`.trimEnd();
+      : `, ${messages(lang).weather.wind} ${Math.round(cur.windSpeedMps)} m/s ${compass(cur.windFromDirectionDeg)}`.trimEnd();
   const rain =
     cur.precipitationMm && cur.precipitationMm > 0 ? `, ${cur.precipitationMm} mm/h` : "";
-  return `${temp(cur.temperatureC)} ${symbolEmoji(cur.symbolCode)} ${symbolLabel(cur.symbolCode)}${wind}${rain}`.trim();
+  return `${temp(cur.temperatureC)} ${symbolEmoji(cur.symbolCode)} ${symbolLabel(cur.symbolCode, lang)}${wind}${rain}`.trim();
 }
 
-function dayLine(day: ForecastDay, timeZone: string): string {
+function dayLine(day: ForecastDay, timeZone: string, lang: Language): string {
   const range =
     day.minTempC === null
       ? "—"
       : `${Math.round(day.minTempC)}–${Math.round(day.maxTempC ?? day.minTempC)}°`;
   const rain = day.precipitationMm > 0 ? `, ${day.precipitationMm} mm` : "";
-  return `${labelDay(day.date, timeZone)}: ${range} ${symbolEmoji(day.symbolCode)} ${symbolLabel(day.symbolCode)}${rain}`.trim();
+  return `${labelDay(day.date, timeZone, lang)}: ${range} ${symbolEmoji(day.symbolCode)} ${symbolLabel(day.symbolCode, lang)}${rain}`.trim();
 }
 
 export interface SummaryOptions {
@@ -214,28 +191,30 @@ export function summarizeForecast(
   locationName: string,
   forecast: Forecast,
   timeZone: string,
+  lang: Language,
   opts: SummaryOptions = {},
 ): string {
+  const w = messages(lang).weather;
   const cur = forecast.series[0];
-  if (!cur) return `No forecast data available for ${locationName}.`;
-  const lines = [`Forecast for ${locationName} (updated ${forecast.updatedAt ?? "?"}):`];
-  lines.push(`Now: ${currentLine(cur)}`);
+  if (!cur) return w.summaryNoData(locationName);
+  const lines = [w.summaryHeader(locationName, forecast.updatedAt ?? "?")];
+  lines.push(`${w.now}: ${currentLine(cur, lang)}`);
 
   const upcoming = forecast.series.slice(1, 1 + (opts.hours ?? 5));
   if (upcoming.length) {
-    lines.push("Next hours:");
+    lines.push(w.summaryNextHours);
     for (const s of upcoming) {
       const rain = s.precipitationMm && s.precipitationMm > 0 ? ` ${s.precipitationMm} mm` : "";
       lines.push(
-        `  ${localTime(s.time, timeZone)} · ${temp(s.temperatureC)} ${symbolEmoji(s.symbolCode)} ${symbolLabel(s.symbolCode)}${rain}`,
+        `  ${localTime(s.time, timeZone)} · ${temp(s.temperatureC)} ${symbolEmoji(s.symbolCode)} ${symbolLabel(s.symbolCode, lang)}${rain}`,
       );
     }
   }
 
   const days = dailyBuckets(forecast, timeZone).slice(0, opts.days ?? 3);
   if (days.length) {
-    lines.push("Days:");
-    for (const d of days) lines.push(`  ${dayLine(d, timeZone)}`);
+    lines.push(w.summaryDays);
+    for (const d of days) lines.push(`  ${dayLine(d, timeZone, lang)}`);
   }
   return lines.join("\n");
 }
@@ -250,19 +229,21 @@ export function morningReportText(
   forecast: Forecast,
   timeZone: string,
   now: Date,
+  lang: Language,
 ): string {
+  const w = messages(lang).weather;
   const days = dailyBuckets(forecast, timeZone);
   const cur = forecast.series[0];
-  const header = `🌅 **Good morning! Weather for ${locationName} — ${labelDay(localDate(now, timeZone), timeZone)}**`;
+  const header = w.morningHeader(locationName, labelDay(localDate(now, timeZone), timeZone, lang));
   if (!cur || days.length === 0) {
-    return `${header}\nI couldn't read a forecast for ${locationName} right now.`;
+    return `${header}\n${w.morningNoForecast(locationName)}`;
   }
 
-  const lines = [header, `**Now:** ${currentLine(cur)}`];
+  const lines = [header, `**${w.now}:** ${currentLine(cur, lang)}`];
   const today = localDate(now, timeZone);
   const todayBucket = days.find((d) => d.date === today) ?? days[0];
   if (todayBucket) {
-    lines.push(`**Today:** ${dayLine(todayBucket, timeZone).replace(/^[^:]+: /, "")}`);
+    lines.push(`**${w.today}:** ${dayLine(todayBucket, timeZone, lang).replace(/^[^:]+: /, "")}`);
   }
 
   // Key daytime hours (≈09/12/15/18 local) — pick today's step nearest each target so
@@ -270,11 +251,12 @@ export function morningReportText(
   for (const s of daytimeSteps(forecast, timeZone, today)) {
     const rain = s.precipitationMm && s.precipitationMm > 0 ? ` · ${s.precipitationMm} mm` : "";
     lines.push(
-      `  ${localTime(s.time, timeZone)} · ${temp(s.temperatureC)} ${symbolEmoji(s.symbolCode)} ${symbolLabel(s.symbolCode)}${rain}`,
+      `  ${localTime(s.time, timeZone)} · ${temp(s.temperatureC)} ${symbolEmoji(s.symbolCode)} ${symbolLabel(s.symbolCode, lang)}${rain}`,
     );
   }
 
   const tomorrow = days.find((d) => d.date > today);
-  if (tomorrow) lines.push(`**Tomorrow:** ${dayLine(tomorrow, timeZone).replace(/^[^:]+: /, "")}`);
+  if (tomorrow)
+    lines.push(`**${w.tomorrow}:** ${dayLine(tomorrow, timeZone, lang).replace(/^[^:]+: /, "")}`);
   return lines.join("\n");
 }

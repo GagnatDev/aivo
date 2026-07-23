@@ -1,5 +1,6 @@
 import type { Client } from "discord.js";
 import type { AgentDeps } from "../agent/deps.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import type { WeatherReportDeliverer } from "../scheduler/tick.js";
 import type { WeatherReportOutcome } from "../weather/report.js";
@@ -13,20 +14,17 @@ import type { DiscordConfig } from "./config.js";
  * conversation so the agent has context if the owner replies about the weather.
  */
 
-export const NO_HOME_NUDGE =
-  "I'd send your morning weather report, but no home location is set. " +
-  'Tell me where you live (e.g. "add my home: Trondheim" then "set Trondheim as home").';
-
 /** The message for a report outcome. `no_home` is normally filtered out upstream, but
- * handled here so the mapping is total and unit-testable. */
-export function weatherReportMessage(outcome: WeatherReportOutcome): string {
+ * handled here so the mapping is total and unit-testable. The `report` text is already
+ * localized upstream (weather/report.ts builds it in the user's language). */
+export function weatherReportMessage(outcome: WeatherReportOutcome, lang: Language): string {
   switch (outcome.kind) {
     case "report":
       return outcome.text;
     case "no_home":
-      return NO_HOME_NUDGE;
+      return messages(lang).weather.noHomeNudge;
     case "error":
-      return `I couldn't put together this morning's weather report — the forecast service was unreachable (${outcome.message}). I'll try again tomorrow.`;
+      return messages(lang).weather.reportError(outcome.message);
   }
 }
 
@@ -54,7 +52,8 @@ export function createWeatherReportDeliverer(
       if (!channel?.isSendable()) {
         throw new Error(`weather channel ${cfg.homeChannelId} is not sendable`);
       }
-      const sent = await channel.send(weatherReportMessage(outcome));
+      const settings = await deps.settings.getOrCreate(userId);
+      const sent = await channel.send(weatherReportMessage(outcome, asLanguage(settings.language)));
 
       const conversation = await deps.conversations.getOrCreate(userId, "chat", cfg.homeChannelId);
       await deps.messages.insert({

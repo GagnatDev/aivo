@@ -14,12 +14,17 @@ const candidates = [
 
 describe("buildStage1Messages", () => {
   it("includes the profile and truncated candidate metadata", () => {
-    const [system, user] = buildStage1Messages("likes woodworking", candidates);
+    const [system, user] = buildStage1Messages("likes woodworking", candidates, "en");
     expect(system.content).toMatch(/JSON array/);
     expect(user.content).toMatch(/likes woodworking/);
     expect(user.content).toMatch(/Dovetails/);
     // Descriptions are capped so the cheap-stage prompt stays bounded.
     expect(user.content?.includes("x".repeat(301))).toBe(false);
+  });
+
+  it("carries the language directive into the system prompt", () => {
+    const [system] = buildStage1Messages("likes woodworking", candidates, "nb");
+    expect(system.content).toMatch(/Norwegian \(Bokmål\)/);
   });
 });
 

@@ -8,6 +8,7 @@ import {
 import type { AgentDeps } from "../agent/deps.js";
 import type { DeliverablePick, DeliverableReject, DigestOutcome } from "../digest/pipeline.js";
 import type { FeedbackSignal } from "../db/schema.enums.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import type { DigestDeliverer } from "../scheduler/tick.js";
 import type { DiscordConfig } from "./config.js";
@@ -22,73 +23,78 @@ import type { DiscordConfig } from "./config.js";
 
 // customId prefix for digest feedback buttons: `fb:<signal>:<digest_item_id>`.
 export const FEEDBACK_PREFIX = "fb";
-const BUTTONS: Array<{ signal: FeedbackSignal; label: string }> = [
-  { signal: "keep", label: "👍 Keep" },
-  { signal: "drop", label: "👎 Drop" },
-  { signal: "too_long", label: "⏱ Too long" },
-  { signal: "wrong_topic", label: "🚫 Wrong topic" },
-];
+const BUTTON_SIGNALS: readonly FeedbackSignal[] = ["keep", "drop", "too_long", "wrong_topic"];
 
-export function digestHeader(outcome: Extract<DigestOutcome, { kind: "digest" }>): string {
+/** The feedback-button label for a signal, in the given language. */
+function buttonLabel(signal: FeedbackSignal, lang: Language): string {
+  const d = messages(lang).digest;
+  switch (signal) {
+    case "keep":
+      return d.btnKeep;
+    case "drop":
+      return d.btnDrop;
+    case "too_long":
+      return d.btnTooLong;
+    case "wrong_topic":
+      return d.btnWrongTopic;
+    default:
+      return signal;
+  }
+}
+
+export function digestHeader(
+  outcome: Extract<DigestOutcome, { kind: "digest" }>,
+  lang: Language,
+): string {
+  const d = messages(lang).digest;
   const lines: string[] = [];
   if (outcome.picks.length === 0) {
-    lines.push(`**YouTube digest — ${outcome.runDate}**: nothing new worth your time. 🎉`);
+    lines.push(d.headerEmpty(outcome.runDate));
   } else {
-    lines.push(
-      `**YouTube digest — ${outcome.runDate}** · ${outcome.picks.length} pick${outcome.picks.length === 1 ? "" : "s"}`,
-    );
+    lines.push(d.header(outcome.runDate, outcome.picks.length));
   }
   if (outcome.morePicksCount > 0) {
-    lines.push(
-      `*(${outcome.morePicksCount} more matched with lower confidence — ask me to "show more picks".)*`,
-    );
+    lines.push(d.morePicks(outcome.morePicksCount));
   }
   if (outcome.alertPct) {
-    lines.push(`*(Budget: you've used about ${outcome.alertPct}% of this month's ceiling.)*`);
+    lines.push(d.budgetNote(outcome.alertPct));
   }
   return lines.join("\n");
 }
 
-export function pickEmbed(pick: DeliverablePick): EmbedBuilder {
-  const duration = pick.durationSeconds ? `${Math.round(pick.durationSeconds / 60)} min · ` : "";
+export function pickEmbed(pick: DeliverablePick, lang: Language): EmbedBuilder {
+  const d = messages(lang).digest;
+  const duration = pick.durationSeconds
+    ? d.durationPrefix(Math.round(pick.durationSeconds / 60))
+    : "";
   const embed = new EmbedBuilder()
     .setTitle(`${pick.rank}. ${pick.title}`)
     .setURL(pick.url)
     .setAuthor({ name: pick.channelTitle })
     .setFooter({ text: `${duration}${pick.channelTitle}` });
   const bullets = pick.summaryBullets.map((b) => `• ${b}`).join("\n");
-  const why = pick.why ? `\n*Why: ${pick.why}*` : "";
+  const why = pick.why ? `\n${d.why(pick.why)}` : "";
   if (bullets || why) embed.setDescription(`${bullets}${why}`.trim());
   if (pick.thumbnailUrl) embed.setThumbnail(pick.thumbnailUrl);
   return embed;
 }
 
-export function feedbackButtons(itemId: string): ActionRowBuilder<ButtonBuilder> {
+export function feedbackButtons(itemId: string, lang: Language): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    BUTTONS.map((b) =>
+    BUTTON_SIGNALS.map((signal) =>
       new ButtonBuilder()
-        .setCustomId(`${FEEDBACK_PREFIX}:${b.signal}:${itemId}`)
-        .setLabel(b.label)
+        .setCustomId(`${FEEDBACK_PREFIX}:${signal}:${itemId}`)
+        .setLabel(buttonLabel(signal, lang))
         .setStyle(ButtonStyle.Secondary),
     ),
   );
 }
 
-export function rejectedListNote(rejects: DeliverableReject[]): string {
-  const lines = rejects.map(
-    (r) => `• ${r.title}${r.channelTitle ? ` (${r.channelTitle})` : ""} — skipped: ${r.reason}`,
-  );
-  return `**Also new, but skipped** *(correct me if I got one wrong)*:\n${lines.join("\n")}`;
+export function rejectedListNote(rejects: DeliverableReject[], lang: Language): string {
+  const d = messages(lang).digest;
+  const lines = rejects.map((r) => d.rejectedLine(r.title, r.channelTitle || null, r.reason));
+  return `${d.rejectedHeader}\n${lines.join("\n")}`;
 }
-
-export const NO_PROFILE_NUDGE =
-  "I couldn't build your YouTube digest yet — I don't know your interests. " +
-  'Tell me what you like watching (e.g. "set up my YouTube interests: hand-tool ' +
-  'woodworking, no shorts") and I\'ll start tomorrow morning — or say "run the digest now".';
-
-export const SKIPPED_BUDGET_NOTE =
-  "I skipped today's YouTube digest to stay inside your budget — direct chat still works. " +
-  'Raise the budget or say "run the digest now" to override.';
 
 /** One-line audit row persisted to the youtube conversation for agent context. */
 export function conversationSummary(outcome: DigestOutcome): string {
@@ -120,21 +126,25 @@ export function createDigestDeliverer(
         throw new Error(`digest channel ${channelId} is not sendable`);
       }
 
+      const settings = await deps.settings.getOrCreate(userId);
+      const lang = asLanguage(settings.language);
+      const d = messages(lang).digest;
+
       let firstMessageId: string | null = null;
       if (outcome.kind === "skipped_budget") {
-        firstMessageId = (await channel.send(SKIPPED_BUDGET_NOTE)).id;
+        firstMessageId = (await channel.send(d.skippedBudgetNote)).id;
       } else if (outcome.kind === "no_profile") {
-        firstMessageId = (await channel.send(NO_PROFILE_NUDGE)).id;
+        firstMessageId = (await channel.send(d.noProfileNudge)).id;
       } else {
-        firstMessageId = (await channel.send(digestHeader(outcome))).id;
+        firstMessageId = (await channel.send(digestHeader(outcome, lang))).id;
         for (const pick of outcome.picks) {
           await channel.send({
-            embeds: [pickEmbed(pick)],
-            components: [feedbackButtons(pick.itemId)],
+            embeds: [pickEmbed(pick, lang)],
+            components: [feedbackButtons(pick.itemId, lang)],
           });
         }
         if (outcome.rejects.length > 0) {
-          await channel.send(rejectedListNote(outcome.rejects));
+          await channel.send(rejectedListNote(outcome.rejects, lang));
         }
       }
 

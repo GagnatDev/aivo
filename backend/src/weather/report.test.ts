@@ -30,7 +30,7 @@ describe("runWeatherReport", () => {
     expect(outcome.kind).toBe("report");
     if (outcome.kind === "report") {
       expect(outcome.locationName).toBe("Oslo");
-      expect(outcome.text).toContain("Good morning! Weather for Oslo");
+      expect(outcome.text).toContain("God morgen! Vær for Oslo");
     }
     expect(weather.lastCall).toEqual({ latitude: 59.9, longitude: 10.7 });
   });

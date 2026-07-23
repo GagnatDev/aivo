@@ -27,14 +27,14 @@ async function ctxFor(
 ): Promise<ToolContext> {
   const deps = makeAgentDeps(makeFakeLlm([]), {}, systemClock, null, weather, geocoder);
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 describe("weather tool — forecasts", () => {
   it("forecasts a free-form place by geocoding it", async () => {
     const ctx = await ctxFor(OWNER_ID);
     const out = await tool().execute({ action: "forecast", location: "Trondheim" }, ctx);
-    expect(out).toContain("Forecast for Trondheim, Norway");
+    expect(out).toContain("Værmelding for Trondheim, Norway");
     expect((ctx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
       latitude: 63.4305,
       longitude: 10.3951,
@@ -49,7 +49,7 @@ describe("weather tool — forecasts", () => {
       longitude: 9.5,
     });
     const out = await tool().execute({ action: "forecast", location: "cabin" }, ctx);
-    expect(out).toContain("Forecast for Cabin");
+    expect(out).toContain("Værmelding for Cabin");
     expect((ctx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
       latitude: 61.1,
       longitude: 9.5,
@@ -62,7 +62,7 @@ describe("weather tool — forecasts", () => {
       { action: "forecast", latitude: 60, longitude: 5, location: "Bergen-ish" },
       ctx,
     );
-    expect(out).toContain("Forecast for Bergen-ish");
+    expect(out).toContain("Værmelding for Bergen-ish");
   });
 
   it("coerces stringified coordinates to numbers", async () => {
@@ -71,7 +71,7 @@ describe("weather tool — forecasts", () => {
       { action: "forecast", latitude: "60", longitude: "5", location: "Bergen-ish" },
       ctx,
     );
-    expect(out).toContain("Forecast for Bergen-ish");
+    expect(out).toContain("Værmelding for Bergen-ish");
     expect((ctx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
       latitude: 60,
       longitude: 5,
@@ -171,7 +171,7 @@ describe("weather tool — locations", () => {
     expect(listed).toContain('"shared":true');
 
     const out = await tool().execute({ action: "forecast", location: "cabin" }, memberCtx);
-    expect(out).toContain("Forecast for Cabin");
+    expect(out).toContain("Værmelding for Cabin");
     expect((memberCtx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
       latitude: 63.4305,
       longitude: 10.3951,

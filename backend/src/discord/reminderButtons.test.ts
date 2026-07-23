@@ -44,7 +44,7 @@ describe("resolveReminderClick", () => {
   it("re-arms the reminder for the snoozed interval", async () => {
     const { deps, reminder } = await setup();
     const res = await resolveReminderClick(deps, click(`rem:1h:${reminder.id}`));
-    expect(res?.ack).toMatch(/in 1 hour/);
+    expect(res?.ack).toMatch(/om 1 time/);
     const row = await deps.reminders.findById(reminder.id);
     expect(row?.status).toBe("pending");
     expect(row?.due_at).toEqual(new Date("2026-07-03T13:00:00Z"));
@@ -53,7 +53,7 @@ describe("resolveReminderClick", () => {
   it("only the reminder's own user can snooze it", async () => {
     const { deps, reminder } = await setup();
     const res = await resolveReminderClick(deps, click(`rem:10m:${reminder.id}`, "member-1"));
-    expect(res?.ack).toMatch(/someone else's reminder/);
+    expect(res?.ack).toMatch(/noen andres påminnelse/);
     expect((await deps.reminders.findById(reminder.id))?.status).toBe("delivered");
   });
 
@@ -63,11 +63,11 @@ describe("resolveReminderClick", () => {
       deps,
       click("rem:10m:00000000-0000-0000-0000-000000000000"),
     );
-    expect(gone?.ack).toMatch(/gone/);
+    expect(gone?.ack).toMatch(/borte/);
 
     await deps.reminders.reschedule(reminder.id, userId, new Date("2026-08-01T00:00:00Z"));
     await deps.reminders.cancel(reminder.id, userId);
     const cancelled = await resolveReminderClick(deps, click(`rem:10m:${reminder.id}`));
-    expect(cancelled?.ack).toMatch(/cancelled/);
+    expect(cancelled?.ack).toMatch(/avlyst/);
   });
 });

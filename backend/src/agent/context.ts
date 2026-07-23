@@ -1,3 +1,4 @@
+import { languageDirective } from "../i18n/index.js";
 import type { ChatMessage } from "../llm/provider.js";
 import { estimateTokens } from "../llm/tokens.js";
 import type { MessageRow } from "../storage/messageRepository.js";
@@ -192,7 +193,11 @@ export async function buildContext(
 ): Promise<ChatMessage[]> {
   const messages: ChatMessage[] = [];
 
-  let system = BASE_PERSONA;
+  // The language directive sits right after the persona: stable per user (changes only
+  // when they switch language, like persona_prompt), so it stays inside the cacheable
+  // prefix. It steers the model's reply language — the first-class replacement for
+  // stuffing "write in Norwegian" into persona_prompt.
+  let system = `${BASE_PERSONA}\n\n${languageDirective(input.settings.language)}`;
   if (input.settings.persona_prompt) {
     system += `\n\nUser's style preference: ${input.settings.persona_prompt}`;
   }

@@ -16,7 +16,7 @@ const tool = (name: string): AgentTool => {
 async function ctxFor(discordId: string): Promise<ToolContext> {
   const deps = makeAgentDeps();
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 // model_pricing is not user-scoped; restore the seed after tests that mutate it.
