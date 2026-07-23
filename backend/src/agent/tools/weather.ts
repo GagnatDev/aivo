@@ -48,6 +48,49 @@ const weatherArgs = z.object({
 
 type WeatherArgs = z.infer<typeof weatherArgs>;
 
+/**
+ * Normalize raw args before validation. Open-weight models (aivo runs on Scaleway's
+ * Llama/Gemma) routinely stringify scalars — `shared: "true"` instead of `shared: true`,
+ * `report_hour: "6"` instead of `6` — which used to bounce off an "Expected boolean/number,
+ * received string" error. For add_location that was especially costly: the retry often
+ * slipped the same way, so saving a shared location failed outright (see the activity log
+ * for «hjem» and «Spania»). This lifts stringified booleans and numbers to their real types
+ * before Zod runs; genuinely malformed input (e.g. shared="maybe") still falls through to
+ * the normal validator error the model can recover from.
+ *
+ * Note we cannot use z.coerce.boolean(): it delegates to JS Boolean(), which turns the
+ * string "false" into `true`. Only an explicit true/false mapping is safe here.
+ */
+function coerceArgs(args: unknown): unknown {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
+  const out: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+  for (const key of ["shared", "enabled"] as const) {
+    if (key in out) out[key] = coerceBoolean(out[key]);
+  }
+  for (const key of ["latitude", "longitude", "report_hour"] as const) {
+    if (key in out) out[key] = coerceNumber(out[key]);
+  }
+  return out;
+}
+
+/** Lift a stringified boolean ("true"/"false"/"yes"/"no"/"1"/"0") to a real one; pass anything else through. */
+function coerceBoolean(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const s = v.trim().toLowerCase();
+  if (s === "true" || s === "yes" || s === "1") return true;
+  if (s === "false" || s === "no" || s === "0") return false;
+  return v; // not a recognizable boolean — let the boolean validator report the real problem
+}
+
+/** Lift a stringified finite number to a real one; pass anything else through. */
+function coerceNumber(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const t = v.trim();
+  if (t === "") return v;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : v; // non-numeric — let the number validator report it
+}
+
 export const weatherTool: AgentTool = {
   // Bilingual keyword gate (English + Norwegian, the owner's usual language) — see
   // reminders.ts and gate.ts.
@@ -120,7 +163,7 @@ export const weatherTool: AgentTool = {
     },
   },
   async execute(args, ctx) {
-    const p = parse(weatherArgs, args);
+    const p = parse(weatherArgs, coerceArgs(args));
     if (!p.ok) return p.error;
     const a = p.value;
 

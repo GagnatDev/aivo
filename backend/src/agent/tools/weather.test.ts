@@ -65,6 +65,19 @@ describe("weather tool — forecasts", () => {
     expect(out).toContain("Forecast for Bergen-ish");
   });
 
+  it("coerces stringified coordinates to numbers", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const out = await tool().execute(
+      { action: "forecast", latitude: "60", longitude: "5", location: "Bergen-ish" },
+      ctx,
+    );
+    expect(out).toContain("Forecast for Bergen-ish");
+    expect((ctx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
+      latitude: 60,
+      longitude: 5,
+    });
+  });
+
   it("reports when a place can't be found", async () => {
     const ctx = await ctxFor(OWNER_ID);
     const out = await tool().execute({ action: "forecast", location: "Atlantis" }, ctx);
@@ -104,6 +117,42 @@ describe("weather tool — locations", () => {
       "Removed",
     );
     expect(await tool().execute({ action: "list_locations" }, ctx)).toContain("no saved");
+  });
+
+  it('coerces shared sent as the string "true" (a common open-model slip)', async () => {
+    // Aivo runs on open-weight models that routinely stringify booleans; add_location
+    // used to fail outright when the retry slipped the same way (activity log «hjem»/«Spania»).
+    const ctx = await ctxFor(OWNER_ID);
+    const added = await tool().execute(
+      { action: "add_location", name: "Home", query: "Trondheim", shared: "true" },
+      ctx,
+    );
+    expect(added).toContain("whole family");
+
+    const listed = await tool().execute({ action: "list_locations" }, ctx);
+    expect(listed).toContain('"shared":true');
+  });
+
+  it('coerces shared sent as the string "false" to a private location', async () => {
+    // z.coerce.boolean() would wrongly turn "false" into true — the explicit mapping must not.
+    const ctx = await ctxFor(OWNER_ID);
+    const added = await tool().execute(
+      { action: "add_location", name: "Work", query: "Trondheim", shared: "false" },
+      ctx,
+    );
+    expect(added).toContain("for you");
+
+    const listed = await tool().execute({ action: "list_locations" }, ctx);
+    expect(listed).toContain('"shared":false');
+  });
+
+  it("still rejects an unrecognizable shared value with the normal error", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const out = await tool().execute(
+      { action: "add_location", name: "Home", query: "Trondheim", shared: "maybe" },
+      ctx,
+    );
+    expect(out).toContain("Invalid arguments");
   });
 
   it("a shared location saved by one user is forecastable by another", async () => {
@@ -149,6 +198,21 @@ describe("weather tool — morning report (owner-only)", () => {
     expect(run).toContain("requested");
     const after = await ctx.deps.settings.getOrCreate(ctx.userId);
     expect(parseWeatherLane(after.proactivity).runRequestedAt).not.toBeNull();
+  });
+
+  it("coerces stringified enabled/report_hour from an open-model call", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    await tool().execute({ action: "add_location", name: "Home", query: "Trondheim" }, ctx);
+    await tool().execute({ action: "set_home", name: "Home" }, ctx);
+
+    const cfg = await tool().execute(
+      { action: "configure_report", enabled: "true", report_hour: "6" },
+      ctx,
+    );
+    expect(cfg).toContain("on at 6:00");
+
+    const settings = await ctx.deps.settings.getOrCreate(ctx.userId);
+    expect(parseWeatherLane(settings.proactivity)).toMatchObject({ enabled: true, reportHour: 6 });
   });
 
   it("nudges to set a home when enabling with none", async () => {
