@@ -212,6 +212,19 @@ export interface Videos {
   why: string | null;
 }
 
+export interface WeatherLocations {
+  created_at: Generated<Timestamp>;
+  display_name: string | null;
+  id: Generated<string>;
+  is_home: Generated<boolean>;
+  is_shared: Generated<boolean>;
+  latitude: number;
+  longitude: number;
+  name: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
 export interface YoutubeAccount {
   connected_by_user_id: string | null;
   created_at: Generated<Timestamp>;
@@ -253,6 +266,7 @@ export interface DB {
   unforked_connection: UnforkedConnection;
   users: Users;
   videos: Videos;
+  weather_locations: WeatherLocations;
   youtube_account: YoutubeAccount;
   youtube_channels: YoutubeChannels;
 }

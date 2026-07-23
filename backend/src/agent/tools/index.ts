@@ -9,6 +9,7 @@ import { modelsTool } from "./models.js";
 import { remindersTool } from "./reminders.js";
 import { settingsTool } from "./settings.js";
 import { unforkedTool } from "./unforked.js";
+import { weatherTool } from "./weather.js";
 import { youtubeDigestTool } from "./youtubeDigest.js";
 
 /** The execution context handed to every tool. `isOwner` is the security boundary. */
@@ -52,7 +53,7 @@ export function parse<T>(
   };
 }
 
-/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest, reminder, unforked). */
+/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest, reminder, unforked, weather). */
 export function buildToolRegistry(): AgentTool[] {
   return [
     memoryTool,
@@ -62,6 +63,7 @@ export function buildToolRegistry(): AgentTool[] {
     youtubeDigestTool,
     remindersTool,
     unforkedTool,
+    weatherTool,
   ];
 }
 

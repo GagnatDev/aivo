@@ -36,6 +36,7 @@ describe("prepareTurn", () => {
       "reminder",
       "settings",
       "unforked",
+      "weather",
       "youtube_digest",
     ]);
   });
