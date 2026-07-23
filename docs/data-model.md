@@ -229,15 +229,15 @@ coordinates via the geocoder, so repeat forecasts and the morning report skip th
 lookup. A location is either **private** to the user who saved it or **shared** with the
 whole family (Aivo lives in one family's Discord) — a shared "home"/"cabin" is usable by
 everyone, while a private location shadows a shared one of the same name so "work" can
-differ per person. Added after the initial schema (migration 023; sharing in 024).
+differ per person. Added after the initial schema (migration 023).
 
 - `id` uuid pk, `user_id` uuid → users (the creator, even for shared locations)
 - `name` text — the label the location is referred to by
 - `display_name` text null — the geocoder's full resolved name
 - `latitude` / `longitude` double precision
-- `is_shared` boolean — visible to and usable by every family member (migration 024).
-  Uniqueness is split by scope: one private name per `(user_id, lower(name))`, one shared
-  name per `lower(name)` family-wide (two partial unique indexes)
+- `is_shared` boolean — visible to and usable by every family member. Uniqueness is
+  split by scope: one private name per `(user_id, lower(name))`, one shared name per
+  `lower(name)` family-wide (two partial unique indexes)
 - `is_home` boolean — the one location the daily morning report reads (partial unique
   index enforces at most one home per user)
 - `created_at` / `updated_at`
