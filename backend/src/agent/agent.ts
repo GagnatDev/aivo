@@ -1,3 +1,4 @@
+import { messages } from "../i18n/index.js";
 import type { AgentDeps } from "./deps.js";
 import { prepareTurn, TASK_TYPE, type RunAgentInput } from "./prepareTurn.js";
 import { runToolLoop } from "./toolLoop.js";
@@ -40,9 +41,10 @@ export async function runAgent(deps: AgentDeps, input: RunAgentInput): Promise<A
     return {
       // Round the displayed estimate up so it never reads as equal to (or below)
       // the threshold it just exceeded.
-      reply:
-        `This looks like it'll cost about ${Math.ceil(plan.estimatedCostCents)}¢, over your ` +
-        `${plan.approvalThresholdCents}¢ approval threshold. Approve to go ahead?`,
+      reply: messages(plan.language).approval.prompt(
+        Math.ceil(plan.estimatedCostCents),
+        plan.approvalThresholdCents,
+      ),
       conversationId: input.conversationId,
       pendingApprovalId: approval.id,
     };

@@ -13,13 +13,19 @@ const TZ = "Europe/Oslo"; // summer UTC+2
 
 describe("symbol rendering", () => {
   it("labels codes with day/night and thunder handling", () => {
-    expect(symbolLabel("clearsky_day")).toBe("Clear sky");
-    expect(symbolLabel("partlycloudy_night")).toBe("Partly cloudy");
-    expect(symbolLabel("heavyrain")).toBe("Heavy rain");
-    expect(symbolLabel("rainshowersandthunder_day")).toBe("Rain showers with thunder");
+    expect(symbolLabel("clearsky_day", "en")).toBe("Clear sky");
+    expect(symbolLabel("partlycloudy_night", "en")).toBe("Partly cloudy");
+    expect(symbolLabel("heavyrain", "en")).toBe("Heavy rain");
+    expect(symbolLabel("rainshowersandthunder_day", "en")).toBe("Rain showers with thunder");
     // Unknown code still prettifies rather than blanking.
-    expect(symbolLabel("somenewcode_day")).toBe("Somenewcode");
-    expect(symbolLabel(null)).toBe("—");
+    expect(symbolLabel("somenewcode_day", "en")).toBe("Somenewcode");
+    expect(symbolLabel(null, "en")).toBe("—");
+  });
+
+  it("labels codes in Norwegian", () => {
+    expect(symbolLabel("clearsky_day", "nb")).toBe("Klarvær");
+    expect(symbolLabel("heavyrain", "nb")).toBe("Kraftig regn");
+    expect(symbolLabel("rainshowersandthunder_day", "nb")).toBe("Regnbyger med torden");
   });
 
   it("picks day/night aware emoji", () => {
@@ -54,7 +60,7 @@ describe("dailyBuckets", () => {
 
 describe("summarizeForecast", () => {
   it("renders current, upcoming hours, and day sections", () => {
-    const text = summarizeForecast("Oslo", fakeForecast(), TZ);
+    const text = summarizeForecast("Oslo", fakeForecast(), TZ, "en");
     expect(text).toContain("Forecast for Oslo");
     expect(text).toContain("Now:");
     expect(text).toContain("Next hours:");
@@ -63,8 +69,15 @@ describe("summarizeForecast", () => {
     expect(text).toContain("17:00");
   });
 
+  it("renders in Norwegian", () => {
+    const text = summarizeForecast("Oslo", fakeForecast(), TZ, "nb");
+    expect(text).toContain("Værmelding for Oslo");
+    expect(text).toContain("Neste timer:");
+    expect(text).toContain("Dager:");
+  });
+
   it("handles an empty forecast gracefully", () => {
-    const text = summarizeForecast("Nowhere", fakeForecast({ series: [] }), TZ);
+    const text = summarizeForecast("Nowhere", fakeForecast({ series: [] }), TZ, "en");
     expect(text).toBe("No forecast data available for Nowhere.");
   });
 });
@@ -72,12 +85,21 @@ describe("summarizeForecast", () => {
 describe("morningReportText", () => {
   it("builds the greeting, today, daytime hours, and tomorrow", () => {
     const now = new Date("2026-07-23T04:00:00Z"); // 06:00 local
-    const text = morningReportText("Oslo", fakeForecast(), TZ, now);
+    const text = morningReportText("Oslo", fakeForecast(), TZ, now, "en");
     expect(text).toContain("Good morning! Weather for Oslo");
     expect(text).toContain("**Now:**");
     expect(text).toContain("**Today:**");
     expect(text).toContain("**Tomorrow:**");
     // 12:00Z daytime step surfaces at 14:00 local.
     expect(text).toContain("14:00");
+  });
+
+  it("builds the report in Norwegian", () => {
+    const now = new Date("2026-07-23T04:00:00Z");
+    const text = morningReportText("Oslo", fakeForecast(), TZ, now, "nb");
+    expect(text).toContain("God morgen! Vær for Oslo");
+    expect(text).toContain("**Nå:**");
+    expect(text).toContain("**I dag:**");
+    expect(text).toContain("**I morgen:**");
   });
 });

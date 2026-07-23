@@ -2,10 +2,15 @@ import { Client, Events, GatewayIntentBits, type Interaction, type Message } fro
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
+import { messages } from "../i18n/index.js";
 import { isCommand, runCommand } from "./commands.js";
 import { resolveFeedbackClick } from "./feedback.js";
 import { resolveReminderClick } from "./reminderButtons.js";
-import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
+import {
+  languageForDiscordUser,
+  recordAssistantReply,
+  type HandleMessageDeps,
+} from "./handleMessage.js";
 import {
   normalize,
   processAndReply,
@@ -97,7 +102,8 @@ async function onMessage(
     // reaching here means something else broke (DB, Discord send). Acknowledge it
     // rather than leaving the user with silence.
     try {
-      await message.reply("Sorry — I ran into a problem handling that. Please try again.");
+      const lang = await languageForDiscordUser(deps, message.author.id);
+      await message.reply(messages(lang).errors.handlingProblem);
     } catch (replyErr) {
       logger.error(replyErr, "failed to send error reply");
     }
@@ -164,8 +170,9 @@ async function onInteraction(deps: HandleMessageDeps, interaction: Interaction):
   } catch (err) {
     logger.error(err, "failed to handle button interaction");
     try {
+      const lang = await languageForDiscordUser(deps, interaction.user.id);
       await interaction.followUp({
-        content: "Sorry — I ran into a problem with that. Please try again.",
+        content: messages(lang).errors.interactionProblem,
         ephemeral: true,
       });
     } catch (replyErr) {

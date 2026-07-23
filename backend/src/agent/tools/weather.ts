@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { asLanguage } from "../../i18n/index.js";
 import { WeatherApiError, WeatherTimeoutError } from "../../weather/client.js";
 import { summarizeForecast } from "../../weather/format.js";
 import { GeocoderApiError, GeocoderTimeoutError } from "../../weather/geocoder.js";
@@ -206,7 +207,7 @@ async function forecast(ctx: ToolContext, a: WeatherArgs): Promise<string> {
   try {
     const f = await ctx.deps.weather.getForecast(target.latitude, target.longitude);
     const settings = await ctx.deps.settings.getOrCreate(ctx.userId);
-    summary = summarizeForecast(target.name, f, settings.timezone);
+    summary = summarizeForecast(target.name, f, settings.timezone, asLanguage(settings.language));
   } catch (err) {
     return weatherError(err);
   }

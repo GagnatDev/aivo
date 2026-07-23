@@ -1,6 +1,7 @@
 import { loadBudgetSnapshot, preCallCheck, recordUsageAndAlert } from "../agent/budget.js";
 import type { AgentDeps } from "../agent/deps.js";
 import { resolveModel } from "../agent/prepareTurn.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import type { VideoRow } from "../storage/videoRepository.js";
 import type { YoutubeApi } from "../youtube/api.js";
@@ -107,7 +108,9 @@ export async function runDigest(
     if (record.alertPct) alertPct = Math.max(alertPct ?? 0, record.alertPct);
   };
 
-  const profileBody = await foldPendingFeedback(deps, userId, profile.body, meter);
+  const language = asLanguage(settings.language);
+  const m = messages(language);
+  const profileBody = await foldPendingFeedback(deps, userId, profile.body, language, meter);
 
   await ingestNewVideos(deps, yt, now, coversSince);
   const candidates = await deps.videos.listCandidatesSince(coversSince, MAX_CANDIDATES);
@@ -144,6 +147,7 @@ export async function runDigest(
         description: v.description,
         durationSeconds: v.duration_seconds,
       })),
+      language,
     ),
     maxTokens: deps.config.llmMaxOutputTokens,
   });
@@ -177,6 +181,7 @@ export async function runDigest(
       profileBody,
       model: stage2Model,
       brief,
+      language,
       meter,
     });
     if (verdict) verdicts.push({ video, verdict });
@@ -201,13 +206,13 @@ export async function runDigest(
     ...stage2Rejects.map((r) => ({
       videoId: r.video.id,
       kind: "reject" as const,
-      reason: r.verdict.reason ?? "not a fit today",
+      reason: r.verdict.reason ?? m.digest.reasonNotFit,
       confidence: r.verdict.confidence,
     })),
     ...stage1Rejects.map((s) => ({
       videoId: s.id,
       kind: "reject" as const,
-      reason: s.reason ?? "low match to your interests",
+      reason: s.reason ?? m.digest.reasonLowMatch,
       confidence: s.score,
     })),
   ]);
@@ -220,14 +225,14 @@ export async function runDigest(
   const rejects: DeliverableReject[] = [
     ...stage2Rejects.map((r) => ({
       ...label(r.video),
-      reason: r.verdict.reason ?? "not a fit today",
+      reason: r.verdict.reason ?? m.digest.reasonNotFit,
     })),
     ...stage1Rejects.map((s) => {
       const video = byId.get(s.id);
       return {
         title: video?.title ?? s.id,
         channelTitle: video ? label(video).channelTitle : "",
-        reason: s.reason ?? "low match to your interests",
+        reason: s.reason ?? m.digest.reasonLowMatch,
       };
     }),
   ].slice(0, rejectedListLimit(stats));
@@ -259,6 +264,7 @@ async function foldPendingFeedback(
   deps: AgentDeps,
   userId: string,
   currentBody: string,
+  language: Language,
   meter: (r: { alertPct?: number; costCents: number }) => void,
 ): Promise<string> {
   const pending = await deps.feedback.listUnapplied(userId);
@@ -293,6 +299,7 @@ async function foldPendingFeedback(
           freeformText: f.freeform_text,
         };
       }),
+      language,
     ),
     maxTokens: deps.config.llmMaxOutputTokens,
   });
@@ -351,6 +358,7 @@ async function runStage2(
     profileBody: string;
     model: string;
     brief: boolean;
+    language: Language;
     meter: (r: { alertPct?: number; costCents: number }) => void;
   },
 ): Promise<Stage2Verdict | null> {
@@ -370,6 +378,7 @@ async function runStage2(
         },
         transcript,
         brief: input.brief,
+        language: input.language,
       }),
       maxTokens: deps.config.llmMaxOutputTokens,
     });
@@ -385,7 +394,7 @@ async function runStage2(
     confidence: 0.2,
     summaryBullets: [],
     why: "",
-    reason: "couldn't process this one",
+    reason: messages(input.language).digest.reasonCouldntProcess,
   };
   await deps.videos.saveStage2(video.id, {
     transcriptStatus: transcript ? "fetched" : "unavailable",

@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { Language } from "../../i18n/index.js";
 import type { ToolSchema } from "../../llm/provider.js";
 import type { Tier } from "../budget.js";
 import type { AgentDeps } from "../deps.js";
@@ -19,6 +20,8 @@ export interface ToolContext {
   /** Derived server-side from users.is_owner — never from model output. */
   isOwner: boolean;
   conversationId: string;
+  /** The user's preferred language, for the turn-level fallbacks the loop may emit. */
+  language: Language;
 }
 
 export interface AgentTool {

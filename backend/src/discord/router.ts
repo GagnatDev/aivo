@@ -7,9 +7,11 @@ import {
 } from "discord.js";
 import { resumeApprovedAgent } from "../agent/agent.js";
 import type { VoiceAttachment } from "../agent/transcription.js";
+import { type Language, messages } from "../i18n/index.js";
 import type { DiscordConfig } from "./config.js";
 import {
   handleIncomingMessage,
+  languageForDiscordUser,
   recordAssistantReply,
   type HandleMessageDeps,
   type IncomingMessage,
@@ -149,23 +151,27 @@ export async function processAndReply(
       isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
     });
 
+    // The LLM reply is already in the user's language (system-prompt directive); the
+    // notes and button labels below are the verbatim bits, so resolve the preference.
+    const lang = await languageForDiscordUser(deps, message.author.id);
+
     // Gated turn: post the confirmation with Approve/Cancel buttons and wait — the
     // button handler (discord/client.ts) resumes the turn. No assistant reply yet.
     if (result.pendingApprovalId) {
       const sent = await message.reply({
         content: result.reply,
-        components: [approvalButtons(result.pendingApprovalId)],
+        components: [approvalButtons(result.pendingApprovalId, lang)],
       });
       await deps.pendingApprovals.setPromptMessageId(result.pendingApprovalId, sent.id);
       return;
     }
 
     let reply = result.reply;
-    if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct)}`;
+    if (result.alertPct) reply = `${reply}\n\n${budgetAlert(result.alertPct, lang)}`;
     if (opts.acknowledgeIfStale) {
       const ageMs = deps.clock.now().getTime() - message.createdTimestamp;
       if (ageMs >= cfg.offlineAckThresholdMinutes * 60_000) {
-        reply = `${offlineAck(ageMs)}\n\n${reply}`;
+        reply = `${offlineAck(ageMs, lang)}\n\n${reply}`;
       }
     }
 
@@ -175,21 +181,25 @@ export async function processAndReply(
 }
 
 /** The Approve/Cancel button row attached to an approval-gate prompt. */
-export function approvalButtons(approvalId: string): ActionRowBuilder<ButtonBuilder> {
+export function approvalButtons(
+  approvalId: string,
+  lang: Language,
+): ActionRowBuilder<ButtonBuilder> {
+  const a = messages(lang).approval;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`approve:${approvalId}`)
-      .setLabel("Approve")
+      .setLabel(a.approve)
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`cancel:${approvalId}`)
-      .setLabel("Cancel")
+      .setLabel(a.cancel)
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
-function budgetAlert(pct: number): string {
-  return `*(Budget: you've used about ${pct}% of this month's ceiling.)*`;
+function budgetAlert(pct: number, lang: Language): string {
+  return messages(lang).budget.alert(pct);
 }
 
 /** The result of acting on an Approve/Cancel button click. */
@@ -209,51 +219,52 @@ export async function resolveApproval(
   deps: HandleMessageDeps,
   params: { action: "approve" | "cancel"; approvalId: string; clickerDiscordId: string },
 ): Promise<ApprovalOutcome> {
+  // Outcomes are shown to the clicker, so localize in their language.
+  const lang = await languageForDiscordUser(deps, params.clickerDiscordId);
+  const a = messages(lang).approval;
+
   const approval = await deps.pendingApprovals.findById(params.approvalId);
-  if (!approval) return { type: "expired", promptUpdate: "This request is no longer available." };
+  if (!approval) return { type: "expired", promptUpdate: a.noLongerAvailable };
 
   const requester = await deps.users.findById(approval.user_id);
   if (requester?.discord_user_id !== params.clickerDiscordId) {
-    return {
-      type: "denied",
-      ephemeral: "Only the person who made this request can respond to it.",
-    };
+    return { type: "denied", ephemeral: a.onlyRequester };
   }
 
   if (params.action === "cancel") {
     const cancelled = await deps.pendingApprovals.resolveIfPending(params.approvalId, "cancelled");
-    if (!cancelled) return { type: "expired", promptUpdate: "This request already expired." };
-    return { type: "cancelled", promptUpdate: "Cancelled — I didn't run it." };
+    if (!cancelled) return { type: "expired", promptUpdate: a.alreadyExpired };
+    return { type: "cancelled", promptUpdate: a.cancelled };
   }
 
   const approved = await deps.pendingApprovals.resolveIfPending(params.approvalId, "approved");
-  if (!approved) return { type: "expired", promptUpdate: "This request expired — just ask again." };
+  if (!approved) return { type: "expired", promptUpdate: a.expiredAskAgain };
 
   const result = await resumeApprovedAgent(deps, params.approvalId);
-  if (!result)
-    return { type: "expired", promptUpdate: "I couldn't pick that request back up — ask again." };
+  if (!result) return { type: "expired", promptUpdate: a.couldntPickUp };
   // A gated turn is the likeliest to push spend over a threshold, so fold any alert
   // it crossed into the follow-up rather than dropping it.
   const followUpReply = result.alertPct
-    ? `${result.reply}\n\n${budgetAlert(result.alertPct)}`
+    ? `${result.reply}\n\n${budgetAlert(result.alertPct, lang)}`
     : result.reply;
   return {
     type: "approved",
-    promptUpdate: "Approved.",
+    promptUpdate: a.approved,
     followUpReply,
     conversationId: result.conversationId,
   };
 }
 
 /** A short, dry note prefixed to late replies so the delay is explained. */
-function offlineAck(ageMs: number): string {
-  return `*(I was offline for ${humanizeDuration(ageMs)} — catching up now.)*`;
+function offlineAck(ageMs: number, lang: Language): string {
+  return messages(lang).budget.offlineAck(humanizeDuration(ageMs, lang));
 }
 
-function humanizeDuration(ms: number): string {
+function humanizeDuration(ms: number, lang: Language): string {
+  const b = messages(lang).budget;
   const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return b.minutes(minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h`;
-  return `${Math.round(hours / 24)} d`;
+  if (hours < 24) return b.hours(hours);
+  return b.days(Math.round(hours / 24));
 }

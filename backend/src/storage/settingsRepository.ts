@@ -9,6 +9,10 @@ export interface SettingsRow {
   digest_interval_days: number;
   model_tier: string;
   persona_prompt: string | null;
+  /** Preferred communication language: `en` | `nb` (validate with i18n#asLanguage at use
+   * sites). Drives the agent's reply language (a directive in the system prompt) and every
+   * verbatim-sent string (i18n catalog). Kept as `string` like `model_tier`. */
+  language: string;
   /** The per-lane proactivity state (digest on/off, pause, run-now request) — an
    * opaque JSON object here; the digest lane's shape is owned by digest/proactivity.ts. */
   proactivity: Record<string, unknown>;
@@ -22,6 +26,7 @@ const SETTINGS_COLUMNS = [
   "digest_interval_days",
   "model_tier",
   "persona_prompt",
+  "language",
   "proactivity",
 ] as const;
 
@@ -33,6 +38,7 @@ export interface SettingsPatch {
   digest_interval_days?: number;
   model_tier?: string;
   persona_prompt?: string | null;
+  language?: string;
   proactivity?: Record<string, unknown>;
 }
 

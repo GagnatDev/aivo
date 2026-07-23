@@ -160,6 +160,7 @@ export interface Settings {
   digest_cap: Generated<number>;
   digest_hour: Generated<number>;
   digest_interval_days: Generated<number>;
+  language: Generated<string>;
   model_tier: Generated<string>;
   persona_prompt: string | null;
   proactivity: ColumnType<Record<string, unknown>, string | undefined, string>;

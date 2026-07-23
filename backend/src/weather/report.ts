@@ -1,4 +1,5 @@
 import type { AgentDeps } from "../agent/deps.js";
+import { asLanguage } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import type { WeatherClient } from "./client.js";
 import { morningReportText } from "./format.js";
@@ -29,7 +30,13 @@ export async function runWeatherReport(
     return {
       kind: "report",
       locationName: home.name,
-      text: morningReportText(home.name, forecast, settings.timezone, now),
+      text: morningReportText(
+        home.name,
+        forecast,
+        settings.timezone,
+        now,
+        asLanguage(settings.language),
+      ),
     };
   } catch (err) {
     logger.error({ err, userId, location: home.name }, "weather report fetch failed");

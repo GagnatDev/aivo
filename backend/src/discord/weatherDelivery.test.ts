@@ -1,19 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { NO_HOME_NUDGE, conversationSummary, weatherReportMessage } from "./weatherDelivery.js";
+import { messages } from "../i18n/index.js";
+import { conversationSummary, weatherReportMessage } from "./weatherDelivery.js";
 
 describe("weatherReportMessage", () => {
   it("sends the report text verbatim", () => {
     expect(
-      weatherReportMessage({ kind: "report", locationName: "Oslo", text: "🌅 morning!" }),
+      weatherReportMessage({ kind: "report", locationName: "Oslo", text: "🌅 morning!" }, "en"),
     ).toBe("🌅 morning!");
   });
 
   it("nudges to set a home", () => {
-    expect(weatherReportMessage({ kind: "no_home" })).toBe(NO_HOME_NUDGE);
+    expect(weatherReportMessage({ kind: "no_home" }, "en")).toBe(
+      messages("en").weather.noHomeNudge,
+    );
+  });
+
+  it("nudges to set a home in Norwegian", () => {
+    expect(weatherReportMessage({ kind: "no_home" }, "nb")).toBe(
+      messages("nb").weather.noHomeNudge,
+    );
   });
 
   it("reports a fetch failure honestly instead of confabulating", () => {
-    const msg = weatherReportMessage({ kind: "error", message: "timeout" });
+    const msg = weatherReportMessage({ kind: "error", message: "timeout" }, "en");
     expect(msg).toContain("couldn't put together");
     expect(msg).toContain("timeout");
   });

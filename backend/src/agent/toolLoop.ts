@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
+import { type Language, messages as catalog } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
 import type { ChatMessage, ChatResult, FinishReason, ToolSchema } from "../llm/provider.js";
@@ -11,49 +12,33 @@ import type { AgentTool, ToolContext } from "./tools/index.js";
 // The metering task type for chat turns — every usage row this loop records is tagged
 // with it (kept in step with the approval gate's task type in prepareTurn.ts).
 export const TASK_TYPE = "chat";
-// Discord rejects empty message bodies, so never return "" to the caller.
-const EMPTY_REPLY_FALLBACK = "I don't have anything to add to that.";
-// Shown when the LLM provider call fails, chosen by the failure's taxonomy `kind` so
-// the reply matches the cause instead of collapsing every failure to one string.
-// server/network (transient outage) → retry hint; rate_limit → busy hint; auth
-// (permanent, needs the owner) → point at the config.
-const LLM_ERROR_FALLBACK =
-  "Sorry — I couldn't reach the language model just now. Please try again in a moment.";
-const LLM_RATE_LIMIT_FALLBACK =
-  "Sorry — the language model is busy right now. Please try again in a moment.";
-const LLM_AUTH_FALLBACK =
-  "Sorry — I can't reach the language model because of a credentials problem. " +
-  "The owner needs to check the API configuration.";
-// Last-resort reply when even the tools-disabled final answer yields nothing.
-const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
-// Appended when the turn was stopped by the in-flight cost ceiling, so the user knows
-// the answer may be partial and why (mirrors the truncation note's transparency).
-const COST_CEILING_NOTE =
-  "\n\n(I wrapped that up early — this turn was getting expensive. Ask again if you want me to dig deeper.)";
-// Appended when the model's text was cut off by the output-token cap (finishReason
-// `length`), so a truncated reply is never passed off as a complete one.
-const TRUNCATION_NOTE = "\n\n(…that got cut off by my reply-length limit.)";
 // Fed back as the tool result when a `length` stop truncated the tool call itself —
 // its arguments JSON is almost certainly incomplete, so executing it would only yield
-// a confusing parse error. Telling the model why lets it recover deliberately.
+// a confusing parse error. Telling the model why lets it recover deliberately. Stays
+// English: it is model-facing (never shown to the user), like the other tool results.
 const TOOL_CALL_TRUNCATED_FEEDBACK =
   "Tool call not executed: it was cut off by the output token limit. " +
   "Make a shorter tool call (smaller arguments), or answer in plain text.";
 
-/** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
-function llmErrorReply(err: unknown): string {
+/**
+ * Pick the user-facing reply for a failed LLM call from its taxonomy `kind`, in the
+ * user's language. server/network (transient outage) → retry hint; rate_limit → busy
+ * hint; auth (permanent, needs the owner) → point at the config.
+ */
+function llmErrorReply(err: unknown, lang: Language): string {
+  const e = catalog(lang).errors;
   if (err instanceof LlmProviderError) {
     switch (err.kind) {
       case "auth":
-        return LLM_AUTH_FALLBACK;
+        return e.llmAuth;
       case "rate_limit":
-        return LLM_RATE_LIMIT_FALLBACK;
+        return e.llmRateLimit;
       case "server":
       case "network":
-        return LLM_ERROR_FALLBACK;
+        return e.llmError;
     }
   }
-  return LLM_ERROR_FALLBACK;
+  return e.llmError;
 }
 
 export interface LoopParams {
@@ -111,6 +96,8 @@ export async function runToolLoop(
   registry: AgentTool[],
   params: LoopParams,
 ): Promise<LoopResult> {
+  // Verbatim fallbacks (empty/stuck/truncation/cost-ceiling) render in the user's language.
+  const m = catalog(ctx.language);
   // Every log line this turn emits carries the same turn id, so a turn's round-trips
   // can be correlated in production output without debug-level reconstruction.
   const log = logger.child({
@@ -161,7 +148,7 @@ export async function runToolLoop(
         "agent turn reached in-flight cost ceiling; forcing answer",
       );
       const forced = await forceFinalAnswer(deps, ctx, params, messages, alertPct, log, stats);
-      return finish("cost_ceiling", { ...forced, reply: forced.reply + COST_CEILING_NOTE });
+      return finish("cost_ceiling", { ...forced, reply: forced.reply + m.errors.costCeilingNote });
     }
 
     let result: ChatResult;
@@ -177,7 +164,7 @@ export async function runToolLoop(
       // cause rather than letting the turn throw and leave the user with no response.
       const kind = err instanceof LlmProviderError ? err.kind : "unknown";
       log.error({ err, kind }, "llm chat call failed");
-      return finish("provider_error", { reply: llmErrorReply(err), alertPct });
+      return finish("provider_error", { reply: llmErrorReply(err, ctx.language), alertPct });
     }
 
     const record = await recordUsageAndAlert(
@@ -217,9 +204,9 @@ export async function runToolLoop(
           { model: params.model, maxTokens: params.maxTokens },
           "agent reply truncated by output token limit",
         );
-        return finish("final_answer", { reply: text + TRUNCATION_NOTE, alertPct });
+        return finish("final_answer", { reply: text + m.errors.truncationNote, alertPct });
       }
-      return finish("final_answer", { reply: text || EMPTY_REPLY_FALLBACK, alertPct });
+      return finish("final_answer", { reply: text || m.errors.emptyReply, alertPct });
     }
 
     // Replay the assistant message that requested the tools into THIS turn's context,
@@ -372,13 +359,16 @@ async function forceFinalAnswer(
     const text = (result.content ?? "").trim();
     if (text) {
       // The forced answer can be length-truncated too — flag it the same way.
-      const reply = result.finishReason === "length" ? text + TRUNCATION_NOTE : text;
+      const reply =
+        result.finishReason === "length"
+          ? text + catalog(ctx.language).errors.truncationNote
+          : text;
       return { reply, alertPct: nextAlert };
     }
-    return { reply: STUCK_FALLBACK, alertPct: nextAlert };
+    return { reply: catalog(ctx.language).errors.stuck, alertPct: nextAlert };
   } catch (err) {
     log.error(err, "forced final answer failed");
-    return { reply: STUCK_FALLBACK, alertPct };
+    return { reply: catalog(ctx.language).errors.stuck, alertPct };
   }
 }
 

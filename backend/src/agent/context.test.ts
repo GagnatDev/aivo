@@ -48,6 +48,29 @@ describe("buildContext", () => {
     expect(block).not.toContain("fact 1"); // squeezed out by the cap
   });
 
+  it("folds the language directive into the base system prompt", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]));
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    for (const [language, needle] of [
+      ["nb", "Norwegian (Bokmål)"],
+      ["en", "English"],
+    ] as const) {
+      await deps.settings.update(userId, { language });
+      const settings = await deps.settings.getOrCreate(userId);
+      const messages = await buildContext(deps, {
+        userId,
+        conversationId,
+        settings,
+        historyTokenBudget: 100000,
+        historyLimit: 15,
+        memoryLimit: 20,
+      });
+      const base = messages.find((m) => m.role === "system");
+      expect(base?.content).toContain(needle);
+    }
+  });
+
   it("omits the memory block entirely when there are no memories", async () => {
     const deps = makeAgentDeps(makeFakeLlm([]));
     const { userId, conversationId } = await provisionUser(deps, OWNER_ID);

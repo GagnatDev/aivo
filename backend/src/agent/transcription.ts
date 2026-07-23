@@ -1,3 +1,4 @@
+import { asLanguage, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { LlmProviderError } from "../llm/errors.js";
 import { preCallCheck, recordTranscriptionUsage } from "./budget.js";
@@ -33,17 +34,6 @@ export type TranscriptionOutcome =
   | { kind: "ok"; text: string; model: string; alertPct?: number }
   | { kind: "rejected"; reply: string }
   | { kind: "unavailable"; reply: string };
-
-const TOO_LONG = (capSecs: number): string =>
-  `That voice note is a bit long for me — I cap voice messages at about ${Math.round(
-    capSecs,
-  )} seconds for now. Mind sending a shorter one, or typing it out?`;
-const TOO_BIG =
-  "That voice note is a little too large for me to handle right now — mind sending a shorter one, or typing it out?";
-const NO_MODEL =
-  "I can't transcribe voice messages yet — the owner needs to configure an audio model in the model/pricing config.";
-const STT_FAILED =
-  "Sorry — I couldn't make out that voice message just now. Please try again, or type it out.";
 
 /** Default byte fetcher — swapped in tests. */
 async function fetchBytes(url: string): Promise<Buffer> {
@@ -90,12 +80,17 @@ export async function transcribeVoiceMessage(
   voice: VoiceAttachment,
   download: (url: string) => Promise<Buffer> = fetchBytes,
 ): Promise<TranscriptionOutcome> {
+  // Settings up front: its language localizes the reject/failure replies below, and its
+  // model_tier drives audio-model resolution (a single read serves both).
+  const settings = await deps.settings.getOrCreate(userId);
+  const t = messages(asLanguage(settings.language)).transcription;
+
   // Cap checks first — Discord's metadata lets us reject before any download or spend.
   if (voice.durationSecs > deps.config.voiceMaxDurationSecs) {
-    return { kind: "rejected", reply: TOO_LONG(deps.config.voiceMaxDurationSecs) };
+    return { kind: "rejected", reply: t.tooLong(Math.round(deps.config.voiceMaxDurationSecs)) };
   }
   if (voice.sizeBytes > deps.config.voiceMaxBytes) {
-    return { kind: "rejected", reply: TOO_BIG };
+    return { kind: "rejected", reply: t.tooBig };
   }
 
   // Resolve the tier from the user's model-tier preference, exactly as the chat path does
@@ -103,23 +98,22 @@ export async function transcribeVoiceMessage(
   // and persists the degradation state; resolveAudioModel falls back to the other slot if
   // the requested one is ever unassigned. The default seed points both audio slots at
   // voxtral, so either tier lands on it until the owner assigns a distinct premium model.
-  const settings = await deps.settings.getOrCreate(userId);
   const requestedTier = resolveTier(settings.model_tier);
   const decision = await preCallCheck(deps, userId, requestedTier);
   const model = await resolveAudioModel(deps, decision.coercedTier);
-  if (!model) return { kind: "unavailable", reply: NO_MODEL };
+  if (!model) return { kind: "unavailable", reply: t.noModel };
 
   let bytes: Buffer;
   try {
     bytes = await download(voice.url);
   } catch (err) {
     logger.error({ err }, "voice message download failed");
-    return { kind: "unavailable", reply: STT_FAILED };
+    return { kind: "unavailable", reply: t.failed };
   }
   // Defense-in-depth: re-check the actual byte length after download (the Discord-reported
   // size drives the pre-download reject; this guards a mismatch).
   if (bytes.byteLength > deps.config.voiceMaxBytes) {
-    return { kind: "rejected", reply: TOO_BIG };
+    return { kind: "rejected", reply: t.tooBig };
   }
 
   let text: string;
@@ -141,10 +135,10 @@ export async function transcribeVoiceMessage(
     } else {
       logger.error({ err }, "voice transcription failed");
     }
-    return { kind: "unavailable", reply: STT_FAILED };
+    return { kind: "unavailable", reply: t.failed };
   }
 
-  if (!text) return { kind: "unavailable", reply: STT_FAILED };
+  if (!text) return { kind: "unavailable", reply: t.failed };
 
   const usage = await recordTranscriptionUsage(deps, userId, model, durationSeconds);
   return { kind: "ok", text, model, alertPct: usage.alertPct };
