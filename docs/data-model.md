@@ -76,7 +76,7 @@ Per-user, chat-editable knobs (one row per user).
 - `model_tier` text default `auto` — `auto` | `cheap` | `premium` (the chat
   override "use the cheap model for everything this week")
 - `persona_prompt` text null — editable system-prompt addendum ("be more casual")
-- `proactivity` jsonb — which proactive lanes are enabled (digest, reminders)
+- `proactivity` jsonb — per-lane proactive state (digest lane; weather morning-report lane)
 - `created_at`, `updated_at` timestamptz
 
 ### `memories`
@@ -222,6 +222,23 @@ User-set reminders delivered proactively.
 - `status` text — `pending` | `delivered` | `cancelled`
 - `delivered_at` timestamptz null
 - `created_at`
+
+### `weather_locations`
+Per-user saved weather locations (MET Norway / yr.no). A place named once and resolved
+to coordinates via the geocoder, so repeat forecasts and the morning report skip the name
+lookup. Added after the initial schema (migration 023).
+
+- `id` uuid pk, `user_id` uuid → users
+- `name` text — the label the user refers to it by; unique per user, case-insensitively
+- `display_name` text null — the geocoder's full resolved name
+- `latitude` / `longitude` double precision
+- `is_home` boolean — the one location the daily morning report reads (partial unique
+  index enforces at most one home per user)
+- `created_at` / `updated_at`
+
+The morning report's schedule lives in the `weather` lane of `settings.proactivity`
+(enabled, report_hour, last_report_date watermark, run_requested_at) — a sibling of the
+digest lane, owner-scoped and delivered by the scheduler tick.
 
 ### `llm_usage`
 Per-call cost ledger — the basis for budget caps, alerts, and usage reports.
