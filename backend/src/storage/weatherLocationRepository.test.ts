@@ -71,4 +71,96 @@ describe("WeatherLocationRepository", () => {
     expect(await deps.weatherLocations.remove(owner, "Oslo")).toMatchObject({ user_id: owner });
     expect(await deps.weatherLocations.remove(owner, "Oslo")).toBeUndefined();
   });
+
+  it("shared locations are visible to every user; private ones are not", async () => {
+    const deps = makeAgentDeps();
+    const { userId: owner } = await provisionUser(deps, OWNER_ID);
+    const { userId: member } = await provisionUser(deps, "member-1");
+
+    await deps.weatherLocations.upsert(owner, {
+      name: "Cabin",
+      latitude: 61.1,
+      longitude: 9.5,
+      shared: true,
+    });
+    await deps.weatherLocations.upsert(owner, { name: "Work", latitude: 59.9, longitude: 10.7 });
+
+    // The member sees the shared cabin (created by the owner) but not the owner's private work.
+    expect((await deps.weatherLocations.findByName(member, "cabin"))?.name).toBe("Cabin");
+    expect(await deps.weatherLocations.findByName(member, "work")).toBeUndefined();
+    expect((await deps.weatherLocations.list(member)).map((l) => l.name)).toEqual(["Cabin"]);
+  });
+
+  it("a private location shadows a shared one of the same name for that user", async () => {
+    const deps = makeAgentDeps();
+    const { userId: owner } = await provisionUser(deps, OWNER_ID);
+    const { userId: member } = await provisionUser(deps, "member-1");
+
+    // A shared "Work" plus the member's own private "Work".
+    await deps.weatherLocations.upsert(owner, {
+      name: "Work",
+      latitude: 59.9,
+      longitude: 10.7,
+      shared: true,
+    });
+    await deps.weatherLocations.upsert(member, { name: "Work", latitude: 63.4, longitude: 10.4 });
+
+    // The member resolves their own; the owner (no private "Work") gets the shared one.
+    const forMember = await deps.weatherLocations.findByName(member, "work");
+    expect(forMember).toMatchObject({ user_id: member, is_shared: false, latitude: 63.4 });
+    const forOwner = await deps.weatherLocations.findByName(owner, "work");
+    expect(forOwner).toMatchObject({ is_shared: true, latitude: 59.9 });
+  });
+
+  it("upsert keeps private and shared same-name locations separate", async () => {
+    const deps = makeAgentDeps();
+    const { userId } = await provisionUser(deps, OWNER_ID);
+
+    await deps.weatherLocations.upsert(userId, { name: "Home", latitude: 59.9, longitude: 10.7 });
+    await deps.weatherLocations.upsert(userId, {
+      name: "Home",
+      latitude: 63.4,
+      longitude: 10.4,
+      shared: true,
+    });
+
+    const all = await deps.weatherLocations.list(userId);
+    expect(all.filter((l) => l.name === "Home")).toHaveLength(2);
+    // Private (own) shadows shared on lookup.
+    expect(await deps.weatherLocations.findByName(userId, "home")).toMatchObject({
+      is_shared: false,
+    });
+  });
+
+  it("a shared location can be removed by any family member", async () => {
+    const deps = makeAgentDeps();
+    const { userId: owner } = await provisionUser(deps, OWNER_ID);
+    const { userId: member } = await provisionUser(deps, "member-1");
+    await deps.weatherLocations.upsert(owner, {
+      name: "Cabin",
+      latitude: 61.1,
+      longitude: 9.5,
+      shared: true,
+    });
+
+    expect(await deps.weatherLocations.remove(member, "Cabin")).toMatchObject({ is_shared: true });
+    expect(await deps.weatherLocations.findByName(owner, "Cabin")).toBeUndefined();
+  });
+
+  it("setHome can point the report at a shared location", async () => {
+    const deps = makeAgentDeps();
+    const { userId: owner } = await provisionUser(deps, OWNER_ID);
+    await deps.weatherLocations.upsert(owner, {
+      name: "Home",
+      latitude: 59.9,
+      longitude: 10.7,
+      shared: true,
+    });
+
+    expect(await deps.weatherLocations.setHome(owner, "Home")).toMatchObject({
+      is_home: true,
+      is_shared: true,
+    });
+    expect((await deps.weatherLocations.getHome(owner))?.name).toBe("Home");
+  });
 });

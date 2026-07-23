@@ -217,6 +217,7 @@ export interface WeatherLocations {
   display_name: string | null;
   id: Generated<string>;
   is_home: Generated<boolean>;
+  is_shared: Generated<boolean>;
   latitude: number;
   longitude: number;
   name: string;

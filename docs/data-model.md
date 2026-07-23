@@ -224,17 +224,27 @@ User-set reminders delivered proactively.
 - `created_at`
 
 ### `weather_locations`
-Per-user saved weather locations (MET Norway / yr.no). A place named once and resolved
-to coordinates via the geocoder, so repeat forecasts and the morning report skip the name
-lookup. Added after the initial schema (migration 023).
+Saved weather locations (MET Norway / yr.no). A place named once and resolved to
+coordinates via the geocoder, so repeat forecasts and the morning report skip the name
+lookup. A location is either **private** to the user who saved it or **shared** with the
+whole family (Aivo lives in one family's Discord) — a shared "home"/"cabin" is usable by
+everyone, while a private location shadows a shared one of the same name so "work" can
+differ per person. Added after the initial schema (migration 023; sharing in 024).
 
-- `id` uuid pk, `user_id` uuid → users
-- `name` text — the label the user refers to it by; unique per user, case-insensitively
+- `id` uuid pk, `user_id` uuid → users (the creator, even for shared locations)
+- `name` text — the label the location is referred to by
 - `display_name` text null — the geocoder's full resolved name
 - `latitude` / `longitude` double precision
+- `is_shared` boolean — visible to and usable by every family member (migration 024).
+  Uniqueness is split by scope: one private name per `(user_id, lower(name))`, one shared
+  name per `lower(name)` family-wide (two partial unique indexes)
 - `is_home` boolean — the one location the daily morning report reads (partial unique
   index enforces at most one home per user)
 - `created_at` / `updated_at`
+
+Reads are scoped to "what the user can see" = their own private locations plus every
+shared one, private shadowing shared on a name clash. Anyone may create or remove either
+kind; only the morning report itself stays owner-scoped.
 
 The morning report's schedule lives in the `weather` lane of `settings.proactivity`
 (enabled, report_hour, last_report_date watermark, run_requested_at) — a sibling of the

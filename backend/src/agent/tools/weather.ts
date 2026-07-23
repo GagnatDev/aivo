@@ -7,9 +7,12 @@ import { OWNER_ONLY, parse, type AgentTool, type ToolContext } from "./index.js"
 
 /**
  * The chat control surface for weather (MET Norway / yr.no): a forecast for any place
- * (by saved name, free-form name via the geocoder, or explicit coordinates), a per-user
- * list of saved locations, and the owner-configured daily morning report. Forecasts and
- * saved locations are per-user; the morning report (a proactive push to the home
+ * (by saved name, free-form name via the geocoder, or explicit coordinates), a list of
+ * saved locations, and the owner-configured daily morning report. Saved locations are
+ * either PRIVATE to the user or SHARED with the whole family (Aivo lives in one family's
+ * Discord): a shared "home"/"cabin" is usable by everyone, while a private location
+ * shadows a shared one of the same name so "work" can differ per person. Anyone may
+ * create or remove either kind; only the morning report (a proactive push to the home
  * channel, like the YouTube digest) is OWNER-ONLY — enforced here, never via prompt
  * text. Delivery itself is the scheduler's job (scheduler/tick.ts + discord/
  * weatherDelivery.ts); this tool only reads forecasts and edits config/locations.
@@ -35,6 +38,8 @@ const weatherArgs = z.object({
   name: z.string().min(1).optional(),
   /** Geocoder search string for add_location when it differs from `name`. */
   query: z.string().min(1).optional(),
+  /** Save as a family-wide shared location instead of a private one (action=add_location). */
+  shared: z.boolean().optional(),
   /** Local delivery hour 0-23 for the morning report (action=configure_report). */
   report_hour: z.number().int().min(0).max(23).optional(),
   /** Turn the morning report on/off (action=configure_report). */
@@ -75,12 +80,14 @@ export const weatherTool: AgentTool = {
       "temperature, rain/snow/wind ('what's the weather in X?', 'hvordan blir været i morgen?'), " +
       "or wants to manage saved places or the morning report. Actions: 'forecast' (location = a " +
       "saved name or any place name, OR latitude+longitude); 'list_locations'; 'add_location' " +
-      "(name to save it under, optional query if the search text differs) — geocodes and stores it; " +
-      "'remove_location' (name); 'set_home' (name — the place the morning report uses); " +
-      "'configure_report' (report_hour 0-23 and/or enabled — turn the daily morning report on/off); " +
-      "'report_status'; 'run_report_now' (deliver a weather report within a minute). set_home, " +
-      "configure_report, and run_report_now are OWNER-ONLY. Forecasts and saved locations are " +
-      "per-user.",
+      "(name to save it under, optional query if the search text differs, shared=true to save it " +
+      "for the whole family) — geocodes and stores it; 'remove_location' (name); 'set_home' (name — " +
+      "the place the morning report uses); 'configure_report' (report_hour 0-23 and/or enabled — " +
+      "turn the daily morning report on/off); 'report_status'; 'run_report_now' (deliver a weather " +
+      "report within a minute). set_home, configure_report, and run_report_now are OWNER-ONLY. " +
+      "Saved locations are either private to the user or shared with the family; a shared location " +
+      "(e.g. 'home', 'cabin') is usable by everyone, while a private location of the same name takes " +
+      "precedence for that user (so 'work' can differ per person).",
     parameters: {
       type: "object",
       properties: {
@@ -102,6 +109,10 @@ export const weatherTool: AgentTool = {
         longitude: { type: "number", description: "longitude for a coordinate forecast" },
         name: { type: "string", description: "saved-location name (add/remove/set_home)" },
         query: { type: "string", description: "geocoder search text (add_location, if != name)" },
+        shared: {
+          type: "boolean",
+          description: "save for the whole family instead of just you (add_location)",
+        },
         report_hour: { type: "integer", description: "local hour 0-23 for the morning report" },
         enabled: { type: "boolean", description: "turn the morning report on/off" },
       },
@@ -123,9 +134,8 @@ export const weatherTool: AgentTool = {
       case "remove_location": {
         if (!a.name) return "Provide the location 'name' to remove.";
         const row = await ctx.deps.weatherLocations.remove(ctx.userId, a.name);
-        return row
-          ? `Removed saved location "${row.name}".`
-          : `You have no saved location called "${a.name}".`;
+        if (!row) return `You have no saved location called "${a.name}".`;
+        return `Removed ${row.is_shared ? "shared" : "saved"} location "${row.name}".`;
       }
       case "report_status":
         return reportStatus(ctx);
@@ -194,7 +204,12 @@ async function listLocations(ctx: ToolContext): Promise<string> {
   const rows = await ctx.deps.weatherLocations.list(ctx.userId);
   if (rows.length === 0) return "You have no saved weather locations yet.";
   return JSON.stringify(
-    rows.map((r) => ({ name: r.name, is_home: r.is_home, resolved: r.display_name })),
+    rows.map((r) => ({
+      name: r.name,
+      is_home: r.is_home,
+      shared: r.is_shared,
+      resolved: r.display_name,
+    })),
   );
 }
 
@@ -213,8 +228,10 @@ async function addLocation(ctx: ToolContext, a: WeatherArgs): Promise<string> {
     latitude: hit.latitude,
     longitude: hit.longitude,
     displayName: hit.name,
+    shared: a.shared,
   });
-  return `Saved "${row.name}" (${hit.name}). Ask me for its forecast any time.`;
+  const who = row.is_shared ? "for the whole family" : "for you";
+  return `Saved "${row.name}" (${hit.name}) ${who}. Ask me for its forecast any time.`;
 }
 
 async function setHome(ctx: ToolContext, a: WeatherArgs): Promise<string> {

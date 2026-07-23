@@ -105,6 +105,29 @@ describe("weather tool — locations", () => {
     );
     expect(await tool().execute({ action: "list_locations" }, ctx)).toContain("no saved");
   });
+
+  it("a shared location saved by one user is forecastable by another", async () => {
+    // The two users share a fake DB via makeAgentDeps' default connection.
+    const ownerCtx = await ctxFor(OWNER_ID);
+    const added = await tool().execute(
+      { action: "add_location", name: "Cabin", query: "Trondheim", shared: true },
+      ownerCtx,
+    );
+    expect(added).toContain("whole family");
+
+    const member = await provisionUser(ownerCtx.deps, "member-1");
+    const memberCtx: ToolContext = { ...ownerCtx, userId: member.userId, isOwner: false };
+    const listed = await tool().execute({ action: "list_locations" }, memberCtx);
+    expect(listed).toContain("Cabin");
+    expect(listed).toContain('"shared":true');
+
+    const out = await tool().execute({ action: "forecast", location: "cabin" }, memberCtx);
+    expect(out).toContain("Forecast for Cabin");
+    expect((memberCtx.deps.weather as ReturnType<typeof makeFakeWeather>).lastCall).toEqual({
+      latitude: 63.4305,
+      longitude: 10.3951,
+    });
+  });
 });
 
 describe("weather tool — morning report (owner-only)", () => {
