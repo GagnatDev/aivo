@@ -6,6 +6,7 @@ import type { ChatMessage, ChatResult, FinishReason, ToolSchema } from "../llm/p
 import { truncateToTokens } from "../llm/tokens.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
+import { RepeatTracker } from "./repeatDetection.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
 
 // The metering task type for chat turns — every usage row this loop records is tagged
@@ -139,9 +140,9 @@ export async function runToolLoop(
 
   const messages = params.messages;
   let alertPct: number | undefined;
-  // Signatures (name+args) of tool calls already executed this turn — used to detect
-  // a model stuck re-issuing the same calls (a common open-model failure mode).
-  const executed = new Set<string>();
+  // Tracks calls already executed this turn (and what they returned) to detect a model
+  // stuck re-issuing the same calls — see repeatDetection.ts for what counts as stuck.
+  const repeats = new RepeatTracker();
 
   for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
     // In-flight cost ceiling: the approval gate priced only the first call's worst
@@ -274,9 +275,6 @@ export async function runToolLoop(
 
     let allRepeats = true;
     for (const call of result.toolCalls) {
-      const signature = `${call.name}:${call.arguments}`;
-      if (!executed.has(signature)) allRepeats = false;
-      executed.add(signature);
       const execution = await executeToolCall(registry, call.name, call.arguments, ctx, log);
       stats.toolsCalled.push(call.name);
       if (execution.isError) stats.toolErrors += 1;
@@ -285,6 +283,9 @@ export async function runToolLoop(
       // capped text is what the model sees AND what we persist, so replay (see #52) stays
       // faithful to — and as bounded as — what actually happened this turn.
       const toolResult = capToolResult(execution.text, deps.config.toolResultMaxTokens);
+      // Judged on the capped text — that's what the model actually sees, so it's what
+      // decides whether this call told it anything new.
+      if (!repeats.record(call.name, call.arguments, toolResult)) allRepeats = false;
       log.debug(
         {
           tool: call.name,
@@ -305,8 +306,8 @@ export async function runToolLoop(
       messages.push({ role: "tool", content: toolResult, tool_call_id: call.id, name: call.name });
     }
 
-    // The model re-issued only tool calls it had already made this turn — it's stuck.
-    // Stop looping and force a plain-text answer from what it already has.
+    // Every call in this round re-ran an earlier one and learned nothing new from it —
+    // the model is stuck. Stop looping and force a plain-text answer from what it has.
     if (allRepeats) {
       log.warn({ model: params.model, iteration: i }, "agent repeated tool calls; forcing answer");
       return finish(

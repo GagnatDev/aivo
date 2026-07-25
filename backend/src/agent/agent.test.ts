@@ -220,6 +220,57 @@ describe("runAgent", () => {
     expect(llm.calls.at(-1)?.tools).toBeUndefined();
   });
 
+  it("lets a read repeat when a write changed what it returns", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }, "c1"),
+      toolCallResult("memory", { action: "write", content: "likes hiking" }, "c2"),
+      // Same call as the first, but the write changed the answer — a confirming re-read,
+      // not a stuck model, so the loop keeps its tools and carries on.
+      toolCallResult("memory", { action: "list" }, "c3"),
+      textResult("You've got one thing saved."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("You've got one thing saved.");
+    expect(llm.calls).toHaveLength(4); // no forced answer cut the turn short
+    expect(llm.calls.at(-1)?.tools?.length).toBeGreaterThan(0); // tools still advertised
+  });
+
+  it("forces an answer when a repeated call returns the same result, however it is formatted", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }, "c1"),
+      // Same call, different argument formatting — canonicalized, so still a repeat.
+      {
+        content: null,
+        toolCalls: [{ id: "c2", name: "memory", arguments: '{ "action" :  "list" }' }],
+        finishReason: "tool_calls" as const,
+        usage: { tokensIn: 20, tokensOut: 5 },
+      },
+      textResult("Nothing saved yet."), // the tools-disabled forced answer
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("Nothing saved yet.");
+    expect(llm.calls).toHaveLength(3);
+    expect(llm.calls.at(-1)?.tools).toBeUndefined();
+  });
+
   it("forces an answer after the iteration cap with distinct tool calls", async () => {
     const llm = makeFakeLlm([
       ...Array.from({ length: 5 }, (_, n) =>
