@@ -41,11 +41,46 @@ describe("buildContext", () => {
 
     const block = memoryBlock(messages);
     expect(block).toBeDefined();
-    const lines = block!.split("\n").slice(1); // drop the header line
-    expect(lines).toHaveLength(5); // capped
-    expect(lines[0]).toContain("fact 0"); // pinned floats to the top despite being oldest
+    const facts = block!.split("\n").filter((l) => l.startsWith("- "));
+    expect(facts).toHaveLength(5); // capped
+    expect(facts[0]).toContain("fact 0"); // pinned floats to the top despite being oldest
     expect(block).toContain("fact 24"); // newest still present
     expect(block).not.toContain("fact 1"); // squeezed out by the cap
+    expect(block).toMatch(/20 more remembered facts are not shown/i); // the cutoff is stated
+  });
+
+  it("ranks the injected memories against the latest message and says what it held back", async () => {
+    const deps = makeAgentDeps(makeFakeLlm([]));
+    const { userId, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    // More memories than the cap, with the relevant one saved first (oldest), so a
+    // recency-only cut would drop exactly the fact the question is about.
+    await deps.memories.insert({ userId, content: "allergic to shellfish", pinned: false });
+    for (let i = 0; i < 5; i++) {
+      await deps.memories.insert({ userId, content: `unrelated fact ${i}`, pinned: false });
+    }
+    await deps.messages.insert({
+      conversationId,
+      role: "user",
+      content: "can I eat the shellfish stew?",
+      discordMessageId: "m1",
+    });
+    const settings = await deps.settings.getOrCreate(userId);
+
+    const messages = await buildContext(deps, {
+      userId,
+      conversationId,
+      settings,
+      historyTokenBudget: 100000,
+      historyLimit: 15,
+      memoryLimit: 2,
+    });
+
+    const block = memoryBlock(messages);
+    expect(block).toContain("allergic to shellfish");
+    // The model is told the block is partial, and how to get the rest.
+    expect(block).toMatch(/4 more remembered facts are not shown/i);
+    expect(block).toMatch(/search/i);
   });
 
   it("omits the memory block entirely when there are no memories", async () => {
