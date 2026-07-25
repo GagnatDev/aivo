@@ -15,7 +15,7 @@ const tool = (name: string): AgentTool => {
 async function ctxFor(discordId: string): Promise<ToolContext> {
   const deps = makeAgentDeps();
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 describe("settings tool permissions", () => {
@@ -51,5 +51,20 @@ describe("settings tool permissions", () => {
       ctx,
     );
     expect(res).toMatch(/Refused/);
+  });
+
+  it("lets the owner change the preferred language and reads it back", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const updated = await tool("settings").execute({ action: "update", language: "en" }, ctx);
+    expect(updated).toMatch(/language=en/);
+    const got = await tool("settings").execute({ action: "get" }, ctx);
+    expect(JSON.parse(got)).toMatchObject({ language: "en" });
+    expect(await ctx.deps.settings.getOrCreate(ctx.userId)).toMatchObject({ language: "en" });
+  });
+
+  it("rejects an unsupported language code", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const res = await tool("settings").execute({ action: "update", language: "de" }, ctx);
+    expect(res).toMatch(/Invalid arguments/);
   });
 });

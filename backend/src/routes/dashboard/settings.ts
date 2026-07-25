@@ -34,6 +34,7 @@ export function settingsRoutes(deps: DashboardDeps): Router {
         },
       },
       modelTier: settings.model_tier,
+      language: settings.language,
       personaPrompt: settings.persona_prompt,
       budget: {
         monthlyCeiling:

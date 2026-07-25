@@ -15,6 +15,7 @@ describe("buildStage2Messages", () => {
       video,
       transcript: "t".repeat(TRANSCRIPT_CHAR_CAP + 5000),
       brief: false,
+      language: "en",
     });
     expect((user.content ?? "").length).toBeLessThan(TRANSCRIPT_CHAR_CAP + 1000);
   });
@@ -25,12 +26,19 @@ describe("buildStage2Messages", () => {
       video,
       transcript: null,
       brief: false,
+      language: "en",
     });
     expect(user.content).toMatch(/No transcript is available/);
   });
 
   it("asks for a single bullet in brief (degraded) mode", () => {
-    const [system] = buildStage2Messages({ profileBody: "p", video, transcript: "t", brief: true });
+    const [system] = buildStage2Messages({
+      profileBody: "p",
+      video,
+      transcript: "t",
+      brief: true,
+      language: "en",
+    });
     expect(system.content).toMatch(/exactly 1 short bullet/);
   });
 });

@@ -5,7 +5,10 @@ import type { ReminderRow } from "../storage/reminderRepository.js";
 import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
 import { useCleanDb } from "../test/db.js";
 import { makeFakeLlm } from "../test/fakeLlm.js";
+import { makeFakeWeather } from "../test/fakeWeather.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
+import { parseWeatherLane, withWeatherLane } from "../weather/proactivity.js";
+import type { WeatherReportOutcome } from "../weather/report.js";
 import { runDueWork, type Deliverers } from "./tick.js";
 
 useCleanDb();
@@ -18,12 +21,15 @@ function captureDeliveries(): {
   deliverer: Deliverers;
   delivered: DigestOutcome[];
   reminded: ReminderRow[];
+  weatherReports: WeatherReportOutcome[];
 } {
   const delivered: DigestOutcome[] = [];
   const reminded: ReminderRow[] = [];
+  const weatherReports: WeatherReportOutcome[] = [];
   return {
     delivered,
     reminded,
+    weatherReports,
     deliverer: {
       digest: {
         async deliver(_userId, outcome) {
@@ -33,6 +39,11 @@ function captureDeliveries(): {
       reminder: {
         async deliver(reminder) {
           reminded.push(reminder);
+        },
+      },
+      weather: {
+        async deliver(_userId, outcome) {
+          weatherReports.push(outcome);
         },
       },
     },
@@ -180,6 +191,64 @@ describe("runDueWork", () => {
     const { deliverer, reminded } = captureDeliveries();
     await runDueWork(deps, null, deliverer, DUE_TIME);
     expect(reminded).toHaveLength(0);
+  });
+
+  it("delivers a due weather report once per day and watermarks it", async () => {
+    // 05:00Z = 07:00 Europe/Oslo, past the default report hour 6.
+    const now = new Date("2026-07-01T05:00:00Z");
+    const deps = makeAgentDeps(makeFakeLlm([]), {}, new FakeClock(now), null, makeFakeWeather());
+    const { userId } = await provisionUser(deps, OWNER_ID);
+    await deps.weatherLocations.upsert(userId, { name: "Oslo", latitude: 59.9, longitude: 10.7 });
+    await deps.weatherLocations.setHome(userId, "Oslo");
+    const settings = await deps.settings.getOrCreate(userId);
+    await deps.settings.update(userId, {
+      proactivity: withWeatherLane(settings.proactivity, { enabled: true }),
+    });
+    const { deliverer, weatherReports } = captureDeliveries();
+
+    await runDueWork(deps, null, deliverer, now);
+    expect(weatherReports.map((r) => r.kind)).toEqual(["report"]);
+    expect(
+      parseWeatherLane((await deps.settings.getOrCreate(userId)).proactivity).lastReportDate,
+    ).toBe("2026-07-01");
+
+    // Same day → watermark suppresses a second send.
+    await runDueWork(deps, null, deliverer, now);
+    expect(weatherReports).toHaveLength(1);
+  });
+
+  it("skips the weather report (no send, no watermark) when no home is set", async () => {
+    const now = new Date("2026-07-01T05:00:00Z");
+    const deps = makeAgentDeps(makeFakeLlm([]), {}, new FakeClock(now), null, makeFakeWeather());
+    const { userId } = await provisionUser(deps, OWNER_ID);
+    const settings = await deps.settings.getOrCreate(userId);
+    await deps.settings.update(userId, {
+      proactivity: withWeatherLane(settings.proactivity, { enabled: true }),
+    });
+    const { deliverer, weatherReports } = captureDeliveries();
+
+    await runDueWork(deps, null, deliverer, now);
+    expect(weatherReports).toHaveLength(0);
+    // No watermark — setting a home later the same day still lets it fire.
+    expect(
+      parseWeatherLane((await deps.settings.getOrCreate(userId)).proactivity).lastReportDate,
+    ).toBeNull();
+  });
+
+  it("does not run the weather report when the weather client is unconfigured", async () => {
+    const now = new Date("2026-07-01T05:00:00Z");
+    const deps = makeAgentDeps(makeFakeLlm([]), {}, new FakeClock(now)); // weather = null
+    const { userId } = await provisionUser(deps, OWNER_ID);
+    await deps.weatherLocations.upsert(userId, { name: "Oslo", latitude: 59.9, longitude: 10.7 });
+    await deps.weatherLocations.setHome(userId, "Oslo");
+    const settings = await deps.settings.getOrCreate(userId);
+    await deps.settings.update(userId, {
+      proactivity: withWeatherLane(settings.proactivity, { enabled: true }),
+    });
+    const { deliverer, weatherReports } = captureDeliveries();
+
+    await runDueWork(deps, null, deliverer, now);
+    expect(weatherReports).toHaveLength(0);
   });
 
   it("leaves a budget-skipped run un-delivered so the day is still watermarked", async () => {

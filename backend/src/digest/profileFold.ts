@@ -1,3 +1,4 @@
+import { digestLanguageDirective, type Language } from "../i18n/index.js";
 import type { ChatMessage } from "../llm/provider.js";
 
 /**
@@ -18,6 +19,7 @@ export interface FeedbackLine {
 export function buildProfileFoldMessages(
   currentProfile: string,
   feedback: FeedbackLine[],
+  language: Language,
 ): ChatMessage[] {
   const lines = feedback.map((f) => {
     const target = f.videoLabel ? ` on "${f.videoLabel}"` : "";
@@ -33,7 +35,9 @@ export function buildProfileFoldMessages(
         "feedback into the profile: strengthen confirmed interests, add explicit dislikes " +
         '("keep" = the pick was right, "drop"/"wrong topic"/"too long" = it was not), and keep ' +
         "everything else. The profile is short, human-readable prose the user can inspect and " +
-        "edit — no headings, no JSON. Respond with ONLY the full revised profile text.",
+        `edit — no headings, no JSON. Respond with ONLY the full revised profile text. ${digestLanguageDirective(
+          language,
+        )}`,
     },
     {
       role: "user",

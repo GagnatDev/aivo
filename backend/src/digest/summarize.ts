@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { digestLanguageDirective, type Language } from "../i18n/index.js";
 import type { ChatMessage } from "../llm/provider.js";
 import { extractJsonObject } from "./llmJson.js";
 
@@ -38,6 +39,7 @@ export function buildStage2Messages(input: {
   transcript: string | null;
   /** Degraded mode: shorter summary to save output tokens. */
   brief: boolean;
+  language: Language;
 }): ChatMessage[] {
   const bullets = input.brief ? "exactly 1 short bullet" : "2-3 short bullets";
   const source = input.transcript
@@ -54,7 +56,8 @@ export function buildStage2Messages(input: {
         '{"decision": "pick" | "reject", "confidence": 0.0, ' +
         `"summary": [${bullets} of what the video covers], ` +
         '"why": "one line: why the user is seeing this, tied to their profile", ' +
-        '"reason": "only when rejecting: a short phrase for the rejected list"}.',
+        '"reason": "only when rejecting: a short phrase for the rejected list"}. ' +
+        digestLanguageDirective(input.language),
     },
     {
       role: "user",

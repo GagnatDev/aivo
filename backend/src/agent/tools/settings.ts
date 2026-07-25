@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LANGUAGES } from "../../i18n/index.js";
 import { OWNER_ONLY, parse, type AgentTool } from "./index.js";
 
 // Columns a non-owner could be permitted to edit (the rest are reserved). The
@@ -9,6 +10,7 @@ const SETTINGS_PATCH_KEYS = [
   "digest_cap",
   "model_tier",
   "persona_prompt",
+  "language",
 ] as const;
 
 const settingsArgs = z.object({
@@ -18,6 +20,7 @@ const settingsArgs = z.object({
   digest_cap: z.number().int().positive().optional(),
   model_tier: z.enum(["auto", "cheap", "premium"]).optional(),
   persona_prompt: z.string().nullable().optional(),
+  language: z.enum(LANGUAGES).optional(),
   member_editable_keys: z.array(z.enum(SETTINGS_PATCH_KEYS)).optional(),
 });
 
@@ -35,20 +38,30 @@ export const settingsTool: AgentTool = {
     "tier",
     "member",
     "editable",
+    "language",
+    "english",
+    "norwegian",
     "innstilling",
     "preferanse",
     "medlem",
     "redigerbar",
+    "språk",
+    "norsk",
+    "engelsk",
+    "bokmål",
   ],
   schema: {
     name: "settings",
     description:
       "Read or change the user's settings (persona_prompt addendum, timezone, digest_hour, " +
-      "digest_cap, model_tier). Call this when the user asks to see or change any of those " +
-      "('change my timezone', 'endre tidssonen min', 'update my digest hour') or asks what " +
-      "their current settings are. action 'get' returns the current settings; 'update' changes " +
-      "one or more of them. A non-owner may only change keys the owner has allow-listed. " +
-      "'set_member_editable_keys' replaces that allow-list and is OWNER-ONLY.",
+      "digest_cap, model_tier, language). Call this when the user asks to see or change any of " +
+      "those ('change my timezone', 'endre tidssonen min', 'update my digest hour', 'switch to " +
+      "English', 'snakk norsk til meg') or asks what their current settings are. 'language' is " +
+      "the preferred communication language: 'en' (English) or 'nb' (Norwegian Bokmål) — it " +
+      "sets both my reply language and every button/notification. action 'get' returns the " +
+      "current settings; 'update' changes one or more of them. A non-owner may only change keys " +
+      "the owner has allow-listed. 'set_member_editable_keys' replaces that allow-list and is " +
+      "OWNER-ONLY.",
     parameters: {
       type: "object",
       properties: {
@@ -58,6 +71,7 @@ export const settingsTool: AgentTool = {
         digest_cap: { type: "integer" },
         model_tier: { type: "string", enum: ["auto", "cheap", "premium"] },
         persona_prompt: { type: "string" },
+        language: { type: "string", enum: [...LANGUAGES] },
         member_editable_keys: {
           type: "array",
           items: { type: "string", enum: SETTINGS_PATCH_KEYS as unknown as string[] },
@@ -79,6 +93,7 @@ export const settingsTool: AgentTool = {
         digest_hour: row.digest_hour,
         digest_cap: row.digest_cap,
         model_tier: row.model_tier,
+        language: row.language,
         persona_prompt: row.persona_prompt,
       });
     }
@@ -104,6 +119,6 @@ export const settingsTool: AgentTool = {
     }
 
     const row = await deps.settings.update(ctx.userId, patch);
-    return `Settings updated. Current model_tier=${row.model_tier}, timezone=${row.timezone}.`;
+    return `Settings updated. Current model_tier=${row.model_tier}, timezone=${row.timezone}, language=${row.language}.`;
   },
 };
