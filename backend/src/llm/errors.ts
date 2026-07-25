@@ -14,8 +14,10 @@ import OpenAI from "openai";
  * - `rate_limit`: throttled (transient — retryable after a wait).
  * - `server`: the provider errored (5xx, or an unclassified request failure).
  * - `network`: never reached the provider (connection/timeout).
+ * - `aborted`: we cancelled the call ourselves (shutdown) — not a failure, and never
+ *   retried; the caller decides what to do with a turn it just abandoned.
  */
-export type LlmErrorKind = "auth" | "rate_limit" | "server" | "network";
+export type LlmErrorKind = "auth" | "rate_limit" | "server" | "network" | "aborted";
 
 /** A failed LLM provider call, tagged with the classified {@link LlmErrorKind}. */
 export class LlmProviderError extends Error {
@@ -77,6 +79,16 @@ function retryAfterMsFrom(headers: Headers | undefined): number | undefined {
  * broke" default) so no failure escapes the taxonomy.
  */
 export function toLlmProviderError(err: unknown): LlmProviderError {
+  // We aborted the request. Matched first: the SDK's abort error extends APIError (and a
+  // raw fetch abort is a DOMException named AbortError), so without this it would be
+  // classified as a `server` failure and retried — burning the shutdown window on calls
+  // whose signal is already aborted.
+  if (
+    err instanceof OpenAI.APIUserAbortError ||
+    (err instanceof Error && err.name === "AbortError")
+  ) {
+    return new LlmProviderError("aborted", "LLM call aborted", { cause: err });
+  }
   // A connection error never reached the provider — and it also extends APIError with a
   // `null` status, so it must be matched before the status-based checks below.
   if (err instanceof OpenAI.APIConnectionError) {

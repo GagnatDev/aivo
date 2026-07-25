@@ -31,6 +31,12 @@ export interface RunAgentInput {
   triggerMessageId: string;
   /** Skip the approval gate — set when resuming an already-approved turn. */
   bypassApprovalGate?: boolean;
+  /**
+   * Abandons the turn when it fires. The gateway passes its shutdown signal, so a
+   * SIGTERM mid-turn stops the loop between round-trips instead of killing the process
+   * with one in flight (see runToolLoop).
+   */
+  signal?: AbortSignal;
 }
 
 /** A turn that cleared pre-flight and is ready to run through the tool loop. */

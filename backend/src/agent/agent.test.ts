@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
 import { LlmProviderError } from "../llm/errors.js";
+import type { LlmProvider } from "../llm/provider.js";
 import { logger } from "../logger.js";
 import {
   makeFakeLlm,
@@ -396,6 +397,119 @@ describe("runAgent", () => {
 
     expect(result.reply).toBe("All done."); // no early-stop note
     expect(llm.calls).toHaveLength(2);
+  });
+});
+
+describe("turn cancellation", () => {
+  /** A fake LLM that aborts `controller` as soon as it has served call number `after`. */
+  function abortingLlm(script: Parameters<typeof makeFakeLlm>[0], controller: AbortController) {
+    const base = makeFakeLlm(script);
+    let served = 0;
+    return {
+      ...base,
+      async chat(req: Parameters<typeof base.chat>[0]) {
+        const result = await base.chat(req);
+        served += 1;
+        if (served === 1) controller.abort();
+        return result;
+      },
+    };
+  }
+
+  it("runs nothing when the signal is already aborted", async () => {
+    const llm = makeFakeLlm([textResult("should never run")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(llm.calls).toHaveLength(0);
+    expect(await deps.llmUsage.monthToDateCents(userId)).toBe(0);
+  });
+
+  it("abandons the turn mid-loop without executing the pending tool call", async () => {
+    const controller = new AbortController();
+    const llm = abortingLlm(
+      [
+        toolCallResult("memory", { action: "write", content: "likes hiking" }),
+        textResult("should never run"),
+      ],
+      controller,
+    );
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(llm.calls).toHaveLength(1); // no second round-trip
+    expect(await deps.memories.listActive(userId)).toHaveLength(0); // tool never ran
+  });
+
+  it("leaves the persisted history replayable after an abort", async () => {
+    const controller = new AbortController();
+    const llm = abortingLlm(
+      [toolCallResult("memory", { action: "list" }), textResult("should never run")],
+      controller,
+    );
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    // Every tool call the model made has an answer on record — an assistant row with
+    // unanswered tool_calls would make the next turn's message list invalid.
+    const stored = await deps.messages.listByConversation(conversationId);
+    const assistantCall = stored.find((m) => m.role === "assistant" && m.tool_calls?.length);
+    const answer = stored.find((m) => m.role === "tool");
+    expect(answer?.tool_call_id).toBe(assistantCall?.tool_calls?.[0]?.id);
+    expect(answer?.content).toMatch(/cancelled/i);
+  });
+
+  it("reports an aborted provider call as an abort, not a provider failure", async () => {
+    // The provider throws because we cancelled it (as the real SDK does on abort).
+    const controller = new AbortController();
+    const llm: LlmProvider = {
+      ...makeFakeLlm([]),
+      async chat() {
+        controller.abort();
+        throw new LlmProviderError("aborted", "LLM call aborted");
+      },
+    };
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(result.reply).not.toMatch(/couldn't reach the language model/i);
   });
 });
 

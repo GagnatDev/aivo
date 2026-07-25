@@ -115,14 +115,19 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
       // happens inside the retry wrapper so the policy can key on the taxonomy `kind`.
       const res = await withLlmRetries(async () => {
         try {
-          return await client.chat.completions.create({
-            model: req.model,
-            messages: req.messages.map(toOpenAiMessage),
-            ...(req.tools?.length
-              ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
-              : {}),
-            max_tokens: req.maxTokens,
-          });
+          return await client.chat.completions.create(
+            {
+              model: req.model,
+              messages: req.messages.map(toOpenAiMessage),
+              ...(req.tools?.length
+                ? { tools: req.tools.map(toOpenAiTool), tool_choice: "auto" as const }
+                : {}),
+              max_tokens: req.maxTokens,
+            },
+            // Cancels the in-flight HTTP request when the turn is abandoned (shutdown),
+            // instead of leaving a round-trip running against a turn nobody will read.
+            req.signal ? { signal: req.signal } : undefined,
+          );
         } catch (err) {
           throw toLlmProviderError(err);
         }
