@@ -216,8 +216,19 @@ describe("runAgent", () => {
 
     expect(result.reply).toBe("Here's what I found.");
     expect(llm.calls).toHaveLength(3);
-    // The final forced call has no tools, so the model must answer.
-    expect(llm.calls.at(-1)?.tools).toBeUndefined();
+    // The final forced call disables tools in-protocol — the definitions still travel
+    // with the request (the history is full of tool traffic), but `tool_choice: "none"`
+    // means the model must answer in text. Portable across OpenAI-compatible servers.
+    const forced = llm.calls.at(-1);
+    expect(forced?.toolChoice).toBe("none");
+    expect(forced?.tools?.length).toBeGreaterThan(0);
+    // The nudge rides as a `user` note, not a trailing `system` message (some chat
+    // templates reject a system role after tool traffic).
+    expect(forced?.messages.at(-1)?.role).toBe("user");
+    expect(forced?.messages.at(-1)?.content).toMatch(/do not call any tools/i);
+    expect(
+      forced?.messages.some((m) => m.role === "system" && /plain text/i.test(m.content ?? "")),
+    ).toBe(false);
   });
 
   it("forces an answer after the iteration cap with distinct tool calls", async () => {
@@ -324,7 +335,7 @@ describe("runAgent", () => {
     expect(result.reply).toContain("Here's what I have so far.");
     expect(result.reply).toMatch(/ble dyr/i); // the early-stop note
     expect(llm.calls).toHaveLength(3); // 2 tool round-trips + 1 forced answer
-    expect(llm.calls.at(-1)?.tools).toBeUndefined(); // forced call has tools disabled
+    expect(llm.calls.at(-1)?.toolChoice).toBe("none"); // forced call has tools disabled
   });
 
   it("does not stop a cheap multi-step turn just because a threshold is set", async () => {

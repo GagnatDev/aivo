@@ -19,6 +19,13 @@ export const TASK_TYPE = "chat";
 const TOOL_CALL_TRUNCATED_FEEDBACK =
   "Tool call not executed: it was cut off by the output token limit. " +
   "Make a shorter tool call (smaller arguments), or answer in plain text.";
+// The textual half of the forced final answer (see forceFinalAnswer): `tool_choice: "none"`
+// already forbids tools in-protocol, but a lax server can ignore it, so the intent is
+// restated in prose too. Sent as a `user` note rather than a trailing `system` message —
+// some chat templates reject a system role after tool traffic. Model-facing, so English.
+const FORCE_ANSWER_NUDGE =
+  "Answer the user now in plain text, using the information you already have. " +
+  "Do not call any tools.";
 
 /**
  * Pick the user-facing reply for a failed LLM call from its taxonomy `kind`, in the
@@ -318,6 +325,11 @@ export async function runToolLoop(
  * text from the context it already has. Used when the loop is stuck (repeated tool
  * calls) or hit the iteration cap, turning a dead-end into a useful reply. The nudge
  * is not persisted; the resulting text is returned for the caller to send + record.
+ *
+ * "Disabled" means `tool_choice: "none"` with the tool definitions still attached — the
+ * in-protocol way to say "no more tools", and portable across the OpenAI-compatible
+ * servers aivo targets (dropping `tools` from a history full of tool traffic, or bolting
+ * a `system` message onto the end of it, is what some of them choke on).
  */
 async function forceFinalAnswer(
   deps: AgentDeps,
@@ -328,19 +340,13 @@ async function forceFinalAnswer(
   log: Logger,
   stats: TurnStats,
 ): Promise<LoopResult> {
-  const nudged: ChatMessage[] = [
-    ...messages,
-    {
-      role: "system",
-      content:
-        "Answer the user now in plain text, using the information you already have. " +
-        "Do not call any tools.",
-    },
-  ];
+  const nudged: ChatMessage[] = [...messages, { role: "user", content: FORCE_ANSWER_NUDGE }];
   try {
     const result = await deps.llm.chat({
       model: params.model,
       messages: nudged,
+      tools: params.tools,
+      toolChoice: "none",
       maxTokens: params.maxTokens,
     });
     const record = await recordUsageAndAlert(
