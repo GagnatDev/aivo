@@ -1,9 +1,13 @@
 import type { AgentDeps } from "../agent/deps.js";
 import type { DigestOutcome, YoutubeIntegrations } from "../digest/pipeline.js";
 import { runDigest } from "../digest/pipeline.js";
-import { digestDue } from "../digest/due.js";
+import { digestDue, localDate } from "../digest/due.js";
 import { parseDigestLane, withDigestLane } from "../digest/proactivity.js";
 import type { ReminderRow } from "../storage/reminderRepository.js";
+import type { WeatherClient } from "../weather/client.js";
+import { weatherReportDue } from "../weather/due.js";
+import { parseWeatherLane, withWeatherLane } from "../weather/proactivity.js";
+import { runWeatherReport, type WeatherReportOutcome } from "../weather/report.js";
 import { logger } from "../logger.js";
 
 /**
@@ -24,10 +28,16 @@ export interface ReminderDeliverer {
   deliver(reminder: ReminderRow): Promise<void>;
 }
 
+/** How the daily weather report reaches the user — implemented by the Discord layer. */
+export interface WeatherReportDeliverer {
+  deliver(userId: string, outcome: WeatherReportOutcome): Promise<void>;
+}
+
 /** The scheduler's outbound channels, wired to Discord at the composition root. */
 export interface Deliverers {
   digest: DigestDeliverer;
   reminder: ReminderDeliverer;
+  weather: WeatherReportDeliverer;
 }
 
 /**
@@ -72,6 +82,12 @@ export async function runDueWork(
     logger.info({ userId: reminder.user_id, reminderId: reminder.id }, "reminder delivered");
   }
 
+  // Weather morning report (owner-scoped, like the digest, but independent of the
+  // YouTube lane and its OAuth config). Runs only when the forecast client is wired.
+  if (deps.weather) {
+    await runDueWeatherReport(deps, deps.weather, deliverers.weather, now);
+  }
+
   if (!yt) return;
 
   // The digest is owner-scoped; before the owner's first message there is no one to
@@ -107,4 +123,36 @@ export async function runDueWork(
     await deps.digests.markDelivered(outcome.digestId, now);
   }
   logger.info({ userId: owner.id, kind: outcome.kind }, "digest run finished");
+}
+
+/**
+ * Deliver the owner's morning weather report if it's due. Owner-scoped like the digest.
+ * Idempotent per local day via the weather lane's `last_report_date` watermark, written
+ * only after a successful send (a crash before it re-sends next tick — at-least-once). A
+ * `no_home` outcome delivers nothing and sets no watermark, so a home set later the same
+ * day still triggers the report; the chat-requested run flag is always cleared once
+ * consumed.
+ */
+async function runDueWeatherReport(
+  deps: AgentDeps,
+  weather: WeatherClient,
+  deliverer: WeatherReportDeliverer,
+  now: Date,
+): Promise<void> {
+  const owner = await deps.users.findOwner();
+  if (!owner) return;
+  const settings = await deps.settings.getOrCreate(owner.id);
+  const lane = parseWeatherLane(settings.proactivity);
+  if (!weatherReportDue({ now, timezone: settings.timezone, lane }).due) return;
+
+  const outcome = await runWeatherReport(deps, weather, owner.id, now);
+  if (outcome.kind !== "no_home") {
+    await deliverer.deliver(owner.id, outcome);
+  }
+  const patch: Parameters<typeof withWeatherLane>[1] = { runRequestedAt: null };
+  if (outcome.kind !== "no_home") patch.lastReportDate = localDate(now, settings.timezone);
+  await deps.settings.update(owner.id, {
+    proactivity: withWeatherLane(settings.proactivity, patch),
+  });
+  logger.info({ userId: owner.id, kind: outcome.kind }, "weather report finished");
 }

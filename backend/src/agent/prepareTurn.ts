@@ -1,3 +1,4 @@
+import { asLanguage, type Language, messages as catalog } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { ConfigError } from "../llm/errors.js";
 import type { ChatMessage, ToolSchema } from "../llm/provider.js";
@@ -65,6 +66,8 @@ export interface GatedTurn {
   kind: "gated";
   estimatedCostCents: number;
   approvalThresholdCents: number;
+  /** The user's language, so the gate prompt renders in it (built in agent.ts). */
+  language: Language;
 }
 
 /** A turn that can't run and short-circuits to a fixed reply (e.g. no model configured). */
@@ -128,6 +131,7 @@ export async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string>
  */
 export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promise<TurnPlan> {
   const settings = await deps.settings.getOrCreate(input.userId);
+  const language = asLanguage(settings.language);
   const requestedTier = resolveTier(settings.model_tier);
   const decision = await preCallCheck(deps, input.userId, requestedTier);
 
@@ -137,10 +141,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
   } catch (err) {
     if (err instanceof ConfigError) {
       logger.error({ err }, "no model configured");
-      return {
-        kind: "reply",
-        reply: "I have no model configured yet — ask the owner to set up the model/pricing config.",
-      };
+      return { kind: "reply", reply: catalog(language).errors.noModelConfigured };
     }
     throw err;
   }
@@ -188,6 +189,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
         kind: "gated",
         estimatedCostCents: estimatedCost,
         approvalThresholdCents: decision.approvalThresholdCents,
+        language,
       };
     }
   }
@@ -197,6 +199,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
     userId: input.userId,
     isOwner: input.isOwner,
     conversationId: input.conversationId,
+    language,
   };
 
   logger.debug(
@@ -228,7 +231,9 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
       decision.approvalThresholdCents != null
         ? decision.approvalThresholdCents * deps.config.turnCostCeilingMultiplier
         : null,
-    overBudgetNote: decision.overBudgetNote,
+    // `decision.overBudgetNote` is the over-ceiling signal (its text is not shown);
+    // the displayed note is rendered in the user's language from the i18n catalog.
+    overBudgetNote: decision.overBudgetNote ? catalog(language).budget.overBudgetNote : undefined,
   };
 }
 

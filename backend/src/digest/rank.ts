@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { digestLanguageDirective, type Language } from "../i18n/index.js";
 import type { ChatMessage } from "../llm/provider.js";
 import { extractJsonArray } from "./llmJson.js";
 
@@ -34,6 +35,7 @@ export const STAGE1_FALLBACK_SCORE = 0.5;
 export function buildStage1Messages(
   profileBody: string,
   candidates: Stage1Candidate[],
+  language: Language,
 ): ChatMessage[] {
   const list = candidates.map((c) => ({
     id: c.id,
@@ -52,7 +54,7 @@ export function buildStage1Messages(
         '[{"id": "...", "score": 0.0, "reason": "..."}]. ' +
         '"reason" is a short phrase (max ~8 words) explaining the score from the profile\'s ' +
         'perspective, e.g. "news recap, you said no" — it is shown to the user for ' +
-        "low-scoring videos.",
+        `low-scoring videos. ${digestLanguageDirective(language)}`,
     },
     {
       role: "user",

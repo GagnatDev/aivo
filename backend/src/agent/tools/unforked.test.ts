@@ -19,7 +19,7 @@ const tool = (): AgentTool => {
 async function ctxFor(unforked: UnforkedClient | null): Promise<ToolContext> {
   const deps = makeAgentDeps(makeFakeLlm([]), {}, systemClock, unforked);
   const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 const ctxWith = (options: FakeUnforkedOptions = {}) => ctxFor(makeFakeUnforked(options));
@@ -206,7 +206,7 @@ describe("unforked tool", () => {
       const { userId, isOwner, conversationId } = await provisionUser(deps, "someone-else");
       const out = await tool().execute(
         { action: "add_shopping_items", items: [{ name: "melk" }] },
-        { deps, userId, isOwner, conversationId },
+        { deps, userId, isOwner, conversationId, language: "nb" },
       );
       expect(out).toBe("Refused: only the owner can do that.");
       expect(fake.calls).toHaveLength(0);

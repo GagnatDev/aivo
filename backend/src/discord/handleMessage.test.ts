@@ -130,7 +130,7 @@ describe("handleIncomingMessage — voice messages", () => {
       }),
     );
 
-    expect(result.reply).toMatch(/voice note is a bit long/i);
+    expect(result.reply).toMatch(/talemeldingen er litt lang/i);
     const stored = await deps.messages.listByConversation(result.conversationId);
     // Only the placeholder inbound is stored; no assistant/agent turn ran.
     expect(stored).toHaveLength(1);
@@ -143,7 +143,7 @@ describe("handleIncomingMessage — voice messages", () => {
       deps,
       incoming({ content: "", voice: voiceAttachment }),
     );
-    expect(result.reply).toMatch(/couldn't make out/i);
+    expect(result.reply).toMatch(/fikk ikke tak i/i);
     const stored = await deps.messages.listByConversation(result.conversationId);
     expect(stored).toHaveLength(1);
   });

@@ -42,7 +42,7 @@ describe("resolveFeedbackClick", () => {
       clickerDiscordId: OWNER_ID,
       clickerDisplayName: "Ann",
     });
-    expect(result?.ack).toMatch(/more like this/i);
+    expect(result?.ack).toMatch(/mer av dette/i);
     const rows = await deps.feedback.listUnapplied(userId);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ signal: "keep", digest_item_id: itemId });
@@ -73,6 +73,6 @@ describe("resolveFeedbackClick", () => {
       clickerDiscordId: OWNER_ID,
       clickerDisplayName: null,
     });
-    expect(result?.ack).toMatch(/gone/);
+    expect(result?.ack).toMatch(/borte/);
   });
 });

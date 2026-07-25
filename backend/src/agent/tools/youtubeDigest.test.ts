@@ -17,7 +17,7 @@ const tool = (): AgentTool => {
 async function ctxFor(discordId: string): Promise<ToolContext> {
   const deps = makeAgentDeps(undefined, {}, new FakeClock(NOW));
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 async function lane(ctx: ToolContext) {

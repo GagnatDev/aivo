@@ -35,22 +35,28 @@ const digestOutcome = (
 
 describe("digestHeader", () => {
   it("announces the pick count and overflow", () => {
-    const header = digestHeader(digestOutcome({ morePicksCount: 3 }));
+    const header = digestHeader(digestOutcome({ morePicksCount: 3 }), "en");
     expect(header).toMatch(/2026-07-01/);
     expect(header).toMatch(/1 pick\b/);
     expect(header).toMatch(/3 more matched/);
   });
 
   it("celebrates an empty digest and surfaces budget alerts", () => {
-    const header = digestHeader(digestOutcome({ picks: [], alertPct: 80 }));
+    const header = digestHeader(digestOutcome({ picks: [], alertPct: 80 }), "en");
     expect(header).toMatch(/nothing new/);
     expect(header).toMatch(/80%/);
+  });
+
+  it("renders the header in Norwegian", () => {
+    const header = digestHeader(digestOutcome({ morePicksCount: 3 }), "nb");
+    expect(header).toMatch(/1 treff/);
+    expect(header).toMatch(/vise flere treff/);
   });
 });
 
 describe("pickEmbed", () => {
   it("carries rank, link, TL;DW bullets, why-line, duration, and thumbnail", () => {
-    const embed = pickEmbed(pick).toJSON();
+    const embed = pickEmbed(pick, "en").toJSON();
     expect(embed.title).toBe("1. Dovetails by hand");
     expect(embed.url).toBe(pick.url);
     expect(embed.description).toContain("• half-blind dovetails");
@@ -62,7 +68,7 @@ describe("pickEmbed", () => {
 
 describe("feedbackButtons", () => {
   it("attaches the four feedback signals keyed to the digest item", () => {
-    const row = feedbackButtons("item-1").toJSON();
+    const row = feedbackButtons("item-1", "en").toJSON();
     const ids = row.components.map((c) => "custom_id" in c && c.custom_id);
     expect(ids).toEqual([
       "fb:keep:item-1",
@@ -75,9 +81,10 @@ describe("feedbackButtons", () => {
 
 describe("rejectedListNote", () => {
   it("lists each reject with its one-line reason", () => {
-    const note = rejectedListNote([
-      { title: "Weekly news recap", channelTitle: "News", reason: "news recap, you said no" },
-    ]);
+    const note = rejectedListNote(
+      [{ title: "Weekly news recap", channelTitle: "News", reason: "news recap, you said no" }],
+      "en",
+    );
     expect(note).toMatch(/Weekly news recap \(News\) — skipped: news recap, you said no/);
   });
 });

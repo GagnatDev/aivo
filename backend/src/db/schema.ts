@@ -160,6 +160,7 @@ export interface Settings {
   digest_cap: Generated<number>;
   digest_hour: Generated<number>;
   digest_interval_days: Generated<number>;
+  language: Generated<string>;
   model_tier: Generated<string>;
   persona_prompt: string | null;
   proactivity: ColumnType<Record<string, unknown>, string | undefined, string>;
@@ -212,6 +213,19 @@ export interface Videos {
   why: string | null;
 }
 
+export interface WeatherLocations {
+  created_at: Generated<Timestamp>;
+  display_name: string | null;
+  id: Generated<string>;
+  is_home: Generated<boolean>;
+  is_shared: Generated<boolean>;
+  latitude: number;
+  longitude: number;
+  name: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
 export interface YoutubeAccount {
   connected_by_user_id: string | null;
   created_at: Generated<Timestamp>;
@@ -253,6 +267,7 @@ export interface DB {
   unforked_connection: UnforkedConnection;
   users: Users;
   videos: Videos;
+  weather_locations: WeatherLocations;
   youtube_account: YoutubeAccount;
   youtube_channels: YoutubeChannels;
 }

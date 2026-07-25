@@ -1,6 +1,7 @@
 import { runAgent } from "../agent/agent.js";
 import type { AgentDeps } from "../agent/deps.js";
 import { transcribeVoiceMessage, type VoiceAttachment } from "../agent/transcription.js";
+import { asLanguage, DEFAULT_LANGUAGE, type Language } from "../i18n/index.js";
 
 /**
  * The dependencies the message core needs, injected so the core stays free of
@@ -142,6 +143,26 @@ export async function handleIncomingMessage(
     alertPct,
     ...(result.aborted ? { aborted: true } : {}),
   };
+}
+
+/**
+ * Best-effort preferred language for a Discord user, for the verbatim notes the gateway
+ * appends around an agent turn (budget alert, offline ack, approval buttons, catch-all
+ * error replies). Falls back to the default on a missing user or any error — these are
+ * decorations on a reply, never worth failing the send over.
+ */
+export async function languageForDiscordUser(
+  deps: HandleMessageDeps,
+  discordUserId: string,
+): Promise<Language> {
+  try {
+    const user = await deps.users.findByDiscordId(discordUserId);
+    if (!user) return DEFAULT_LANGUAGE;
+    const settings = await deps.settings.getOrCreate(user.id);
+    return asLanguage(settings.language);
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
 }
 
 /** Persist the assistant reply after it has been sent to Discord. */

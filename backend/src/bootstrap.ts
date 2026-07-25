@@ -10,6 +10,7 @@ import type { YoutubeIntegrations } from "./digest/pipeline.js";
 import { createDiscordGateway, type DiscordGateway } from "./discord/client.js";
 import { createDigestDeliverer } from "./discord/digestDelivery.js";
 import { createReminderDeliverer } from "./discord/reminderDelivery.js";
+import { createWeatherReportDeliverer } from "./discord/weatherDelivery.js";
 import { createOpenAiProvider } from "./llm/openaiProvider.js";
 import { startScheduler } from "./scheduler/cron.js";
 import { BudgetConfigRepository } from "./storage/budgetConfigRepository.js";
@@ -29,9 +30,12 @@ import { SettingsRepository } from "./storage/settingsRepository.js";
 import { UnforkedConnectionRepository } from "./storage/unforkedConnectionRepository.js";
 import { UserRepository } from "./storage/userRepository.js";
 import { VideoRepository } from "./storage/videoRepository.js";
+import { WeatherLocationRepository } from "./storage/weatherLocationRepository.js";
 import { YoutubeAccountRepository } from "./storage/youtubeAccountRepository.js";
 import { YoutubeChannelRepository } from "./storage/youtubeChannelRepository.js";
 import { createUnforkedClient } from "./unforked/client.js";
+import { createWeatherClient } from "./weather/client.js";
+import { createGeocoder } from "./weather/geocoder.js";
 import { createYoutubeDataApi } from "./youtube/api.js";
 import { createWatchPageTranscriptSource } from "./youtube/transcripts.js";
 import { loadEnv, type Env } from "./config/env.js";
@@ -83,6 +87,19 @@ export async function startServer(connectionString?: string): Promise<StartedSer
       })
     : null;
 
+  // Weather (MET Norway / yr.no) + geocoding (OSM Nominatim): keyless, so always wired.
+  // Both send the same WEATHER_USER_AGENT their terms require.
+  const weather = createWeatherClient({
+    baseUrl: env.WEATHER_BASE_URL,
+    userAgent: env.WEATHER_USER_AGENT,
+    timeoutMs: env.WEATHER_TIMEOUT_MS,
+  });
+  const geocoder = createGeocoder({
+    baseUrl: env.GEOCODER_BASE_URL,
+    userAgent: env.WEATHER_USER_AGENT,
+    timeoutMs: env.WEATHER_TIMEOUT_MS,
+  });
+
   const deps: AgentDeps = {
     users: new UserRepository(db),
     conversations: new ConversationRepository(db),
@@ -102,6 +119,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     digests: new DigestRepository(db),
     digestItems: new DigestItemRepository(db),
     feedback: new FeedbackRepository(db),
+    weatherLocations: new WeatherLocationRepository(db),
     llm: createOpenAiProvider({
       apiKey: env.LLM_API_KEY,
       baseURL: env.LLM_BASE_URL,
@@ -109,6 +127,8 @@ export async function startServer(connectionString?: string): Promise<StartedSer
       maxRetries: env.LLM_MAX_RETRIES,
     }),
     unforked,
+    weather,
+    geocoder,
     clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
     config: {
@@ -200,6 +220,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   const scheduler = startScheduler(deps, buildYoutubeIntegrations(env), {
     digest: createDigestDeliverer(gateway.client, deps, discordConfig),
     reminder: createReminderDeliverer(gateway.client, deps, discordConfig),
+    weather: createWeatherReportDeliverer(gateway.client, deps, discordConfig),
   });
 
   registerShutdown(server, pool, gateway, () => void scheduler.stop());

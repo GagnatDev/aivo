@@ -110,6 +110,19 @@ const EnvSchema = z.object({
   // confabulating an explanation to the owner.
   UNFORKED_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
+  // Weather (MET Norway / yr.no forecasts) + geocoding (OpenStreetMap Nominatim). Both
+  // are free and keyless, but their terms of service require a descriptive User-Agent
+  // that identifies the app and a contact. WEATHER_USER_AGENT is that string — the
+  // default keeps local/dev working, but set a real contact in production. The base URLs
+  // are overridable (e.g. a self-hosted mirror). The weather capability is on whenever
+  // WEATHER_USER_AGENT resolves, which — given the default — is always.
+  WEATHER_USER_AGENT: z.string().min(1).default("aivo/1.0 (+https://github.com/GagnatDev/aivo)"),
+  WEATHER_BASE_URL: z.string().url().default("https://api.met.no/weatherapi/locationforecast/2.0"),
+  GEOCODER_BASE_URL: z.string().url().default("https://nominatim.openstreetmap.org"),
+  // Per-request timeout (ms) for both the forecast and geocoder calls, so a wedged
+  // upstream fails fast with an honest error instead of hanging the agent turn.
+  WEATHER_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+
   // Dashboard auth. Aivo sits behind the homectl-auth-proxy sidecar
   // (homectl-auth docs/sidecar/integration.md): all OAuth config (PUBLIC_AUTH_URL,
   // AUTH_CLIENT_ID/SECRET, COOKIE_KEY, ...) lives on the *sidecar* container, not
