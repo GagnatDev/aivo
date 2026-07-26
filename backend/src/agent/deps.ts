@@ -22,6 +22,7 @@ import type { VideoRepository } from "../storage/videoRepository.js";
 import type { WeatherLocationRepository } from "../storage/weatherLocationRepository.js";
 import type { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
 import type { YoutubeChannelRepository } from "../storage/youtubeChannelRepository.js";
+import type { TranscriptSource } from "../youtube/transcripts.js";
 
 /**
  * The agent-relevant config knobs, populated once from `loadEnv()` at the composition
@@ -96,6 +97,12 @@ export interface AgentDeps {
   /** OSM Nominatim geocoder that resolves place names to coordinates for the weather
    * tool. Null follows the same rule as {@link weather}. */
   geocoder: Geocoder | null;
+  /**
+   * YouTube caption-track transcript source for the on-demand `youtube_summary` tool —
+   * the same watch-page scraper the digest's stage 2 uses. Keyless (no OAuth, unlike
+   * the Data API), so it's always wired in prod; tests inject a fake.
+   */
+  transcripts: TranscriptSource;
   /** Reads "now" for time-dependent business logic (rollover, expiry, staleness). */
   clock: Clock;
   /** Discord id of the owner; flags is_owner on JIT provisioning. */

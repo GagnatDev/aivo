@@ -1,6 +1,6 @@
 import { loadBudgetSnapshot, preCallCheck, recordUsageAndAlert } from "../agent/budget.js";
 import type { AgentDeps } from "../agent/deps.js";
-import { resolveModel } from "../agent/prepareTurn.js";
+import { resolveModel } from "../agent/modelSelection.js";
 import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import type { VideoRow } from "../storage/videoRepository.js";

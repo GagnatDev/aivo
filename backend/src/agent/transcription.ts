@@ -45,7 +45,7 @@ async function fetchBytes(url: string): Promise<Buffer> {
 /**
  * Resolve the audio-capable model for a tier, falling back to the other tier so a single
  * configured audio model still works. Returns null when no audio model is configured at
- * all (the caller reports it as `unavailable`). Mirrors prepareTurn.ts#resolveModel, but
+ * all (the caller reports it as `unavailable`). Mirrors modelSelection.ts#resolveModel, but
  * for the `audio` capability rather than `chat`.
  */
 async function resolveAudioModel(
