@@ -1,4 +1,11 @@
-import { Client, Events, GatewayIntentBits, type Interaction, type Message } from "discord.js";
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+  type Interaction,
+  type Message,
+} from "discord.js";
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
@@ -29,21 +36,27 @@ export interface DiscordGateway {
 }
 
 /**
- * Wire the discord.js gateway to the message core. On each guild message we
- * JIT-provision the user, persist the inbound message, reply with the ping-pong
- * stub, and persist the assistant reply linked to the sent message. Messages from
- * bots or from outside the configured guild are ignored. On connect we also catch
- * up on anything sent while the process was offline (see discord/catchup.ts).
- * Turns are serialized per conversation through a shared {@link TurnQueue} so two
- * quick messages (or a live message racing catch-up) can't interleave.
+ * Wire the discord.js gateway to the message core. On each guild or DM message we
+ * JIT-provision the user, persist the inbound message, run the agent, and persist
+ * the assistant reply linked to the sent message. Messages from bots, strangers'
+ * DMs, or outside the configured guild are ignored. On connect we also catch up on
+ * anything sent in guild channels while the process was offline (see
+ * discord/catchup.ts). Turns are serialized per conversation through a shared
+ * {@link TurnQueue} so two quick messages (or a live message racing catch-up)
+ * can't interleave.
+ *
+ * DMs need `DirectMessages` plus `Partials.Channel`: uncached DM channels otherwise
+ * never emit `MessageCreate` (discord.js guide — Partials / Intents).
  */
 export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig): DiscordGateway {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent,
     ],
+    partials: [Partials.Channel],
   });
   const turns = new TurnQueue();
   // Aborted by `destroy()`, i.e. by the process's graceful shutdown. Turns in flight
@@ -90,7 +103,7 @@ async function onMessage(
   turns: TurnQueue,
   signal: AbortSignal,
 ): Promise<void> {
-  const meta = await resolveMessageMeta(message);
+  const meta = await resolveMessageMeta(message, cfg);
   if (!shouldRespond(meta, cfg)) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
