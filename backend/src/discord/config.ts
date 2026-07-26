@@ -8,9 +8,11 @@
 export interface DiscordConfig {
   /** Bot token used to log the gateway in. `DISCORD_BOT_TOKEN`. */
   botToken: string;
-  /** The single guild Aivo serves; messages from other guilds are ignored. `DISCORD_GUILD_ID`. */
+  /** The single guild Aivo serves; messages from other guilds are ignored. DMs are
+   * answered only when the author is a member of this guild. `DISCORD_GUILD_ID`. */
   guildId: string;
-  /** In this channel Aivo answers everything; elsewhere only on mention/reply. `DISCORD_HOME_CHANNEL_ID`. */
+  /** In this channel Aivo answers everything; elsewhere in the guild only on
+   * mention/reply. DMs are always open (for home-guild members). `DISCORD_HOME_CHANNEL_ID`. */
   homeChannelId: string;
   /** The #youtube channel: digest delivery + feedback; Aivo answers everything here
    * too. Null until configured — the digest then falls back to the home channel.

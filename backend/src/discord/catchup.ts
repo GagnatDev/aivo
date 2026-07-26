@@ -75,7 +75,7 @@ async function catchUpChannel(
     // Commands are immediate instructions — a missed one is stale, so don't replay it
     // (and never send a command through the agent loop).
     if (isCommand(message.content)) continue;
-    const meta = await resolveMessageMeta(message);
+    const meta = await resolveMessageMeta(message, cfg);
     if (!shouldRespond(meta, cfg)) continue;
     await turns.run(turnKey(message.author.id, message.channelId), () =>
       processAndReply(deps, message, cfg, {

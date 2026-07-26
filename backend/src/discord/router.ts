@@ -69,6 +69,12 @@ export interface MessageMeta {
   mentionsMe: boolean;
   /** True when the message is a reply to one of Aivo's own messages. */
   referencedMessageAuthorIsMe: boolean;
+  /**
+   * True when the author is a member of the configured home guild. Guild messages
+   * from that guild are trivially true; for DMs this is resolved via a membership
+   * fetch so strangers can't burn budget by messaging the bot privately.
+   */
+  authorInHomeGuild: boolean;
 }
 
 async function isReplyToAivo(message: Message): Promise<boolean> {
@@ -84,30 +90,55 @@ async function isReplyToAivo(message: Message): Promise<boolean> {
 
 /**
  * Extract the routing facts from a discord.js message, performing the async
- * referenced-message fetch. This is the only transport-coupled part of the routing
- * decision; the policy in {@link shouldRespond} runs on the plain result.
+ * referenced-message fetch (and, for DMs, a home-guild membership check). This is
+ * the only transport-coupled part of the routing decision; the policy in
+ * {@link shouldRespond} runs on the plain result.
  */
-export async function resolveMessageMeta(message: Message): Promise<MessageMeta> {
+export async function resolveMessageMeta(
+  message: Message,
+  cfg: DiscordConfig,
+): Promise<MessageMeta> {
   const me = message.client.user;
+  const guildId = message.guildId;
   return {
     isBot: message.author.bot,
-    guildId: message.guildId,
+    guildId,
     channelId: message.channelId,
     mentionsMe: me ? message.mentions.has(me) : false,
     referencedMessageAuthorIsMe: await isReplyToAivo(message),
+    authorInHomeGuild:
+      guildId === cfg.guildId ||
+      (guildId === null && (await isHomeGuildMember(message, cfg.guildId))),
   };
 }
 
+/** True when `userId` is currently a member of the configured home guild. */
+async function isHomeGuildMember(message: Message, homeGuildId: string): Promise<boolean> {
+  try {
+    const guild = await message.client.guilds.fetch(homeGuildId);
+    await guild.members.fetch(message.author.id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Whether Aivo should reply to a message. Bots and other guilds are ignored. In
- * the home channel and the #youtube channel (digest + feedback) Aivo answers
- * everything; elsewhere only when mentioned or when the message replies to one of
+ * Whether Aivo should reply to a message. Bots are ignored. Direct messages from
+ * home-guild members are always answered (private 1:1 with the bot — no mention
+ * required). Guild traffic outside the configured guild is ignored. In the home
+ * channel and the #youtube channel (digest + feedback) Aivo answers everything;
+ * elsewhere in the guild only when mentioned or when the message replies to one of
  * Aivo's own messages. A pure function of the normalized {@link MessageMeta}, shared
  * by the live gateway (discord/client.ts) and the offline catch-up
  * (discord/catchup.ts) so both apply identical rules.
  */
 export function shouldRespond(meta: MessageMeta, cfg: DiscordConfig): boolean {
   if (meta.isBot) return false;
+
+  // DMs: open channel for home-guild members; strangers are dropped.
+  if (meta.guildId === null) return meta.authorInHomeGuild;
+
   if (meta.guildId !== cfg.guildId) return false;
 
   const openChannel =
