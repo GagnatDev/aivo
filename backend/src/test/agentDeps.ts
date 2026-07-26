@@ -2,6 +2,7 @@ import type { LlmProvider } from "../llm/provider.js";
 import type { UnforkedClient } from "../unforked/client.js";
 import type { WeatherClient } from "../weather/client.js";
 import type { Geocoder } from "../weather/geocoder.js";
+import type { TranscriptSource } from "../youtube/transcripts.js";
 import type { AgentConfig, AgentDeps } from "../agent/deps.js";
 import { systemClock, type Clock } from "../agent/clock.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
@@ -78,6 +79,9 @@ export function makeAgentDeps(
   unforked: UnforkedClient | null = null,
   weather: WeatherClient | null = null,
   geocoder: Geocoder | null = null,
+  // "No captions anywhere" by default; tests that need transcripts pass a fake
+  // (e.g. makeFakeYoutube(...).transcripts).
+  transcripts: TranscriptSource = { fetchTranscript: async () => null },
 ): AgentDeps {
   const db = testDb();
   return {
@@ -104,6 +108,7 @@ export function makeAgentDeps(
     unforked,
     weather,
     geocoder,
+    transcripts,
     clock,
     ownerDiscordUserId: OWNER_ID,
     config: { ...TEST_AGENT_CONFIG, ...config },

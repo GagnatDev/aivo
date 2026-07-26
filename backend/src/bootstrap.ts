@@ -37,7 +37,7 @@ import { createUnforkedClient } from "./unforked/client.js";
 import { createWeatherClient } from "./weather/client.js";
 import { createGeocoder } from "./weather/geocoder.js";
 import { createYoutubeDataApi } from "./youtube/api.js";
-import { createWatchPageTranscriptSource } from "./youtube/transcripts.js";
+import { createWatchPageTranscriptSource, type TranscriptSource } from "./youtube/transcripts.js";
 import { loadEnv, type Env } from "./config/env.js";
 import type { DiscordConfig } from "./discord/config.js";
 import { logger } from "./logger.js";
@@ -49,7 +49,10 @@ export interface StartedServer {
 }
 
 /** The digest's YouTube integrations, or null until the OAuth secrets are configured. */
-function buildYoutubeIntegrations(env: Env): YoutubeIntegrations | null {
+function buildYoutubeIntegrations(
+  env: Env,
+  transcripts: TranscriptSource,
+): YoutubeIntegrations | null {
   if (!env.YOUTUBE_OAUTH_CLIENT_ID || !env.YOUTUBE_OAUTH_CLIENT_SECRET) return null;
   if (!env.YOUTUBE_OAUTH_REFRESH_TOKEN) return null;
   return {
@@ -58,7 +61,7 @@ function buildYoutubeIntegrations(env: Env): YoutubeIntegrations | null {
       clientSecret: env.YOUTUBE_OAUTH_CLIENT_SECRET,
       refreshToken: env.YOUTUBE_OAUTH_REFRESH_TOKEN,
     }),
-    transcripts: createWatchPageTranscriptSource(),
+    transcripts,
   };
 }
 
@@ -100,6 +103,10 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     timeoutMs: env.WEATHER_TIMEOUT_MS,
   });
 
+  // One transcript scraper serves both the agent's youtube_summary tool and the
+  // digest's stage 2 (keyless — no OAuth needed, unlike the Data API below).
+  const transcripts = createWatchPageTranscriptSource();
+
   const deps: AgentDeps = {
     users: new UserRepository(db),
     conversations: new ConversationRepository(db),
@@ -129,6 +136,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     unforked,
     weather,
     geocoder,
+    transcripts,
     clock: systemClock,
     ownerDiscordUserId: env.OWNER_DISCORD_USER_ID,
     config: {
@@ -217,7 +225,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
 
   // Proactive work: the in-process scheduler polls every minute for due digests and
   // reminders and delivers them through the gateway (docs/technical-overview.md).
-  const scheduler = startScheduler(deps, buildYoutubeIntegrations(env), {
+  const scheduler = startScheduler(deps, buildYoutubeIntegrations(env, transcripts), {
     digest: createDigestDeliverer(gateway.client, deps, discordConfig),
     reminder: createReminderDeliverer(gateway.client, deps, discordConfig),
     weather: createWeatherReportDeliverer(gateway.client, deps, discordConfig),

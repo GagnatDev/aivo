@@ -38,6 +38,7 @@ describe("prepareTurn", () => {
       "unforked",
       "weather",
       "youtube_digest",
+      "youtube_summary",
     ]);
   });
 
