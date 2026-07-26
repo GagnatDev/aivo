@@ -33,6 +33,8 @@ describe("isRetryableLlmError", () => {
     expect(isRetryableLlmError(new LlmProviderError("server", "500"))).toBe(true);
     expect(isRetryableLlmError(new LlmProviderError("network", "offline"))).toBe(true);
     expect(isRetryableLlmError(new LlmProviderError("auth", "401"))).toBe(false);
+    // We cancelled it — retrying would just abort again against a dead signal.
+    expect(isRetryableLlmError(new LlmProviderError("aborted", "cancelled"))).toBe(false);
     expect(isRetryableLlmError(new Error("plain"))).toBe(false);
   });
 });

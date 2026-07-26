@@ -1,9 +1,11 @@
 import { languageDirective } from "../i18n/index.js";
+import { logger } from "../logger.js";
 import type { ChatMessage } from "../llm/provider.js";
 import { estimateTokens } from "../llm/tokens.js";
 import type { MessageRow } from "../storage/messageRepository.js";
 import type { SettingsRow } from "../storage/settingsRepository.js";
 import type { AgentDeps } from "./deps.js";
+import { buildMemoryBlock } from "./memoryContext.js";
 
 /**
  * The base persona + operating rules. Concise, dry, direct — a competent chief of
@@ -81,7 +83,8 @@ export interface BuildContextInput {
    * backstop so a long run of tiny messages can't blow up per-call latency/prompt size.
    */
   historyLimit: number;
-  /** Max remembered facts to inject (pinned first, then newest); the rest stay
+  /** Max remembered facts to inject (pinned first, then newest — or, once the store
+   * overflows this cap, the most relevant; see memoryContext.ts). The rest stay
    * reachable via the memory tool. Bounds per-call prompt growth. */
   memoryLimit: number;
 }
@@ -185,7 +188,9 @@ function dropLeadingOrphanToolResults(messages: ChatMessage[]): ChatMessage[] {
  * Scaleway) is a strict token-prefix match, so the prompt is laid out
  * most-stable-first — persona (changes only on config edits), then memories (mutate
  * as facts are added), then the current time (changes every minute, so it would
- * invalidate everything after it on every call if it sat any earlier).
+ * invalidate everything after it on every call if it sat any earlier). The memory block
+ * only becomes turn-dependent once the store outgrows the inject cap, which is when
+ * picking the right facts is worth more than the cached prefix (see memoryContext.ts).
  */
 export async function buildContext(
   deps: AgentDeps,
@@ -203,19 +208,36 @@ export async function buildContext(
   }
   messages.push({ role: "system", content: system });
 
-  // listActive is newest-first; pin-prioritize, then cap. Memories beyond the cap
-  // remain reachable on demand via the memory tool (list/search), so this bounds
-  // the per-call prompt without dropping recall.
+  // The replayed window is built first because the memory block is ranked against the
+  // latest user message when the store overflows the cap (see memoryContext.ts); it is
+  // still appended after the system messages below.
+  const history = await deps.messages.listByConversation(input.conversationId);
+  const replayable = history.map(toReplayMessage).filter((m): m is ChatMessage => m !== null);
+  const windowed = trimToTokenBudget(replayable, input.historyTokenBudget, input.historyLimit);
+  const replayed = dropLeadingOrphanToolResults(windowed);
+
+  // Memories beyond the cap stay reachable on demand via the memory tool (list/search),
+  // so this bounds the per-call prompt without dropping recall — and the block says so
+  // when it is holding anything back.
   const memories = await deps.memories.listActive(input.userId);
-  if (memories.length) {
-    const ordered = [...memories].sort((a, b) => Number(b.pinned) - Number(a.pinned));
-    const lines = ordered
-      .slice(0, input.memoryLimit)
-      .map((m) => `- ${m.category ? `[${m.category}] ` : ""}${m.content}`);
-    messages.push({
-      role: "system",
-      content: `What you remember about this user:\n${lines.join("\n")}`,
-    });
+  const injection = buildMemoryBlock(memories, {
+    limit: input.memoryLimit,
+    queryText: latestUserText(replayed),
+  });
+  if (injection.block) messages.push({ role: "system", content: injection.block });
+  if (injection.hiddenCount > 0) {
+    // The cap is now shaping what the model knows. Logged per turn so the point at which
+    // this store outgrew prompt-stuffing shows up in production output rather than in an
+    // anecdote about a forgotten fact (issue #62).
+    logger.info(
+      {
+        userId: input.userId,
+        activeMemories: memories.length,
+        injected: memories.length - injection.hiddenCount,
+        limit: input.memoryLimit,
+      },
+      "memory inject cap exceeded; injecting the relevance-ranked subset",
+    );
   }
 
   // Ground relative time ("in 20 minutes", "tomorrow at 5") — without this line the
@@ -226,12 +248,18 @@ export async function buildContext(
     content: `Current date/time: ${currentTimeLine(deps.clock.now(), input.settings.timezone)}`,
   });
 
-  const history = await deps.messages.listByConversation(input.conversationId);
-  const replayable = history.map(toReplayMessage).filter((m): m is ChatMessage => m !== null);
-  const windowed = trimToTokenBudget(replayable, input.historyTokenBudget, input.historyLimit);
-  for (const m of dropLeadingOrphanToolResults(windowed)) {
+  for (const m of replayed) {
     messages.push(m);
   }
 
   return messages;
+}
+
+/** The newest replayed user message, which is what the current turn is about. */
+function latestUserText(replayed: ChatMessage[]): string {
+  for (let i = replayed.length - 1; i >= 0; i--) {
+    const m = replayed[i];
+    if (m?.role === "user") return m.content ?? "";
+  }
+  return "";
 }

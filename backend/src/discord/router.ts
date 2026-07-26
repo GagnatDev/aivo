@@ -8,6 +8,7 @@ import {
 import { resumeApprovedAgent } from "../agent/agent.js";
 import type { VoiceAttachment } from "../agent/transcription.js";
 import { type Language, messages } from "../i18n/index.js";
+import { logger } from "../logger.js";
 import type { DiscordConfig } from "./config.js";
 import {
   handleIncomingMessage,
@@ -130,6 +131,12 @@ export interface ProcessOptions {
    * as digest feedback.
    */
   meta?: MessageMeta;
+  /**
+   * Abandons the turn when it fires (the gateway's shutdown signal). An abandoned turn
+   * sends nothing: the user asked a question and is getting no answer, so a stray
+   * half-reply arriving as the process exits would only confuse.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -145,11 +152,22 @@ export async function processAndReply(
   const channel = message.channel.isSendable() ? message.channel : null;
   await withTyping(channel, async () => {
     const isYoutube = cfg.youtubeChannelId !== null && message.channelId === cfg.youtubeChannelId;
-    const result = await handleIncomingMessage(deps, {
-      ...normalize(message),
-      channel: isYoutube ? "youtube" : "chat",
-      isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
-    });
+    const result = await handleIncomingMessage(
+      deps,
+      {
+        ...normalize(message),
+        channel: isYoutube ? "youtube" : "chat",
+        isReplyToAgent: opts.meta?.referencedMessageAuthorIsMe ?? false,
+      },
+      opts.signal ? { signal: opts.signal } : {},
+    );
+
+    // Cancelled mid-turn (shutdown): the inbound message is recorded, but there's no
+    // answer — say nothing rather than sending a stub the user didn't ask for.
+    if (result.aborted) {
+      logger.info({ messageId: message.id }, "turn abandoned; no reply sent");
+      return;
+    }
 
     // The LLM reply is already in the user's language (system-prompt directive); the
     // notes and button labels below are the verbatim bits, so resolve the preference.
@@ -217,7 +235,13 @@ export type ApprovalOutcome =
  */
 export async function resolveApproval(
   deps: HandleMessageDeps,
-  params: { action: "approve" | "cancel"; approvalId: string; clickerDiscordId: string },
+  params: {
+    action: "approve" | "cancel";
+    approvalId: string;
+    clickerDiscordId: string;
+    /** Abandons the resumed turn when it fires (the gateway's shutdown signal). */
+    signal?: AbortSignal;
+  },
 ): Promise<ApprovalOutcome> {
   // Outcomes are shown to the clicker, so localize in their language.
   const lang = await languageForDiscordUser(deps, params.clickerDiscordId);
@@ -240,8 +264,17 @@ export async function resolveApproval(
   const approved = await deps.pendingApprovals.resolveIfPending(params.approvalId, "approved");
   if (!approved) return { type: "expired", promptUpdate: a.expiredAskAgain };
 
-  const result = await resumeApprovedAgent(deps, params.approvalId);
+  const result = await resumeApprovedAgent(
+    deps,
+    params.approvalId,
+    params.signal ? { signal: params.signal } : {},
+  );
   if (!result) return { type: "expired", promptUpdate: a.couldntPickUp };
+  // Abandoned mid-run (shutdown): the approval is already marked approved, so report it
+  // as no-longer-available rather than posting an empty follow-up.
+  if (result.aborted) {
+    return { type: "expired", promptUpdate: a.couldntFinish };
+  }
   // A gated turn is the likeliest to push spend over a threshold, so fold any alert
   // it crossed into the follow-up rather than dropping it.
   const followUpReply = result.alertPct

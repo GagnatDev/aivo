@@ -49,6 +49,12 @@ export interface ChatRequest {
   toolChoice?: "auto" | "none";
   /** Upper bound on completion tokens — also the worst-case used by cost estimation. */
   maxTokens: number;
+  /**
+   * Aborts the in-flight request (graceful shutdown, or a future user-facing "stop").
+   * The provider surfaces an aborted call as an `aborted` {@link LlmErrorKind}, which is
+   * never retried.
+   */
+  signal?: AbortSignal;
 }
 
 export interface TokenUsage {

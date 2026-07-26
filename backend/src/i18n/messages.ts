@@ -138,6 +138,8 @@ export interface Messages {
     cancelled: string;
     expiredAskAgain: string;
     couldntPickUp: string;
+    /** The resumed turn was abandoned mid-run (shutdown) instead of finishing. */
+    couldntFinish: string;
     approved: string;
   };
 

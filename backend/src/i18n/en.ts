@@ -135,6 +135,7 @@ export const en: Messages = {
     cancelled: "Cancelled — I didn't run it.",
     expiredAskAgain: "This request expired — just ask again.",
     couldntPickUp: "I couldn't pick that request back up — ask again.",
+    couldntFinish: "I couldn't finish that one — ask again.",
     approved: "Approved.",
   },
 

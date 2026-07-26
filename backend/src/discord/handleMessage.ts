@@ -47,6 +47,16 @@ export interface HandleMessageResult {
   pendingApprovalId?: string;
   /** Set when a budget alert threshold was newly crossed this turn. */
   alertPct?: number;
+  /**
+   * The turn was abandoned mid-flight (shutdown). The inbound message is still
+   * recorded, but there is no answer to send — the caller must not reply.
+   */
+  aborted?: boolean;
+}
+
+export interface HandleMessageOptions {
+  /** Abandons the turn when it fires; the gateway passes its shutdown signal. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -58,6 +68,7 @@ export interface HandleMessageResult {
 export async function handleIncomingMessage(
   deps: HandleMessageDeps,
   msg: IncomingMessage,
+  opts: HandleMessageOptions = {},
 ): Promise<HandleMessageResult> {
   const user = await deps.users.upsertByDiscordId({
     discordUserId: msg.authorId,
@@ -115,6 +126,7 @@ export async function handleIncomingMessage(
     isOwner: user.is_owner,
     conversationId: conversation.id,
     triggerMessageId: msg.id,
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
   // Surface whichever budget alert crossed higher — transcription may have tipped a
@@ -129,6 +141,7 @@ export async function handleIncomingMessage(
     conversationId: result.conversationId,
     pendingApprovalId: result.pendingApprovalId,
     alertPct,
+    ...(result.aborted ? { aborted: true } : {}),
   };
 }
 

@@ -134,6 +134,7 @@ export const nb: Messages = {
     cancelled: "Avbrutt — jeg kjørte den ikke.",
     expiredAskAgain: "Denne forespørselen utløp — bare spør på nytt.",
     couldntPickUp: "Jeg klarte ikke å ta opp igjen den forespørselen — spør på nytt.",
+    couldntFinish: "Jeg ble ikke ferdig med den — spør på nytt.",
     approved: "Godkjent.",
   },
 

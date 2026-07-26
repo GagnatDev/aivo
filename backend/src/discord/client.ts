@@ -46,20 +46,24 @@ export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig
     ],
   });
   const turns = new TurnQueue();
+  // Aborted by `destroy()`, i.e. by the process's graceful shutdown. Turns in flight
+  // stop between round-trips (and cancel the in-flight LLM call) instead of being cut
+  // off mid-request when the process exits; queued turns never start.
+  const shutdown = new AbortController();
 
   client.once(Events.ClientReady, (ready) => {
     logger.info({ tag: ready.user.tag }, "discord gateway ready");
-    void catchUpOnMissedMessages(deps, ready, cfg, turns).catch((err) => {
+    void catchUpOnMissedMessages(deps, ready, cfg, turns, shutdown.signal).catch((err) => {
       logger.error(err, "catch-up on missed messages failed");
     });
   });
 
   client.on(Events.MessageCreate, (message) => {
-    void onMessage(deps, message, cfg, turns);
+    void onMessage(deps, message, cfg, turns, shutdown.signal);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void onInteraction(deps, interaction);
+    void onInteraction(deps, interaction, shutdown.signal);
   });
 
   client.on(Events.Error, (err) => {
@@ -71,7 +75,10 @@ export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig
     login: async () => {
       await client.login(cfg.botToken);
     },
-    destroy: () => client.destroy(),
+    destroy: async () => {
+      shutdown.abort();
+      await client.destroy();
+    },
     isReady: () => client.isReady(),
   };
 }
@@ -81,6 +88,7 @@ async function onMessage(
   message: Message,
   cfg: DiscordConfig,
   turns: TurnQueue,
+  signal: AbortSignal,
 ): Promise<void> {
   const meta = await resolveMessageMeta(message);
   if (!shouldRespond(meta, cfg)) return;
@@ -94,7 +102,7 @@ async function onMessage(
     // Queued per conversation: a second message from the same user in the same channel
     // waits for the previous turn, so its context includes that turn's reply.
     await turns.run(turnKey(message.author.id, message.channelId), () =>
-      processAndReply(deps, message, cfg, { meta }),
+      processAndReply(deps, message, cfg, { meta, signal }),
     );
   } catch (err) {
     logger.error(err, "failed to handle discord message");
@@ -118,7 +126,11 @@ async function onMessage(
  * the turn runs the LLM, which can take longer), then edit the prompt to drop its
  * buttons and, on approval, post the answer as a follow-up and persist it.
  */
-async function onInteraction(deps: HandleMessageDeps, interaction: Interaction): Promise<void> {
+async function onInteraction(
+  deps: HandleMessageDeps,
+  interaction: Interaction,
+  signal: AbortSignal,
+): Promise<void> {
   if (!interaction.isButton()) return;
 
   try {
@@ -149,6 +161,7 @@ async function onInteraction(deps: HandleMessageDeps, interaction: Interaction):
         action,
         approvalId,
         clickerDiscordId: interaction.user.id,
+        signal,
       });
     const outcome = action === "approve" ? await withTyping(channel, resolve) : await resolve();
 

@@ -115,18 +115,23 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
       // happens inside the retry wrapper so the policy can key on the taxonomy `kind`.
       const res = await withLlmRetries(async () => {
         try {
-          return await client.chat.completions.create({
-            model: req.model,
-            messages: req.messages.map(toOpenAiMessage),
-            // Tool definitions travel with every request that has them, including the
-            // forced-answer call that sets `toolChoice: "none"` — dropping `tools` from a
-            // history that still contains tool_calls/tool messages is what trips stricter
-            // OpenAI-compatible servers.
-            ...(req.tools?.length
-              ? { tools: req.tools.map(toOpenAiTool), tool_choice: req.toolChoice ?? "auto" }
-              : {}),
-            max_tokens: req.maxTokens,
-          });
+          return await client.chat.completions.create(
+            {
+              model: req.model,
+              messages: req.messages.map(toOpenAiMessage),
+              // Tool definitions travel with every request that has them, including the
+              // forced-answer call that sets `toolChoice: "none"` — dropping `tools` from a
+              // history that still contains tool_calls/tool messages is what trips stricter
+              // OpenAI-compatible servers.
+              ...(req.tools?.length
+                ? { tools: req.tools.map(toOpenAiTool), tool_choice: req.toolChoice ?? "auto" }
+                : {}),
+              max_tokens: req.maxTokens,
+            },
+            // Cancels the in-flight HTTP request when the turn is abandoned (shutdown),
+            // instead of leaving a round-trip running against a turn nobody will read.
+            req.signal ? { signal: req.signal } : undefined,
+          );
         } catch (err) {
           throw toLlmProviderError(err);
         }

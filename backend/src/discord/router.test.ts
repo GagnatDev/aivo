@@ -125,6 +125,22 @@ describe("resolveApproval", () => {
     expect((await deps.pendingApprovals.findById(approvalId))?.status).toBe("pending");
   });
 
+  it("reports a resumed turn abandoned by shutdown as unfinished, with no answer posted", async () => {
+    const { deps, approvalId } = await setupPending();
+    const controller = new AbortController();
+    controller.abort();
+
+    const outcome = await resolveApproval(deps, {
+      action: "approve",
+      approvalId,
+      clickerDiscordId: OWNER_ID,
+      signal: controller.signal,
+    });
+
+    // Not "approved": there is no follow-up reply to post, so the prompt says to ask again.
+    expect(outcome.type).toBe("expired");
+  });
+
   it("reports expired on a second resolution of the same approval", async () => {
     const { deps, approvalId } = await setupPending();
     await resolveApproval(deps, { action: "cancel", approvalId, clickerDiscordId: OWNER_ID });
