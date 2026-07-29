@@ -103,6 +103,11 @@ export function conversationSummary(outcome: DigestOutcome): string {
       return "Skipped today's YouTube digest (budget).";
     case "no_profile":
       return "Asked the user to set up their YouTube interest profile.";
+    case "failed":
+      // Recorded so the failure is visible in the dashboard's activity log (and to the
+      // agent, if the owner asks in #youtube why no digest arrived) rather than only in
+      // the pod log.
+      return `Today's YouTube digest run failed (${outcome.failure.kind}): ${outcome.failure.message}`;
     case "digest": {
       const picks = outcome.picks.map((p) => `${p.rank}. ${p.title} (${p.channelTitle})`);
       return picks.length
@@ -135,6 +140,9 @@ export function createDigestDeliverer(
         firstMessageId = (await channel.send(d.skippedBudgetNote)).id;
       } else if (outcome.kind === "no_profile") {
         firstMessageId = (await channel.send(d.noProfileNudge)).id;
+      } else if (outcome.kind === "failed") {
+        // The audit row below records the failure; reporting it in the channel is the
+        // next slice of #83.
       } else {
         firstMessageId = (await channel.send(digestHeader(outcome, lang))).id;
         for (const pick of outcome.picks) {

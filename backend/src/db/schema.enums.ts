@@ -37,7 +37,14 @@ export type TranscriptStatus = "none" | "fetched" | "unavailable";
 /** The SYSTEM's stage-2 relevance verdict — distinct from the user's keep/drop feedback. */
 export type Stage2Decision = "pick" | "reject";
 /** Lifecycle of a digest run. */
-export type DigestStatus = "pending" | "delivered" | "skipped_budget";
+export type DigestStatus = "pending" | "delivered" | "skipped_budget" | "failed";
+/**
+ * Why a digest run ended up `failed` — the coarse classification the Discord and
+ * dashboard layers switch on to phrase a message (see digest/failure.ts). `youtube_auth`
+ * is called out separately from `youtube_api` because only it needs the owner to act
+ * (re-authorize and swap the refresh token); the rest is worth retrying on its own.
+ */
+export type DigestFailureKind = "youtube_auth" | "youtube_api" | "llm" | "unknown";
 /** Whether a digest entry is a ranked pick or a rejected-list row. */
 export type DigestItemKind = "pick" | "reject";
 /** The USER's feedback vocabulary on delivered items (buttons + freeform replies). */

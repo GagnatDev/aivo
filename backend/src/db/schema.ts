@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestFailureKind, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -50,6 +50,8 @@ export interface Digests {
   covers_since: Timestamp;
   created_at: Generated<Timestamp>;
   delivered_at: Timestamp | null;
+  failure_kind: DigestFailureKind | null;
+  failure_message: string | null;
   id: Generated<string>;
   run_date: Timestamp;
   status: ColumnType<DigestStatus, string | undefined, string>;
