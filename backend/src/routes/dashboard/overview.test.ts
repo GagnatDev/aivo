@@ -67,6 +67,7 @@ describe("GET /api/dashboard/overview", () => {
       cost: { cents: 1.25, formatted: "1.25¢" },
       deliveredAt: "2026-07-01T17:00:00.000Z",
       pickCount: 1,
+      failure: null,
     });
 
     expect(res.body.health).toEqual({ db: "ok", gateway: "connected" });
@@ -89,6 +90,30 @@ describe("GET /api/dashboard/overview", () => {
     await provisionTestOwner(deps);
     const res = await request(app).get("/api/dashboard/overview");
     expect(res.body.health.gateway).toBe("disconnected");
+  });
+
+  it("explains a failed last run rather than calling it pending (#83)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const run = await deps.digests.create({
+      userId: owner.id,
+      runDate: "2026-07-01",
+      coversSince: new Date("2026-06-30T00:00:00Z"),
+    });
+    await deps.digests.markFailed(run.id, {
+      kind: "youtube_auth",
+      message: "YouTube OAuth token refresh failed (400 invalid_grant)",
+    });
+
+    const res = await request(app).get("/api/dashboard/overview");
+    expect(res.body.digest).toMatchObject({
+      status: "failed",
+      deliveredAt: null,
+      failure: {
+        kind: "youtube_auth",
+        message: "YouTube OAuth token refresh failed (400 invalid_grant)",
+      },
+    });
   });
 
   it("never leaks another user's KPIs", async () => {

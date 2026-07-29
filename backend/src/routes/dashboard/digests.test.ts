@@ -98,6 +98,42 @@ describe("GET /api/dashboard/digests", () => {
     });
   });
 
+  it("reports a failed run's status and reason instead of leaving it pending (#83)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const run = await deps.digests.create({
+      userId: owner.id,
+      runDate: "2026-07-01",
+      coversSince: new Date("2026-06-30T06:00:00Z"),
+    });
+    await deps.digests.markFailed(run.id, {
+      kind: "youtube_auth",
+      message: "YouTube OAuth token refresh failed (400 invalid_grant: Token has been revoked.)",
+    });
+
+    const list = await request(app).get("/api/dashboard/digests");
+    expect(list.body.runs[0]).toMatchObject({
+      status: "failed",
+      deliveredAt: null,
+      failure: {
+        kind: "youtube_auth",
+        message: "YouTube OAuth token refresh failed (400 invalid_grant: Token has been revoked.)",
+      },
+    });
+
+    const detail = await request(app).get(`/api/dashboard/digests/${run.id}`);
+    expect(detail.body.run.failure.kind).toBe("youtube_auth");
+  });
+
+  it("reports no failure on a run that did not fail", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    await seedDeliveredRun(deps, owner.id);
+
+    const res = await request(app).get("/api/dashboard/digests");
+    expect(res.body.runs[0].failure).toBeNull();
+  });
+
   it("never lists another user's runs", async () => {
     const { app, deps } = buildDashboardTestApp();
     await provisionTestOwner(deps);

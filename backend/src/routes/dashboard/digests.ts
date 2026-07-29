@@ -21,6 +21,11 @@ function runJson(run: DigestRow) {
     deliveredAt: run.delivered_at?.toISOString() ?? null,
     createdAt: run.created_at.toISOString(),
     cost: money(Number(run.cost_cents)),
+    // Why a `failed` run failed (#83): without this the dashboard showed such a run as
+    // Pending and the cause lived only in the pod log. Null on every other status.
+    failure: run.failure_kind
+      ? { kind: run.failure_kind, message: run.failure_message ?? "" }
+      : null,
   };
 }
 
