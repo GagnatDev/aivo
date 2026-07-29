@@ -3,6 +3,7 @@ import type { DigestOutcome } from "../digest/pipeline.js";
 import {
   conversationSummary,
   digestHeader,
+  failureNote,
   feedbackButtons,
   pickEmbed,
   rejectedListNote,
@@ -89,10 +90,52 @@ describe("rejectedListNote", () => {
   });
 });
 
+describe("failureNote", () => {
+  it("tells the owner to reconnect when the YouTube grant is dead, quoting the reason", () => {
+    const note = failureNote(
+      {
+        kind: "youtube_auth",
+        message: "YouTube OAuth token refresh failed (400 invalid_grant: Token has been revoked.)",
+      },
+      "en",
+    );
+    expect(note).toMatch(/access to your YouTube account has expired/);
+    expect(note).toMatch(/invalid_grant/);
+    expect(note).toMatch(/Digest History/);
+  });
+
+  it("reports any other failure as a retryable one", () => {
+    const note = failureNote({ kind: "llm", message: "gateway exploded" }, "en");
+    expect(note).toMatch(/couldn't finish today's YouTube digest/);
+    expect(note).toMatch(/gateway exploded/);
+    expect(note).toMatch(/next scheduled run/);
+  });
+
+  it("reports failures in Norwegian too", () => {
+    expect(failureNote({ kind: "youtube_auth", message: "invalid_grant" }, "nb")).toMatch(
+      /koble den til på nytt/i,
+    );
+    expect(failureNote({ kind: "youtube_api", message: "quotaExceeded" }, "nb")).toMatch(
+      /neste planlagte kjøring/,
+    );
+  });
+});
+
 describe("conversationSummary", () => {
   it("summarizes each outcome kind for the agent's context", () => {
     expect(conversationSummary(digestOutcome())).toMatch(/1\. Dovetails by hand \(Wood\)/);
     expect(conversationSummary({ kind: "no_profile", digestId: "d" })).toMatch(/interest profile/);
     expect(conversationSummary({ kind: "skipped_budget", digestId: "d" })).toMatch(/budget/);
+  });
+
+  // The audit row is what surfaces the failure in the dashboard's activity log (#83).
+  it("records a failed run with its kind and reason", () => {
+    const summary = conversationSummary({
+      kind: "failed",
+      digestId: "d",
+      failure: { kind: "youtube_auth", message: "invalid_grant: Token has been revoked." },
+    });
+    expect(summary).toMatch(/failed \(youtube_auth\)/);
+    expect(summary).toMatch(/Token has been revoked/);
   });
 });

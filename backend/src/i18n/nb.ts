@@ -47,6 +47,13 @@ export const nb: Messages = {
     skippedBudgetNote:
       "Jeg hoppet over dagens YouTube-digest for å holde meg innenfor budsjettet — vanlig chat fungerer fortsatt. " +
       "Øk budsjettet eller si «kjør digesten nå» for å overstyre.",
+    runFailedNote: (detail) =>
+      `⚠️ Jeg fikk ikke fullført dagens YouTube-digest — ${detail}. Jeg prøver igjen ved neste ` +
+      "planlagte kjøring; si «kjør digesten nå» for å prøve før det.",
+    runFailedYoutubeAuthNote: (detail) =>
+      "⚠️ Jeg fikk ikke laget YouTube-digesten din: tilgangen min til YouTube-kontoen din har " +
+      `utløpt eller blitt trukket tilbake (${detail}). Koble den til på nytt — siden ` +
+      "«Digest History» i dashbordet forklarer hvordan — og si deretter «kjør digesten nå».",
     reasonNotFit: "passer ikke i dag",
     reasonLowMatch: "svak match mot interessene dine",
     reasonCouldntProcess: "klarte ikke å behandle denne",

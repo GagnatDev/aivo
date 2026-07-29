@@ -6,6 +6,7 @@ import {
   type Client,
 } from "discord.js";
 import type { AgentDeps } from "../agent/deps.js";
+import type { DigestFailure } from "../digest/failure.js";
 import type { DeliverablePick, DeliverableReject, DigestOutcome } from "../digest/pipeline.js";
 import type { FeedbackSignal } from "../db/schema.enums.js";
 import { asLanguage, type Language, messages } from "../i18n/index.js";
@@ -90,6 +91,19 @@ export function feedbackButtons(itemId: string, lang: Language): ActionRowBuilde
   );
 }
 
+/**
+ * What a failed run says in #youtube. A `youtube_auth` failure is the only kind the owner
+ * has to act on (re-authorize and swap the refresh token), so it gets its own message
+ * pointing at the dashboard's how-to; everything else reads as "this broke, I'll retry".
+ * The recorded reason is included verbatim — it is what saves a trip to the pod log.
+ */
+export function failureNote(failure: DigestFailure, lang: Language): string {
+  const d = messages(lang).digest;
+  return failure.kind === "youtube_auth"
+    ? d.runFailedYoutubeAuthNote(failure.message)
+    : d.runFailedNote(failure.message);
+}
+
 export function rejectedListNote(rejects: DeliverableReject[], lang: Language): string {
   const d = messages(lang).digest;
   const lines = rejects.map((r) => d.rejectedLine(r.title, r.channelTitle || null, r.reason));
@@ -141,8 +155,7 @@ export function createDigestDeliverer(
       } else if (outcome.kind === "no_profile") {
         firstMessageId = (await channel.send(d.noProfileNudge)).id;
       } else if (outcome.kind === "failed") {
-        // The audit row below records the failure; reporting it in the channel is the
-        // next slice of #83.
+        firstMessageId = (await channel.send(failureNote(outcome.failure, lang))).id;
       } else {
         firstMessageId = (await channel.send(digestHeader(outcome, lang))).id;
         for (const pick of outcome.picks) {
