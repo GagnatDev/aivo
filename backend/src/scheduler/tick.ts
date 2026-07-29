@@ -119,7 +119,9 @@ export async function runDueWork(
   logger.info({ userId: owner.id, reason: due.reason }, "digest run starting");
   const outcome = await runDigest(deps, yt, owner.id, now);
   await deliverers.digest.deliver(owner.id, outcome);
-  if (outcome.kind !== "skipped_budget") {
+  // `skipped_budget` and `failed` runs already carry their own terminal status; only a
+  // real (or empty) digest and the onboarding nudge count as delivered.
+  if (outcome.kind !== "skipped_budget" && outcome.kind !== "failed") {
     await deps.digests.markDelivered(outcome.digestId, now);
   }
   logger.info({ userId: owner.id, kind: outcome.kind }, "digest run finished");

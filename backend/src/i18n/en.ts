@@ -48,6 +48,13 @@ export const en: Messages = {
     skippedBudgetNote:
       "I skipped today's YouTube digest to stay inside your budget — direct chat still works. " +
       'Raise the budget or say "run the digest now" to override.',
+    runFailedNote: (detail) =>
+      `⚠️ I couldn't finish today's YouTube digest — ${detail}. I'll try again at the next ` +
+      'scheduled run; say "run the digest now" to retry sooner.',
+    runFailedYoutubeAuthNote: (detail) =>
+      "⚠️ I couldn't build your YouTube digest: my access to your YouTube account has expired " +
+      `or been revoked (${detail}). Reconnect it — the dashboard's Digest History page has the ` +
+      'steps — then say "run the digest now".',
     reasonNotFit: "not a fit today",
     reasonLowMatch: "low match to your interests",
     reasonCouldntProcess: "couldn't process this one",

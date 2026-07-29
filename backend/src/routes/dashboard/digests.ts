@@ -12,6 +12,9 @@ const listQuerySchema = z.object({
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
+/** Where routes/youtubeOauth.ts mounts the consent redirect. */
+const YOUTUBE_OAUTH_START_PATH = "/youtube/oauth/start";
+
 function runJson(run: DigestRow) {
   return {
     id: run.id,
@@ -21,6 +24,11 @@ function runJson(run: DigestRow) {
     deliveredAt: run.delivered_at?.toISOString() ?? null,
     createdAt: run.created_at.toISOString(),
     cost: money(Number(run.cost_cents)),
+    // Why a `failed` run failed (#83): without this the dashboard showed such a run as
+    // Pending and the cause lived only in the pod log. Null on every other status.
+    failure: run.failure_kind
+      ? { kind: run.failure_kind, message: run.failure_message ?? "" }
+      : null,
   };
 }
 
@@ -83,6 +91,13 @@ export function digestsRoutes(deps: DashboardDeps): Router {
         title: account?.title ?? null,
         subscriptionsSyncedAt: account?.subscriptions_synced_at?.toISOString() ?? null,
         videosPolledAt: account?.videos_polled_at?.toISOString() ?? null,
+        // Where the owner re-runs the consent handshake when the refresh token expires
+        // (#83). Null when this deployment has no OAuth client configured, so the page
+        // never links at a route that isn't mounted. The token itself is still shown once
+        // by the callback and pasted into the deployment secret — the dashboard neither
+        // receives nor stores it (docs/data-model.md).
+        oauthStartPath: deps.config.youtubeOauthConfigured ? YOUTUBE_OAUTH_START_PATH : null,
+        refreshTokenSecretKey: "YOUTUBE_OAUTH_REFRESH_TOKEN",
       },
     });
   });

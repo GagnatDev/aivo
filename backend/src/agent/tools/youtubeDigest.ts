@@ -187,7 +187,16 @@ async function status(ctx: ToolContext): Promise<string> {
     interval_days: settings.digest_interval_days,
     picks_cap: settings.digest_cap,
     timezone: settings.timezone,
-    last_run: latest ? { date: latest.run_date, status: latest.status } : null,
+    last_run: latest
+      ? {
+          date: latest.run_date,
+          status: latest.status,
+          // So "why didn't the digest arrive?" is answerable from chat, not the pod log.
+          failure: latest.failure_kind
+            ? { kind: latest.failure_kind, detail: latest.failure_message }
+            : null,
+        }
+      : null,
     interest_profile: profile ? `v${profile.version}` : "not set up yet",
   });
 }

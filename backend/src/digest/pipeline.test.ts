@@ -3,6 +3,7 @@ import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agent
 import { useCleanDb } from "../test/db.js";
 import { makeFakeLlm, textResult } from "../test/fakeLlm.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
+import { tokenRefreshError } from "../youtube/errors.js";
 import { runDigest } from "./pipeline.js";
 
 useCleanDb();
@@ -127,6 +128,53 @@ describe("runDigest", () => {
     expect(profile?.version).toBe(2);
     expect(profile?.body).toMatch(/no shorts/);
     expect(await deps.feedback.listUnapplied(userId)).toHaveLength(0);
+  });
+
+  it("marks the run failed with the reason when the OAuth refresh token is dead (#83)", async () => {
+    const { deps, userId } = await setupOwner([]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "anything");
+    const yt = makeFakeYoutube();
+    yt.api.listSubscriptions = () => {
+      throw tokenRefreshError(
+        400,
+        '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}',
+      );
+    };
+
+    const outcome = await runDigest(deps, yt, userId, NOW);
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind !== "failed") throw new Error("unreachable");
+    expect(outcome.failure.kind).toBe("youtube_auth");
+    expect(outcome.failure.message).toContain("invalid_grant");
+    const digest = await deps.digests.latestForUser(userId);
+    expect(digest?.status).toBe("failed");
+    expect(digest?.failure_kind).toBe("youtube_auth");
+    expect(digest?.failure_message).toContain("invalid_grant");
+    expect(digest?.delivered_at).toBeNull();
+  });
+
+  it("records the partial spend of a run that fails after paying for stage 1", async () => {
+    const { deps, userId } = await setupOwner([textResult('[{"id":"v1","score":0.9}]')]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "anything");
+    const yt = makeFakeYoutube({
+      subscriptions: SUBSCRIPTIONS,
+      videos: [uploaded("v1", "UC1", "Dovetails by hand")],
+    });
+    // The transcript fetch is the first thing stage 2 does — fail it to abort the run
+    // once stage 1 has already been billed.
+    yt.transcripts.fetchTranscript = () => {
+      throw new Error("transcript service unreachable");
+    };
+
+    const outcome = await runDigest(deps, yt, userId, NOW);
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind !== "failed") throw new Error("unreachable");
+    expect(outcome.failure).toEqual({ kind: "unknown", message: "transcript service unreachable" });
+    const digest = await deps.digests.latestForUser(userId);
+    expect(digest?.status).toBe("failed");
+    expect(Number(digest?.cost_cents)).toBeGreaterThan(0);
   });
 
   it("returns an empty digest when nothing new was published", async () => {

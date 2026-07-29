@@ -171,6 +171,17 @@ export async function startServer(connectionString?: string): Promise<StartedSer
   // Vite). The gateway logs in after the HTTP server starts, so the health probe
   // reads a ref that's filled in below — "disconnected" until then, never a crash.
   let gatewayRef: DiscordGateway | undefined;
+  // The one-time YouTube OAuth handshake, when the client is configured. Resolved before
+  // the app options because the dashboard also needs to know whether it exists — it links
+  // the owner here to mint a fresh refresh token (#83).
+  const youtubeOauth =
+    env.YOUTUBE_OAUTH_CLIENT_ID && env.YOUTUBE_OAUTH_CLIENT_SECRET && env.YOUTUBE_OAUTH_REDIRECT_URL
+      ? {
+          clientId: env.YOUTUBE_OAUTH_CLIENT_ID,
+          clientSecret: env.YOUTUBE_OAUTH_CLIENT_SECRET,
+          redirectUrl: env.YOUTUBE_OAUTH_REDIRECT_URL,
+        }
+      : null;
   const appOptions: AppOptions = {
     auth: {
       provider: createAuthProvider({ mode: env.authMode }),
@@ -193,24 +204,14 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         unforked,
         config: {
           memoryInjectLimit: env.AGENT_MEMORY_INJECT_LIMIT,
+          youtubeOauthConfigured: youtubeOauth !== null,
         },
         gatewayStatus: () => gatewayRef?.isReady() ?? false,
       },
     },
     webRoot: env.WEB_ROOT,
   };
-  // Mount the one-time YouTube OAuth handshake only when the client is configured.
-  if (
-    env.YOUTUBE_OAUTH_CLIENT_ID &&
-    env.YOUTUBE_OAUTH_CLIENT_SECRET &&
-    env.YOUTUBE_OAUTH_REDIRECT_URL
-  ) {
-    appOptions.youtubeOauth = {
-      clientId: env.YOUTUBE_OAUTH_CLIENT_ID,
-      clientSecret: env.YOUTUBE_OAUTH_CLIENT_SECRET,
-      redirectUrl: env.YOUTUBE_OAUTH_REDIRECT_URL,
-    };
-  }
+  if (youtubeOauth) appOptions.youtubeOauth = youtubeOauth;
   const app = buildApp(appOptions);
   const server = await new Promise<Server>((resolve) => {
     const s = app.listen(env.PORT, () => {

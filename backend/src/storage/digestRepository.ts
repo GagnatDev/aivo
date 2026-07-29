@@ -1,6 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
-import type { DigestStatus } from "../db/schema.enums.js";
+import type { DigestFailureKind, DigestStatus } from "../db/schema.enums.js";
 
 export interface DigestRow {
   id: string;
@@ -11,6 +11,9 @@ export interface DigestRow {
   covers_since: Date;
   delivered_at: Date | null;
   cost_cents: string;
+  /** Why the run failed — both null unless `status` is `failed`. */
+  failure_kind: DigestFailureKind | null;
+  failure_message: string | null;
   created_at: Date;
 }
 
@@ -24,6 +27,8 @@ const DIGEST_SELECT = [
   "covers_since",
   "delivered_at",
   "cost_cents",
+  "failure_kind",
+  "failure_message",
   "created_at",
 ] as const;
 
@@ -97,6 +102,22 @@ export class DigestRepository {
 
   async setStatus(id: string, status: DigestStatus): Promise<void> {
     await this.db.updateTable("digests").set({ status }).where("id", "=", id).execute();
+  }
+
+  /**
+   * Mark a run failed and record why (digest/failure.ts). Without this a run whose
+   * pipeline threw stayed `pending` — indistinguishable on the dashboard from one still
+   * in flight — and the reason lived only in the pod log.
+   */
+  async markFailed(
+    id: string,
+    failure: { kind: DigestFailureKind; message: string },
+  ): Promise<void> {
+    await this.db
+      .updateTable("digests")
+      .set({ status: "failed", failure_kind: failure.kind, failure_message: failure.message })
+      .where("id", "=", id)
+      .execute();
   }
 
   /** Record the run's total LLM cost (fractional cents, summed by the pipeline). */

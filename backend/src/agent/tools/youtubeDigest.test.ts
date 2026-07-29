@@ -39,6 +39,29 @@ describe("youtube_digest tool", () => {
     });
   });
 
+  it("status explains a failed last run so chat can answer 'why no digest?'", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const run = await ctx.deps.digests.create({
+      userId: ctx.userId,
+      runDate: "2026-07-01",
+      coversSince: new Date("2026-06-30T05:00:00Z"),
+    });
+    await ctx.deps.digests.markFailed(run.id, {
+      kind: "youtube_auth",
+      message: "YouTube OAuth token refresh failed (400 invalid_grant)",
+    });
+
+    const res = JSON.parse(await tool().execute({ action: "status" }, ctx));
+    expect(res.last_run).toEqual({
+      date: "2026-07-01",
+      status: "failed",
+      failure: {
+        kind: "youtube_auth",
+        detail: "YouTube OAuth token refresh failed (400 invalid_grant)",
+      },
+    });
+  });
+
   it("configure changes hour, interval, and cap (make it weekly at 9)", async () => {
     const ctx = await ctxFor(OWNER_ID);
     const res = await tool().execute(

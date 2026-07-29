@@ -7,6 +7,7 @@ import { useCleanDb } from "../test/db.js";
 import { makeFakeLlm } from "../test/fakeLlm.js";
 import { makeFakeWeather } from "../test/fakeWeather.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
+import { tokenRefreshError } from "../youtube/errors.js";
 import { parseWeatherLane, withWeatherLane } from "../weather/proactivity.js";
 import type { WeatherReportOutcome } from "../weather/report.js";
 import { runDueWork, type Deliverers } from "./tick.js";
@@ -266,5 +267,23 @@ describe("runDueWork", () => {
     expect(delivered).toHaveLength(1);
     expect(delivered[0].kind).toBe("skipped_budget");
     expect((await deps.digests.latestForUser(userId))?.status).toBe("skipped_budget");
+  });
+
+  it("delivers a failed run without marking it delivered, and keeps ticking (#83)", async () => {
+    const { deps, userId } = await setupOwner(DUE_TIME);
+    const yt = makeFakeYoutube();
+    yt.api.listSubscriptions = () => {
+      throw tokenRefreshError(400, '{"error":"invalid_grant"}');
+    };
+    const { deliverer, delivered } = captureDeliveries();
+
+    // Previously this threw out of runDueWork, skipping the rest of the tick.
+    await runDueWork(deps, yt, deliverer, DUE_TIME);
+
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].kind).toBe("failed");
+    const run = await deps.digests.latestForUser(userId);
+    expect(run?.status).toBe("failed");
+    expect(run?.delivered_at).toBeNull();
   });
 });

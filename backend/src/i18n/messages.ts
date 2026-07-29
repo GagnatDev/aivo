@@ -65,6 +65,10 @@ export interface Messages {
     rejectedLine: (title: string, channel: string | null, reason: string) => string;
     noProfileNudge: string;
     skippedBudgetNote: string;
+    /** The run failed; `detail` is the recorded technical reason. */
+    runFailedNote: (detail: string) => string;
+    /** The run failed because the YouTube connection needs re-authorizing. */
+    runFailedYoutubeAuthNote: (detail: string) => string;
     /** Fallback reject reasons (used when the LLM verdict gave none). */
     reasonNotFit: string;
     reasonLowMatch: string;

@@ -6,6 +6,7 @@ import {
   type Client,
 } from "discord.js";
 import type { AgentDeps } from "../agent/deps.js";
+import type { DigestFailure } from "../digest/failure.js";
 import type { DeliverablePick, DeliverableReject, DigestOutcome } from "../digest/pipeline.js";
 import type { FeedbackSignal } from "../db/schema.enums.js";
 import { asLanguage, type Language, messages } from "../i18n/index.js";
@@ -90,6 +91,19 @@ export function feedbackButtons(itemId: string, lang: Language): ActionRowBuilde
   );
 }
 
+/**
+ * What a failed run says in #youtube. A `youtube_auth` failure is the only kind the owner
+ * has to act on (re-authorize and swap the refresh token), so it gets its own message
+ * pointing at the dashboard's how-to; everything else reads as "this broke, I'll retry".
+ * The recorded reason is included verbatim — it is what saves a trip to the pod log.
+ */
+export function failureNote(failure: DigestFailure, lang: Language): string {
+  const d = messages(lang).digest;
+  return failure.kind === "youtube_auth"
+    ? d.runFailedYoutubeAuthNote(failure.message)
+    : d.runFailedNote(failure.message);
+}
+
 export function rejectedListNote(rejects: DeliverableReject[], lang: Language): string {
   const d = messages(lang).digest;
   const lines = rejects.map((r) => d.rejectedLine(r.title, r.channelTitle || null, r.reason));
@@ -103,6 +117,11 @@ export function conversationSummary(outcome: DigestOutcome): string {
       return "Skipped today's YouTube digest (budget).";
     case "no_profile":
       return "Asked the user to set up their YouTube interest profile.";
+    case "failed":
+      // Recorded so the failure is visible in the dashboard's activity log (and to the
+      // agent, if the owner asks in #youtube why no digest arrived) rather than only in
+      // the pod log.
+      return `Today's YouTube digest run failed (${outcome.failure.kind}): ${outcome.failure.message}`;
     case "digest": {
       const picks = outcome.picks.map((p) => `${p.rank}. ${p.title} (${p.channelTitle})`);
       return picks.length
@@ -135,6 +154,8 @@ export function createDigestDeliverer(
         firstMessageId = (await channel.send(d.skippedBudgetNote)).id;
       } else if (outcome.kind === "no_profile") {
         firstMessageId = (await channel.send(d.noProfileNudge)).id;
+      } else if (outcome.kind === "failed") {
+        firstMessageId = (await channel.send(failureNote(outcome.failure, lang))).id;
       } else {
         firstMessageId = (await channel.send(digestHeader(outcome, lang))).id;
         for (const pick of outcome.picks) {

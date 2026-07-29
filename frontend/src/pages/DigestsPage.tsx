@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useApi } from "../api/useApi.js";
 import { DigestRunDetail } from "../components/digests/DigestRunDetail.js";
 import { DigestRunList } from "../components/digests/DigestRunList.js";
+import { YoutubeReconnectGuide } from "../components/digests/YoutubeReconnectGuide.js";
 import { formatTimestamp } from "../lib/activity.js";
-import type { DigestRuns } from "../lib/digests.js";
+import { needsReconnect, type DigestRuns } from "../lib/digests.js";
 
 /** Digest History (M5) — see PRD §4.6, requirements D-1..D-3. Owner only. */
 export function DigestsPage() {
@@ -38,21 +39,29 @@ export function DigestsPage() {
 
       {!selected && data ? (
         // D-5: connection status — metadata and sync watermarks, never tokens.
-        <p className="muted digest-youtube-status">
-          {data.youtube.connected ? (
-            <>
-              YouTube connected{data.youtube.title ? ` as ${data.youtube.title}` : ""}
-              {data.youtube.subscriptionsSyncedAt
-                ? ` · subscriptions synced ${formatTimestamp(data.youtube.subscriptionsSyncedAt)}`
-                : ""}
-              {data.youtube.videosPolledAt
-                ? ` · videos polled ${formatTimestamp(data.youtube.videosPolledAt)}`
-                : ""}
-            </>
-          ) : (
-            "YouTube is not connected — digests start once the owner completes the OAuth handshake."
-          )}
-        </p>
+        <>
+          <p className="muted digest-youtube-status">
+            {data.youtube.connected ? (
+              <>
+                YouTube connected{data.youtube.title ? ` as ${data.youtube.title}` : ""}
+                {data.youtube.subscriptionsSyncedAt
+                  ? ` · subscriptions synced ${formatTimestamp(data.youtube.subscriptionsSyncedAt)}`
+                  : ""}
+                {data.youtube.videosPolledAt
+                  ? ` · videos polled ${formatTimestamp(data.youtube.videosPolledAt)}`
+                  : ""}
+              </>
+            ) : (
+              "YouTube is not connected — digests start once the owner completes the OAuth handshake."
+            )}
+          </p>
+          {/* Open when the connection is what's broken: the newest run died on an expired
+              grant, or YouTube was never connected (#83). */}
+          <YoutubeReconnectGuide
+            youtube={data.youtube}
+            open={needsReconnect(data.runs, data.youtube)}
+          />
+        </>
       ) : null}
 
       {selected ? (

@@ -9,6 +9,7 @@ import {
   type DigestItem,
 } from "../../lib/digests.js";
 import { formatShortDate } from "../../lib/overview.js";
+import { DigestFailureNote } from "./DigestFailureNote.js";
 
 function PickCard({ item }: { item: DigestItem }) {
   const confidence = formatConfidence(item.confidence);
@@ -59,6 +60,7 @@ export function DigestRunDetail({ id }: { id: string }) {
   const feedback = summarizeFeedback(data.feedback);
   return (
     <>
+      <DigestFailureNote failure={data.run.failure} />
       <div className="stat-grid">
         <div className="card stat-tile">
           <div className="stat-label">Status</div>
@@ -68,7 +70,9 @@ export function DigestRunDetail({ id }: { id: string }) {
           <div className="stat-detail">
             {data.run.deliveredAt
               ? `delivered ${formatShortDate(data.run.deliveredAt)}`
-              : "not delivered"}
+              : data.run.status === "failed"
+                ? "the run did not complete"
+                : "not delivered"}
           </div>
         </div>
         <div className="card stat-tile">

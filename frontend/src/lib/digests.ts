@@ -4,7 +4,16 @@
 import type { Money } from "./usage.js";
 import type { StatusMeta } from "./palette.js";
 
-export type DigestStatus = "pending" | "delivered" | "skipped_budget";
+export type DigestStatus = "pending" | "delivered" | "skipped_budget" | "failed";
+
+/** Why a run failed (backend db/schema.enums.ts `DigestFailureKind`). */
+export type DigestFailureKind = "youtube_auth" | "youtube_api" | "llm" | "unknown";
+
+export interface DigestFailure {
+  kind: DigestFailureKind;
+  /** The recorded technical detail — shown so the owner never needs the pod log. */
+  message: string;
+}
 
 export interface DigestRunSummary {
   id: string;
@@ -15,6 +24,8 @@ export interface DigestRunSummary {
   deliveredAt: string | null;
   createdAt: string;
   cost: Money;
+  /** Set only on a failed run. */
+  failure: DigestFailure | null;
   pickCount: number;
   rejectCount: number;
 }
@@ -24,6 +35,10 @@ export interface YoutubeStatus {
   title: string | null;
   subscriptionsSyncedAt: string | null;
   videosPolledAt: string | null;
+  /** Where to re-run the consent handshake, or null when no OAuth client is configured. */
+  oauthStartPath: string | null;
+  /** The deployment-secret key the minted refresh token belongs in. */
+  refreshTokenSecretKey: string;
 }
 
 export interface DigestRuns {
@@ -83,7 +98,34 @@ export const DIGEST_STATUS_META: Record<DigestStatus, StatusMeta> = {
   delivered: { label: "Delivered", color: "#0ca30c", icon: "●" },
   pending: { label: "Pending", color: "#fab219", icon: "▲" },
   skipped_budget: { label: "Skipped (budget)", color: "#ec835a", icon: "◼" },
+  failed: { label: "Failed", color: "#d03b3b", icon: "✕" },
 };
+
+/** What each failure kind means, in the owner's terms — the headline above the detail. */
+export const DIGEST_FAILURE_HEADLINES: Record<DigestFailureKind, string> = {
+  youtube_auth: "YouTube access expired — reconnect the account to resume digests",
+  youtube_api: "The YouTube API call failed — the next scheduled run retries",
+  llm: "The model provider call failed — the next scheduled run retries",
+  unknown: "The run failed unexpectedly — the next scheduled run retries",
+};
+
+/** Headline + recorded detail for a failed run, or null when the run didn't fail. */
+export function describeFailure(failure: DigestFailure | null): string | null {
+  if (!failure) return null;
+  const headline = DIGEST_FAILURE_HEADLINES[failure.kind] ?? DIGEST_FAILURE_HEADLINES.unknown;
+  return failure.message ? `${headline} (${failure.message})` : headline;
+}
+
+/**
+ * Whether the YouTube connection is what's standing between the owner and a digest — the
+ * newest run failed on an expired/revoked grant, or the account was never connected. Drives
+ * whether the reconnect guide starts expanded (#83).
+ */
+export function needsReconnect(runs: DigestRunSummary[], youtube: YoutubeStatus): boolean {
+  if (!youtube.connected) return true;
+  // runs arrive newest-first; only the latest run's verdict is current.
+  return runs[0]?.failure?.kind === "youtube_auth";
+}
 
 /** "12:34" / "1:02:03" video length from seconds; null when YouTube didn't say. */
 export function formatDuration(seconds: number | null): string | null {
