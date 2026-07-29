@@ -81,6 +81,9 @@ describe("GET /api/dashboard/digests", () => {
       title: null,
       subscriptionsSyncedAt: null,
       videosPolledAt: null,
+      // No OAuth client configured in this harness → nothing to link at.
+      oauthStartPath: null,
+      refreshTokenSecretKey: "YOUTUBE_OAUTH_REFRESH_TOKEN",
     });
 
     await deps.youtubeAccount.setIdentity({
@@ -132,6 +135,14 @@ describe("GET /api/dashboard/digests", () => {
 
     const res = await request(app).get("/api/dashboard/digests");
     expect(res.body.runs[0].failure).toBeNull();
+  });
+
+  it("points at the OAuth handshake when the deployment has a client configured (#83)", async () => {
+    const { app, deps } = buildDashboardTestApp({ youtubeOauthConfigured: true });
+    await provisionTestOwner(deps);
+
+    const res = await request(app).get("/api/dashboard/digests");
+    expect(res.body.youtube.oauthStartPath).toBe("/youtube/oauth/start");
   });
 
   it("never lists another user's runs", async () => {

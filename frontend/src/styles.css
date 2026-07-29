@@ -873,6 +873,37 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Reconnect guidance: a quiet disclosure that opens itself when the YouTube grant is
+   what's broken. */
+.digest-reconnect {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+.digest-reconnect > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.digest-reconnect[open] > summary {
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.digest-reconnect-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.digest-reconnect-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
 .digest-row-failure {
   color: var(--danger);
   font-size: 0.85rem;

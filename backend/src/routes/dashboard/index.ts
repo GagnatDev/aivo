@@ -56,6 +56,12 @@ export interface DashboardDeps {
   config: {
     /** AGENT_MEMORY_INJECT_LIMIT — max memories injected into agent context. */
     memoryInjectLimit: number;
+    /**
+     * Whether the one-time YouTube OAuth handshake is mounted (the client id/secret/
+     * redirect are configured). The Digests page only links to it when it is — the
+     * route 404s otherwise. Never the credentials themselves.
+     */
+    youtubeOauthConfigured: boolean;
   };
   /**
    * Live Discord gateway probe for the health widget (O-6). Optional because the

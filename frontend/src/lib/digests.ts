@@ -35,6 +35,10 @@ export interface YoutubeStatus {
   title: string | null;
   subscriptionsSyncedAt: string | null;
   videosPolledAt: string | null;
+  /** Where to re-run the consent handshake, or null when no OAuth client is configured. */
+  oauthStartPath: string | null;
+  /** The deployment-secret key the minted refresh token belongs in. */
+  refreshTokenSecretKey: string;
 }
 
 export interface DigestRuns {
@@ -110,6 +114,17 @@ export function describeFailure(failure: DigestFailure | null): string | null {
   if (!failure) return null;
   const headline = DIGEST_FAILURE_HEADLINES[failure.kind] ?? DIGEST_FAILURE_HEADLINES.unknown;
   return failure.message ? `${headline} (${failure.message})` : headline;
+}
+
+/**
+ * Whether the YouTube connection is what's standing between the owner and a digest — the
+ * newest run failed on an expired/revoked grant, or the account was never connected. Drives
+ * whether the reconnect guide starts expanded (#83).
+ */
+export function needsReconnect(runs: DigestRunSummary[], youtube: YoutubeStatus): boolean {
+  if (!youtube.connected) return true;
+  // runs arrive newest-first; only the latest run's verdict is current.
+  return runs[0]?.failure?.kind === "youtube_auth";
 }
 
 /** "12:34" / "1:02:03" video length from seconds; null when YouTube didn't say. */

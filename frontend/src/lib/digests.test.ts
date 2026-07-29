@@ -4,6 +4,9 @@ import {
   DIGEST_STATUS_META,
   formatConfidence,
   formatDuration,
+  needsReconnect,
+  type DigestRunSummary,
+  type YoutubeStatus,
 } from "./digests.js";
 
 describe("formatDuration", () => {
@@ -39,6 +42,59 @@ describe("describeFailure", () => {
 
   it("renders nothing for a run that did not fail", () => {
     expect(describeFailure(null)).toBeNull();
+  });
+});
+
+describe("needsReconnect", () => {
+  const connected: YoutubeStatus = {
+    connected: true,
+    title: "Ann-Katrin",
+    subscriptionsSyncedAt: null,
+    videosPolledAt: null,
+    oauthStartPath: "/youtube/oauth/start",
+    refreshTokenSecretKey: "YOUTUBE_OAUTH_REFRESH_TOKEN",
+  };
+  const run = (overrides: Partial<DigestRunSummary> = {}): DigestRunSummary => ({
+    id: "r1",
+    runDate: "2026-07-01",
+    status: "delivered",
+    coversSince: "2026-06-30T05:00:00Z",
+    deliveredAt: "2026-07-01T05:01:00Z",
+    createdAt: "2026-07-01T05:00:00Z",
+    cost: { cents: 1, formatted: "1¢" },
+    failure: null,
+    pickCount: 1,
+    rejectCount: 0,
+    ...overrides,
+  });
+
+  it("is true when YouTube was never connected", () => {
+    expect(needsReconnect([], { ...connected, connected: false })).toBe(true);
+  });
+
+  it("is true when the newest run died on an expired grant", () => {
+    const failed = run({
+      status: "failed",
+      deliveredAt: null,
+      failure: { kind: "youtube_auth", message: "invalid_grant" },
+    });
+    expect(needsReconnect([failed, run()], connected)).toBe(true);
+  });
+
+  it("is false once a later run succeeded, or for other failure kinds", () => {
+    const failed = run({
+      id: "r0",
+      status: "failed",
+      failure: { kind: "youtube_auth", message: "invalid_grant" },
+    });
+    expect(needsReconnect([run(), failed], connected)).toBe(false);
+    expect(
+      needsReconnect(
+        [run({ status: "failed", failure: { kind: "llm", message: "boom" } })],
+        connected,
+      ),
+    ).toBe(false);
+    expect(needsReconnect([], connected)).toBe(false);
   });
 });
 
