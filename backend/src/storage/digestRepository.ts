@@ -71,6 +71,36 @@ export class DigestRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * The most recently *delivered* run — the coverage watermark. A run that failed, was
+   * skipped for budget, or is still pending surfaced nothing to the owner, so the next
+   * run must still cover the videos it looked at (or never got to).
+   */
+  latestDeliveredForUser(userId: string): Promise<DigestRow | undefined> {
+    return this.db
+      .selectFrom("digests")
+      .select(DIGEST_SELECT)
+      .where("user_id", "=", userId)
+      .where("status", "=", "delivered")
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The oldest coverage-window start across a user's runs. Used when nothing has ever
+   * been delivered: it keeps the window anchored where the first attempt started instead
+   * of letting each failed retry advance it past videos no digest ever reported.
+   */
+  async earliestCoversSince(userId: string): Promise<Date | undefined> {
+    const row = await this.db
+      .selectFrom("digests")
+      .select(({ fn }) => fn.min("covers_since").as("covers_since"))
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return row?.covers_since ?? undefined;
+  }
+
   /** A user's digest runs, newest first (dashboard history, PRD D-1). */
   listForUser(userId: string, limit = 50): Promise<DigestRow[]> {
     return this.db

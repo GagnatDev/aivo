@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
-import { useCleanDb } from "../test/db.js";
+import { testDb, useCleanDb } from "../test/db.js";
 import { makeFakeLlm, textResult } from "../test/fakeLlm.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
 import { tokenRefreshError } from "../youtube/errors.js";
@@ -175,6 +175,83 @@ describe("runDigest", () => {
     const digest = await deps.digests.latestForUser(userId);
     expect(digest?.status).toBe("failed");
     expect(Number(digest?.cost_cents)).toBeGreaterThan(0);
+  });
+
+  it("re-covers the videos a failed run never reported", async () => {
+    const pick =
+      '{"decision":"pick","confidence":0.9,"summary":["half-blind dovetails"],"why":"joinery"}';
+    const { deps, userId } = await setupOwner([
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult(pick),
+    ]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "likes hand-tool woodworking");
+    const yt = makeFakeYoutube({
+      subscriptions: SUBSCRIPTIONS,
+      videos: [uploaded("v1", "UC1", "Dovetails by hand")],
+      transcripts: { v1: "long transcript about dovetails" },
+    });
+
+    // First run ingests v1, then dies in stage 2 — the owner is told nothing about it.
+    const fetchTranscript = yt.transcripts.fetchTranscript;
+    yt.transcripts.fetchTranscript = () => {
+      throw new Error("transcript service unreachable");
+    };
+    expect((await runDigest(deps, yt, userId, NOW)).kind).toBe("failed");
+
+    // The retry must still consider v1: it was published inside the failed run's window,
+    // and no digest has reported it. Anchoring on the failed run would drop it forever.
+    yt.transcripts.fetchTranscript = fetchTranscript;
+    const outcome = await runDigest(deps, yt, userId, NOW);
+    expect(outcome.kind).toBe("digest");
+    if (outcome.kind !== "digest") throw new Error("unreachable");
+    expect(outcome.picks.map((p) => p.videoId)).toEqual(["v1"]);
+  });
+
+  it("anchors the window on the last delivered run, not a later failed one", async () => {
+    const pick =
+      '{"decision":"pick","confidence":0.9,"summary":["half-blind dovetails"],"why":"joinery"}';
+    const { deps, userId } = await setupOwner([
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult(pick),
+    ]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "likes hand-tool woodworking");
+    // A delivered run two days back, then a failed run whose window already started after
+    // v1 went up (what the old "latest run, any status" anchor left behind).
+    await testDb()
+      .insertInto("digests")
+      .values([
+        {
+          user_id: userId,
+          run_date: "2026-06-29",
+          status: "delivered",
+          covers_since: new Date("2026-06-28T05:00:00Z"),
+          created_at: new Date("2026-06-29T05:00:00Z"),
+        },
+        {
+          user_id: userId,
+          run_date: "2026-06-30",
+          status: "failed",
+          covers_since: new Date("2026-06-30T20:00:00Z"),
+          created_at: new Date("2026-06-30T20:00:00Z"),
+        },
+      ])
+      .execute();
+
+    const outcome = await runDigest(
+      deps,
+      makeFakeYoutube({
+        subscriptions: SUBSCRIPTIONS,
+        videos: [uploaded("v1", "UC1", "Dovetails by hand")], // published 06-30T18:00Z
+        transcripts: { v1: "long transcript about dovetails" },
+      }),
+      userId,
+      NOW,
+    );
+
+    expect(outcome.kind).toBe("digest");
+    if (outcome.kind !== "digest") throw new Error("unreachable");
+    expect(outcome.picks.map((p) => p.videoId)).toEqual(["v1"]);
   });
 
   it("returns an empty digest when nothing new was published", async () => {

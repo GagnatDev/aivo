@@ -92,10 +92,7 @@ export async function runDigest(
   now: Date,
 ): Promise<DigestOutcome> {
   const settings = await deps.settings.getOrCreate(userId);
-  const latest = await deps.digests.latestForUser(userId);
-  const coversSince =
-    latest?.created_at ??
-    new Date(now.getTime() - settings.digest_interval_days * 24 * 60 * 60 * 1000);
+  const coversSince = await coverageStart(deps, userId, settings, now);
   const digest = await deps.digests.create({
     userId,
     runDate: localDate(now, settings.timezone),
@@ -114,6 +111,28 @@ export async function runDigest(
     await deps.digests.markFailed(digest.id, failure);
     return { kind: "failed", digestId: digest.id, failure };
   }
+}
+
+/**
+ * Where this run's coverage window starts: the end of the last run that actually reached
+ * the owner. A failed, budget-skipped, or still-pending run reported nothing, so anchoring
+ * on it (the previous behaviour — "the latest run, whatever its status") silently dropped
+ * every video published while the digest was broken. When nothing has ever been delivered
+ * we fall back to the oldest window an earlier attempt opened, and only on a truly first
+ * run to one interval back.
+ */
+async function coverageStart(
+  deps: AgentDeps,
+  userId: string,
+  settings: SettingsRow,
+  now: Date,
+): Promise<Date> {
+  const lastDelivered = await deps.digests.latestDeliveredForUser(userId);
+  if (lastDelivered) return lastDelivered.created_at;
+  const firstAttempted = await deps.digests.earliestCoversSince(userId);
+  return (
+    firstAttempted ?? new Date(now.getTime() - settings.digest_interval_days * 24 * 60 * 60 * 1000)
+  );
 }
 
 /** The run itself, once its `digests` row exists. Throws; `runDigest` classifies. */
