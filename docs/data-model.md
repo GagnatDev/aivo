@@ -191,7 +191,12 @@ A digest run and its entries. `digest_items` distinguishes **picks** from the
 `digests`
 - `id` uuid pk, `user_id` uuid → users
 - `run_date` date, `status` text — `pending` | `delivered` | `skipped_budget` | `failed`
-- `covers_since` timestamptz — watermark of "new since last digest"
+- `covers_since` timestamptz — watermark of "new since the last digest that actually
+  reached the owner". Anchored on the most recent `delivered` run's `created_at`, not on
+  the latest run of any status: a `failed`, `skipped_budget`, or still-`pending` run
+  reported nothing, so the next run has to look at its videos again. Until a first run is
+  delivered the window stays at the oldest `covers_since` any run opened, falling back to
+  one `digest_interval_days` back on a truly first run.
 - `delivered_at` timestamptz null
 - `failure_kind` text null, `failure_message` text null — set together with
   `status = 'failed'`; the kind (`youtube_auth` | `youtube_api` | `llm` | `unknown`) is what

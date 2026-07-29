@@ -35,6 +35,41 @@ describe("DigestRepository", () => {
     expect((await digests.latestForUser(userId))?.id).toBe(second.id);
   });
 
+  it("latestDeliveredForUser skips runs that never reached the owner", async () => {
+    const { digests, userId } = await setup();
+    const delivered = await digests.create({
+      userId,
+      runDate: "2026-06-29",
+      coversSince: new Date("2026-06-28T05:00:00Z"),
+    });
+    await digests.markDelivered(delivered.id, new Date("2026-06-29T05:00:00Z"));
+    const failed = await digests.create({
+      userId,
+      runDate: "2026-06-30",
+      coversSince: new Date("2026-06-29T05:00:00Z"),
+    });
+    await digests.markFailed(failed.id, { kind: "youtube_auth", message: "invalid_grant" });
+    await digests.create({ userId, runDate: "2026-07-01", coversSince: new Date() }); // pending
+
+    expect((await digests.latestDeliveredForUser(userId))?.id).toBe(delivered.id);
+  });
+
+  it("earliestCoversSince reports the oldest window a run ever opened", async () => {
+    const { digests, userId } = await setup();
+    expect(await digests.earliestCoversSince(userId)).toBeUndefined();
+    await digests.create({
+      userId,
+      runDate: "2026-06-30",
+      coversSince: new Date("2026-06-29T05:00:00Z"),
+    });
+    await digests.create({
+      userId,
+      runDate: "2026-07-01",
+      coversSince: new Date("2026-06-30T05:00:00Z"),
+    });
+    expect(await digests.earliestCoversSince(userId)).toEqual(new Date("2026-06-29T05:00:00Z"));
+  });
+
   it("listForUser returns runs newest first, scoped by user", async () => {
     const { digests, userId } = await setup();
     const other = await new UserRepository(testDb()).upsertByDiscordId({
