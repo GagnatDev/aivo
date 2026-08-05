@@ -4,7 +4,10 @@ import {
   DIGEST_STATUS_META,
   formatConfidence,
   formatDuration,
+  formatReleaseAt,
   needsReconnect,
+  partitionDigestItems,
+  type DigestItem,
   type DigestRunSummary,
   type YoutubeStatus,
 } from "./digests.js";
@@ -112,5 +115,49 @@ describe("formatConfidence", () => {
 
   it("passes through missing confidence", () => {
     expect(formatConfidence(null)).toBeNull();
+  });
+});
+
+describe("partitionDigestItems", () => {
+  const NOW = new Date("2026-08-05T06:00:00Z");
+  const item = (id: string, publishedAt: string, rank: number): DigestItem => ({
+    id,
+    rank,
+    confidence: 0.8,
+    reason: null,
+    video: {
+      id,
+      title: `Title ${id}`,
+      channelTitle: "Chan",
+      durationSeconds: 600,
+      publishedAt,
+      thumbnailUrl: null,
+      summary: null,
+      why: null,
+    },
+  });
+
+  it("keeps released order and sorts upcoming earliest-first", () => {
+    const { released, upcoming } = partitionDigestItems(
+      [
+        item("a", "2026-08-04T10:00:00Z", 1),
+        item("b", "2026-08-07T18:00:00Z", 2),
+        item("c", "2026-08-06T12:00:00Z", 3),
+      ],
+      NOW,
+    );
+    expect(released.map((i) => i.id)).toEqual(["a"]);
+    expect(upcoming.map((i) => i.id)).toEqual(["c", "b"]);
+  });
+});
+
+describe("formatReleaseAt", () => {
+  it("renders weekday, date, and time", () => {
+    // Fixed UTC so the assertion doesn't depend on the runner's local zone.
+    const text = formatReleaseAt("2026-08-06T16:00:00Z", "UTC");
+    expect(text).toMatch(/Thursday/i);
+    expect(text).toMatch(/6/);
+    expect(text).toMatch(/Aug/i);
+    expect(text).toMatch(/16:00/);
   });
 });

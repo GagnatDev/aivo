@@ -212,9 +212,14 @@ async function showMorePicks(ctx: ToolContext): Promise<string> {
   if (overflow.length === 0) return "No further picks in the latest digest.";
   const videos = await ctx.deps.videos.findByIds(overflow.map((i) => i.video_id));
   const byId = new Map(videos.map((v) => [v.id, v]));
+  const now = ctx.deps.clock.now().getTime();
   const lines = overflow.map((i) => {
     const v = byId.get(i.video_id);
-    return `${i.rank}. ${v?.title ?? i.video_id} — https://www.youtube.com/watch?v=${i.video_id}${v?.why ? ` (${v.why})` : ""}`;
+    const releaseNote =
+      v && v.published_at.getTime() > now
+        ? ` [not released yet — releases ${v.published_at.toISOString()}]`
+        : "";
+    return `${i.rank}. ${v?.title ?? i.video_id} — https://www.youtube.com/watch?v=${i.video_id}${releaseNote}${v?.why ? ` (${v.why})` : ""}`;
   });
   return `Lower-confidence picks from ${latest.run_date}:\n${lines.join("\n")}`;
 }

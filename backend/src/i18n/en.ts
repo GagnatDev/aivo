@@ -33,11 +33,19 @@ export const en: Messages = {
     headerEmpty: (runDate) => `**YouTube digest — ${runDate}**: nothing new worth your time. 🎉`,
     header: (runDate, picks) =>
       `**YouTube digest — ${runDate}** · ${picks} pick${picks === 1 ? "" : "s"}`,
+    headerWithUpcoming: (runDate, picks, upcoming) =>
+      `**YouTube digest — ${runDate}** · ${picks} pick${picks === 1 ? "" : "s"}` +
+      ` · ${upcoming} coming up`,
+    headerUpcomingOnly: (runDate, upcoming) =>
+      `**YouTube digest — ${runDate}** · ${upcoming} coming up (not released yet)`,
     morePicks: (count) =>
       `*(${count} more matched with lower confidence — ask me to "show more picks".)*`,
     budgetNote: (pct) => `*(Budget: you've used about ${pct}% of this month's ceiling.)*`,
     why: (text) => `*Why: ${text}*`,
     durationPrefix: (minutes) => `${minutes} min · `,
+    upcomingHeader: "**Coming up — not released yet:**",
+    releasesAt: (when) => `Releases ${when}`,
+    notReleasedYet: "Not released yet · ",
     rejectedHeader: "**Also new, but skipped** *(correct me if I got one wrong)*:",
     rejectedLine: (title, channel, reason) =>
       `• ${title}${channel ? ` (${channel})` : ""} — skipped: ${reason}`,

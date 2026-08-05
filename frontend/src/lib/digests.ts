@@ -147,3 +147,47 @@ export function formatConfidence(confidence: number | null): string | null {
 export function videoUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
+
+/** True when the video's publish/premiere instant is still in the future. */
+export function isUpcoming(publishedAt: string, now: Date = new Date()): boolean {
+  return new Date(publishedAt).getTime() > now.getTime();
+}
+
+/** Released picks keep API order; upcoming are sorted earliest-first. */
+export function partitionDigestItems(
+  picks: DigestItem[],
+  now: Date = new Date(),
+): { released: DigestItem[]; upcoming: DigestItem[] } {
+  const released: DigestItem[] = [];
+  const upcoming: DigestItem[] = [];
+  for (const item of picks) {
+    if (item.video && isUpcoming(item.video.publishedAt, now)) upcoming.push(item);
+    else released.push(item);
+  }
+  upcoming.sort((a, b) => {
+    const aAt = a.video ? new Date(a.video.publishedAt).getTime() : 0;
+    const bAt = b.video ? new Date(b.video.publishedAt).getTime() : 0;
+    return aAt - bAt;
+  });
+  return { released, upcoming };
+}
+
+/**
+ * Weekday + date + time for a release instant (dashboard is English-only),
+ * e.g. "Thursday, 6 Aug, 18:00".
+ */
+export function formatReleaseAt(iso: string, timeZone = "UTC"): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  };
+  try {
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone }).format(new Date(iso));
+  } catch {
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(new Date(iso));
+  }
+}
