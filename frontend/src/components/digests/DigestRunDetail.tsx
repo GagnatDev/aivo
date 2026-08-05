@@ -3,6 +3,8 @@ import {
   DIGEST_STATUS_META,
   formatConfidence,
   formatDuration,
+  formatReleaseAt,
+  partitionDigestItems,
   summarizeFeedback,
   videoUrl,
   type DigestDetail,
@@ -11,13 +13,15 @@ import {
 import { formatShortDate } from "../../lib/overview.js";
 import { DigestFailureNote } from "./DigestFailureNote.js";
 
-function PickCard({ item }: { item: DigestItem }) {
+function PickCard({ item, upcoming = false }: { item: DigestItem; upcoming?: boolean }) {
   const confidence = formatConfidence(item.confidence);
-  const duration = item.video ? formatDuration(item.video.durationSeconds) : null;
+  const duration = !upcoming && item.video ? formatDuration(item.video.durationSeconds) : null;
+  const releaseAt = upcoming && item.video ? formatReleaseAt(item.video.publishedAt) : null;
   return (
-    <li className="card digest-pick">
+    <li className={`card digest-pick${upcoming ? " digest-pick-upcoming" : ""}`}>
       <div className="digest-pick-head">
-        {item.rank != null ? <span className="digest-rank">#{item.rank}</span> : null}
+        {!upcoming && item.rank != null ? <span className="digest-rank">#{item.rank}</span> : null}
+        {upcoming ? <span className="digest-rank digest-upcoming-badge">Soon</span> : null}
         <div className="digest-pick-title">
           {item.video ? (
             <a href={videoUrl(item.video.id)} target="_blank" rel="noreferrer">
@@ -29,11 +33,15 @@ function PickCard({ item }: { item: DigestItem }) {
           <div className="digest-pick-meta">
             {item.video?.channelTitle ? <span>{item.video.channelTitle}</span> : null}
             {duration ? <span>{duration}</span> : null}
-            {item.video ? <span>{formatShortDate(item.video.publishedAt)}</span> : null}
+            {releaseAt ? <span>Releases {releaseAt}</span> : null}
+            {!upcoming && item.video ? (
+              <span>{formatShortDate(item.video.publishedAt)}</span>
+            ) : null}
             {confidence ? <span>confidence {confidence}</span> : null}
           </div>
         </div>
       </div>
+      {upcoming ? <p className="digest-upcoming-note">Not released yet</p> : null}
       {item.video?.summary ? <p className="digest-summary">{item.video.summary}</p> : null}
       {item.video?.why ? (
         <p className="digest-why">
@@ -48,6 +56,7 @@ function PickCard({ item }: { item: DigestItem }) {
 /**
  * D-2/D-3: one run drilled open — header stats, ranked picks with the video
  * metadata the Discord message shows, and the rejected list with reasons.
+ * Still-unreleased picks (premieres / scheduled uploads) sit below the rest.
  */
 export function DigestRunDetail({ id }: { id: string }) {
   const detail = useApi<DigestDetail>(`/api/dashboard/digests/${id}`);
@@ -58,6 +67,7 @@ export function DigestRunDetail({ id }: { id: string }) {
 
   const status = DIGEST_STATUS_META[data.run.status];
   const feedback = summarizeFeedback(data.feedback);
+  const { released, upcoming } = partitionDigestItems(data.picks);
   return (
     <>
       <DigestFailureNote failure={data.run.failure} />
@@ -97,16 +107,30 @@ export function DigestRunDetail({ id }: { id: string }) {
       <div className="card chart-card">
         <h2>Picks</h2>
         <p className="muted">Ranked by the stage-2 relevance filter.</p>
-        {data.picks.length > 0 ? (
+        {released.length > 0 ? (
           <ul className="digest-pick-list">
-            {data.picks.map((item) => (
+            {released.map((item) => (
               <PickCard key={item.id} item={item} />
             ))}
           </ul>
         ) : (
-          <p className="muted">No picks in this run.</p>
+          <p className="muted">
+            {upcoming.length > 0 ? "No released picks in this run." : "No picks in this run."}
+          </p>
         )}
       </div>
+
+      {upcoming.length > 0 ? (
+        <div className="card chart-card">
+          <h2>Coming up — not released yet</h2>
+          <p className="muted">Premieres and scheduled uploads, earliest first.</p>
+          <ul className="digest-pick-list">
+            {upcoming.map((item) => (
+              <PickCard key={item.id} item={item} upcoming />
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="card chart-card">
         <h2>Rejected</h2>

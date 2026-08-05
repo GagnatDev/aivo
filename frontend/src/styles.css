@@ -725,6 +725,20 @@ a {
   margin-top: 0.15rem;
 }
 
+.digest-upcoming-badge {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.digest-upcoming-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .digest-summary {
   margin: 0.6rem 0 0;
   overflow-wrap: anywhere;

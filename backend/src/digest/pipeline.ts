@@ -32,6 +32,8 @@ export interface DeliverablePick {
   summaryBullets: string[];
   why: string;
   rank: number;
+  /** Publish/premiere instant — used to surface still-unreleased videos below the rest. */
+  publishedAt: Date;
 }
 
 export interface DeliverableReject {
@@ -314,6 +316,7 @@ async function buildDigest(
       summaryBullets: p.verdict.summaryBullets,
       why: p.verdict.why,
       rank: i + 1,
+      publishedAt: p.video.published_at,
     })),
     morePicksCount: Math.max(0, picks.length - settings.digest_cap),
     rejects,

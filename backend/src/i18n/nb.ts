@@ -32,11 +32,18 @@ export const nb: Messages = {
     btnWrongTopic: "🚫 Feil tema",
     headerEmpty: (runDate) => `**YouTube-digest — ${runDate}**: ingenting nytt verdt tiden din. 🎉`,
     header: (runDate, picks) => `**YouTube-digest — ${runDate}** · ${picks} treff`,
+    headerWithUpcoming: (runDate, picks, upcoming) =>
+      `**YouTube-digest — ${runDate}** · ${picks} treff · ${upcoming} kommer`,
+    headerUpcomingOnly: (runDate, upcoming) =>
+      `**YouTube-digest — ${runDate}** · ${upcoming} kommer (ikke sluppet ennå)`,
     morePicks: (count) =>
       `*(${count} til traff med lavere sikkerhet — be meg om å "vise flere treff".)*`,
     budgetNote: (pct) => `*(Budsjett: du har brukt omtrent ${pct} % av månedens tak.)*`,
     why: (text) => `*Hvorfor: ${text}*`,
     durationPrefix: (minutes) => `${minutes} min · `,
+    upcomingHeader: "**Kommer — ikke sluppet ennå:**",
+    releasesAt: (when) => `Slippes ${when}`,
+    notReleasedYet: "Ikke sluppet ennå · ",
     rejectedHeader: "**Også nytt, men hoppet over** *(rett meg hvis jeg tok feil av noe)*:",
     rejectedLine: (title, channel, reason) =>
       `• ${title}${channel ? ` (${channel})` : ""} — hoppet over: ${reason}`,

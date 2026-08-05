@@ -63,6 +63,8 @@ describe("catalog parity", () => {
       expect(m.feedback.keep.length).toBeGreaterThan(0);
       expect(m.approval.prompt(5, 3).length).toBeGreaterThan(0);
       expect(m.digest.header("2026-07-01", 2).length).toBeGreaterThan(0);
+      expect(m.digest.headerWithUpcoming("2026-07-01", 2, 1).length).toBeGreaterThan(0);
+      expect(m.digest.releasesAt("Thursday 6 Aug, 18:00").length).toBeGreaterThan(0);
       expect(m.weather.morningHeader("Oslo", "torsdag").length).toBeGreaterThan(0);
     }
   });

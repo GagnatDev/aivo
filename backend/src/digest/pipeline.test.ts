@@ -67,6 +67,7 @@ describe("runDigest", () => {
       url: "https://www.youtube.com/watch?v=v1",
       summaryBullets: ["half-blind dovetails", "tool list"],
       why: "hand-tool joinery is your thing",
+      publishedAt: new Date("2026-06-30T18:00:00Z"),
     });
     // Cold start: both the stage-2 reject and the stage-1 near-miss are shown.
     expect(outcome.rejects).toEqual([

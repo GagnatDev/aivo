@@ -53,12 +53,22 @@ export interface Messages {
     headerEmpty: (runDate: string) => string;
     /** Header with a pick count. */
     header: (runDate: string, picks: number) => string;
+    /** Header when some picks are still unreleased (premieres / scheduled uploads). */
+    headerWithUpcoming: (runDate: string, picks: number, upcoming: number) => string;
+    /** Header when every pick is still unreleased. */
+    headerUpcomingOnly: (runDate: string, upcoming: number) => string;
     morePicks: (count: number) => string;
     budgetNote: (pct: number) => string;
     /** "Why:" label prefixing a pick's rationale. */
     why: (text: string) => string;
     /** "N min · " duration prefix on a pick embed. */
     durationPrefix: (minutes: number) => string;
+    /** Section header above unreleased picks. */
+    upcomingHeader: string;
+    /** Leading line on an unreleased pick: "Releases <when>". */
+    releasesAt: (when: string) => string;
+    /** Footer lead-in for an unreleased pick (replaces the duration prefix). */
+    notReleasedYet: string;
     /** Header of the "also new, but skipped" list. */
     rejectedHeader: string;
     /** "<title> (<channel>) — skipped: <reason>" line. */

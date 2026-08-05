@@ -9,6 +9,10 @@ import {
   rejectedListNote,
 } from "./digestDelivery.js";
 
+const NOW = new Date("2026-08-05T06:00:00Z");
+const TZ = "Europe/Oslo";
+const embedCtx = { timezone: TZ, now: NOW };
+
 const pick = {
   itemId: "item-1",
   videoId: "v1",
@@ -20,6 +24,21 @@ const pick = {
   summaryBullets: ["half-blind dovetails", "tool list"],
   why: "hand-tool joinery is your thing",
   rank: 1,
+  publishedAt: new Date("2026-08-04T18:00:00Z"),
+};
+
+const upcomingPick = {
+  ...pick,
+  itemId: "item-2",
+  videoId: "v2",
+  title: "Live dovetail Q&A",
+  durationSeconds: null,
+  thumbnailUrl: null,
+  summaryBullets: ["viewer questions"],
+  why: "premiere of a live session you care about",
+  rank: 2,
+  // 16:00Z = 18:00 Europe/Oslo in August.
+  publishedAt: new Date("2026-08-06T16:00:00Z"),
 };
 
 const digestOutcome = (
@@ -27,7 +46,7 @@ const digestOutcome = (
 ): Extract<DigestOutcome, { kind: "digest" }> => ({
   kind: "digest",
   digestId: "d1",
-  runDate: "2026-07-01",
+  runDate: "2026-08-05",
   picks: [pick],
   morePicksCount: 0,
   rejects: [],
@@ -36,34 +55,65 @@ const digestOutcome = (
 
 describe("digestHeader", () => {
   it("announces the pick count and overflow", () => {
-    const header = digestHeader(digestOutcome({ morePicksCount: 3 }), "en");
-    expect(header).toMatch(/2026-07-01/);
+    const header = digestHeader(digestOutcome({ morePicksCount: 3 }), "en", NOW);
+    expect(header).toMatch(/2026-08-05/);
     expect(header).toMatch(/1 pick\b/);
     expect(header).toMatch(/3 more matched/);
   });
 
   it("celebrates an empty digest and surfaces budget alerts", () => {
-    const header = digestHeader(digestOutcome({ picks: [], alertPct: 80 }), "en");
+    const header = digestHeader(digestOutcome({ picks: [], alertPct: 80 }), "en", NOW);
     expect(header).toMatch(/nothing new/);
     expect(header).toMatch(/80%/);
   });
 
+  it("calls out upcoming picks separately in the header", () => {
+    const mixed = digestHeader(digestOutcome({ picks: [pick, upcomingPick] }), "en", NOW);
+    expect(mixed).toMatch(/1 pick/);
+    expect(mixed).toMatch(/1 coming up/);
+
+    const onlyUpcoming = digestHeader(digestOutcome({ picks: [upcomingPick] }), "en", NOW);
+    expect(onlyUpcoming).toMatch(/1 coming up \(not released yet\)/);
+  });
+
   it("renders the header in Norwegian", () => {
-    const header = digestHeader(digestOutcome({ morePicksCount: 3 }), "nb");
+    const header = digestHeader(
+      digestOutcome({ picks: [pick, upcomingPick], morePicksCount: 3 }),
+      "nb",
+      NOW,
+    );
     expect(header).toMatch(/1 treff/);
+    expect(header).toMatch(/1 kommer/);
     expect(header).toMatch(/vise flere treff/);
   });
 });
 
 describe("pickEmbed", () => {
   it("carries rank, link, TL;DW bullets, why-line, duration, and thumbnail", () => {
-    const embed = pickEmbed(pick, "en").toJSON();
+    const embed = pickEmbed(pick, "en", embedCtx).toJSON();
     expect(embed.title).toBe("1. Dovetails by hand");
     expect(embed.url).toBe(pick.url);
     expect(embed.description).toContain("• half-blind dovetails");
     expect(embed.description).toContain("*Why: hand-tool joinery is your thing*");
     expect(embed.footer?.text).toBe("15 min · Wood");
     expect(embed.thumbnail?.url).toBe(pick.thumbnailUrl);
+  });
+
+  it("labels unreleased picks with the local release day/date/time", () => {
+    const embed = pickEmbed(upcomingPick, "en", embedCtx).toJSON();
+    expect(embed.title).toBe("Live dovetail Q&A");
+    expect(embed.footer?.text).toBe("Not released yet · Wood");
+    expect(embed.description).toMatch(/^\*\*Releases /);
+    expect(embed.description).toMatch(/Thursday/i);
+    expect(embed.description).toMatch(/18:00/);
+    expect(embed.description).toContain("• viewer questions");
+  });
+
+  it("labels unreleased picks in Norwegian", () => {
+    const embed = pickEmbed(upcomingPick, "nb", embedCtx).toJSON();
+    expect(embed.footer?.text).toBe("Ikke sluppet ennå · Wood");
+    expect(embed.description).toMatch(/^\*\*Slippes /);
+    expect(embed.description!.toLowerCase()).toMatch(/torsdag/);
   });
 });
 
@@ -123,9 +173,16 @@ describe("failureNote", () => {
 
 describe("conversationSummary", () => {
   it("summarizes each outcome kind for the agent's context", () => {
-    expect(conversationSummary(digestOutcome())).toMatch(/1\. Dovetails by hand \(Wood\)/);
+    expect(conversationSummary(digestOutcome(), NOW)).toMatch(/1\. Dovetails by hand \(Wood\)/);
     expect(conversationSummary({ kind: "no_profile", digestId: "d" })).toMatch(/interest profile/);
     expect(conversationSummary({ kind: "skipped_budget", digestId: "d" })).toMatch(/budget/);
+  });
+
+  it("lists upcoming picks after released ones", () => {
+    const summary = conversationSummary(digestOutcome({ picks: [pick, upcomingPick] }), NOW);
+    expect(summary).toMatch(/1\. Dovetails by hand/);
+    expect(summary).toMatch(/Coming up: Live dovetail Q&A/);
+    expect(summary.indexOf("Dovetails")).toBeLessThan(summary.indexOf("Coming up"));
   });
 
   // The audit row is what surfaces the failure in the dashboard's activity log (#83).
