@@ -3,6 +3,7 @@ import { useApi } from "../../api/useApi.js";
 import { formatTimestamp } from "../../lib/activity.js";
 import { diffLines } from "../../lib/diff.js";
 import type { ProfileResponse, ProfileVersion } from "../../lib/memory.js";
+import { ProfileSkeleton } from "../Skeleton.js";
 
 function VersionDiff({ from, to }: { from: ProfileVersion; to: ProfileVersion }) {
   return (
@@ -37,7 +38,7 @@ export function ProfileTab() {
   const data = profile.data;
 
   if (profile.error) return <div className="error-banner">{profile.error}</div>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <ProfileSkeleton />;
   if (!data.current) {
     return (
       <p className="muted empty-state">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { sendJson } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
+import { CardGridSkeleton, InlineSkeleton } from "../components/Skeleton.js";
 import { formatTimestamp } from "../lib/activity.js";
 import {
   formatHour,
@@ -79,7 +80,7 @@ function UnforkedCard() {
       <h2>Unforked meal planner</h2>
       {status.error ? <div className="error-banner">{status.error}</div> : null}
       {error ? <div className="error-banner">{error}</div> : null}
-      {!data && !status.error ? <p className="muted">Loading…</p> : null}
+      {!data && !status.error ? <InlineSkeleton lines={2} /> : null}
 
       {data && !data.configured ? (
         <p className="muted">
@@ -159,7 +160,7 @@ export function SettingsPage() {
       </div>
 
       {settings.error ? <div className="error-banner">{settings.error}</div> : null}
-      {!data && !settings.error ? <p className="muted">Loading…</p> : null}
+      {!data && !settings.error ? <CardGridSkeleton cards={5} lines={4} /> : null}
 
       {data ? (
         <div className="card-grid">

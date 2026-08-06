@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi.js";
 import { DigestFailureNote } from "../components/digests/DigestFailureNote.js";
+import { CardGridSkeleton, StatGridSkeleton } from "../components/Skeleton.js";
 import { DIGEST_STATUS_LABELS, formatShortDate, type Overview } from "../lib/overview.js";
 import { DEGRADATION_META } from "../lib/palette.js";
 
@@ -29,7 +30,12 @@ export function OverviewPage() {
       </div>
 
       {overview.error ? <div className="error-banner">{overview.error}</div> : null}
-      {!data && !overview.error ? <p className="muted">Loading…</p> : null}
+      {!data && !overview.error ? (
+        <>
+          <StatGridSkeleton />
+          <CardGridSkeleton cards={2} lines={3} announce={false} />
+        </>
+      ) : null}
 
       {data && status ? (
         <>
