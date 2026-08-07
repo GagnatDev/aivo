@@ -3,6 +3,7 @@ import { useApi } from "../api/useApi.js";
 import { DigestRunDetail } from "../components/digests/DigestRunDetail.js";
 import { DigestRunList } from "../components/digests/DigestRunList.js";
 import { YoutubeReconnectGuide } from "../components/digests/YoutubeReconnectGuide.js";
+import { InlineSkeleton, TableSkeleton } from "../components/Skeleton.js";
 import { formatTimestamp } from "../lib/activity.js";
 import { needsReconnect, type DigestRuns } from "../lib/digests.js";
 
@@ -77,7 +78,12 @@ export function DigestsPage() {
           </p>
         )
       ) : (
-        <p className="muted">Loading…</p>
+        <>
+          <InlineSkeleton lines={1} />
+          <div className="card chart-card">
+            <TableSkeleton rows={6} cols={6} announce={false} />
+          </div>
+        </>
       )}
     </section>
   );

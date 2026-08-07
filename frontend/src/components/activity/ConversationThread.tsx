@@ -6,6 +6,7 @@ import {
   type MessagesPage,
   type ThreadMessage,
 } from "../../lib/activity.js";
+import { ThreadSkeleton } from "../Skeleton.js";
 
 const PAGE_SIZE = 50;
 
@@ -108,7 +109,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
   const thread = useThread(conversationId);
 
   if (thread.error) return <div className="error-banner">{thread.error}</div>;
-  if (thread.loading && thread.messages.length === 0) return <p className="muted">Loading…</p>;
+  if (thread.loading && thread.messages.length === 0) return <ThreadSkeleton />;
   if (thread.messages.length === 0) {
     return <p className="muted empty-state">No messages in this conversation yet.</p>;
   }

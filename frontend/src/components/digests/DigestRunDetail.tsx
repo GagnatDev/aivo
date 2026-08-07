@@ -11,6 +11,7 @@ import {
   type DigestItem,
 } from "../../lib/digests.js";
 import { formatShortDate } from "../../lib/overview.js";
+import { ListSkeleton, StatGridSkeleton, TableSkeleton } from "../Skeleton.js";
 import { DigestFailureNote } from "./DigestFailureNote.js";
 
 function PickCard({ item, upcoming = false }: { item: DigestItem; upcoming?: boolean }) {
@@ -63,7 +64,26 @@ export function DigestRunDetail({ id }: { id: string }) {
   const data = detail.data;
 
   if (detail.error) return <div className="error-banner">{detail.error}</div>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) {
+    return (
+      <div aria-busy="true">
+        <span className="visually-hidden" role="status">
+          Loading
+        </span>
+        <StatGridSkeleton announce={false} />
+        <div className="card chart-card">
+          <h2>Picks</h2>
+          <p className="muted">Ranked by the stage-2 relevance filter.</p>
+          <ListSkeleton rows={3} lines={3} announce={false} />
+        </div>
+        <div className="card chart-card">
+          <h2>Rejected</h2>
+          <p className="muted">Filtered out, with the reason — so you can audit the taste.</p>
+          <TableSkeleton rows={4} cols={4} announce={false} />
+        </div>
+      </div>
+    );
+  }
 
   const status = DIGEST_STATUS_META[data.run.status];
   const feedback = summarizeFeedback(data.feedback);

@@ -4,6 +4,7 @@ import { useApi } from "../api/useApi.js";
 import { PricingTable } from "../components/models/PricingTable.js";
 import { TierCards } from "../components/models/TierCards.js";
 import { UsageShareList } from "../components/models/UsageShareList.js";
+import { ShareListSkeleton, StatGridSkeleton, TableSkeleton } from "../components/Skeleton.js";
 import { buildShares, type ModelsOverview, type ModelsUsage } from "../lib/models.js";
 import { rangeToWindow, type UsageRange } from "../lib/usage.js";
 
@@ -54,6 +55,7 @@ export function ModelsPage() {
       {error ? <div className="error-banner">{error}</div> : null}
 
       {overview.data ? <TierCards overview={overview.data} /> : null}
+      {!overview.data && !overview.error ? <StatGridSkeleton /> : null}
 
       <div className="card chart-card">
         <h2>Active models</h2>
@@ -63,8 +65,8 @@ export function ModelsPage() {
         </p>
         {overview.data ? (
           <PricingTable models={overview.data.models} />
-        ) : (
-          <p className="muted">Loading…</p>
+        ) : overview.error ? null : (
+          <TableSkeleton rows={4} cols={7} />
         )}
       </div>
 
@@ -88,7 +90,7 @@ export function ModelsPage() {
         {shares && shares.length > 0 ? (
           <UsageShareList shares={shares} />
         ) : usage.loading ? (
-          <p className="muted">Loading…</p>
+          <ShareListSkeleton />
         ) : (
           <p className="muted empty-state">No usage in this range — start a chat in #chat.</p>
         )}
