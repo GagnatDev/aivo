@@ -72,11 +72,12 @@ colliding with the other homectl repos' dev servers in this workspace.
 
 To exercise the `unforked/` tool (`backend/src/unforked/client.ts`) against a real
 unforked instance instead of leaving it unconfigured, also run unforked's own local
-stack (its backend defaults to `:8082` locally). Then in aivo's `.env`, set
-`UNFORKED_BASE_URL=http://localhost:8082` and register a real `ufk_...` API key via
-aivo's dashboard Settings page — mint the key from unforked's own UI first, since aivo
-never generates or reads it from an env var (see `unforked docs/aivo-integration.md`
-for the API contract).
+stack (its human API defaults to `:8082` locally, but the machine API aivo actually
+calls is a separate listener on `:8086` — see unforked's own README). Then in aivo's
+`.env`, set `UNFORKED_BASE_URL=http://localhost:8086` and register a real `ufk_...`
+API key via aivo's dashboard Settings page — mint the key from unforked's own UI
+first, since aivo never generates or reads it from an env var (see
+`unforked docs/aivo-integration.md` for the API contract).
 
 ### Running the real homectl-auth-proxy sidecar locally (Option B)
 
