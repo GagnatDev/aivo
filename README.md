@@ -63,3 +63,45 @@ pnpm dev            # backend + frontend, both in watch mode
 `docker-compose.yml` brings up Postgres alongside the service for a closer-to-prod local
 run. See [`AGENTS.md`](AGENTS.md) for the full command list (typecheck, lint, test, build)
 and the repo's internal conventions.
+
+By default `pnpm dev` serves the backend on `:8081` and the Vite frontend on `:3001`
+(see `frontend/vite.config.ts`); these are dedicated local ports chosen to avoid
+colliding with the other homectl repos' dev servers in this workspace.
+
+### Testing the aivo↔unforked integration locally
+
+To exercise the `unforked/` tool (`backend/src/unforked/client.ts`) against a real
+unforked instance instead of leaving it unconfigured, also run unforked's own local
+stack (its backend defaults to `:8082` locally). Then in aivo's `.env`, set
+`UNFORKED_BASE_URL=http://localhost:8082` and register a real `ufk_...` API key via
+aivo's dashboard Settings page — mint the key from unforked's own UI first, since aivo
+never generates or reads it from an env var (see `unforked docs/aivo-integration.md`
+for the API contract).
+
+### Running the real homectl-auth-proxy sidecar locally (Option B)
+
+`pnpm dev:sidecar` runs aivo with `AUTH_MODE=sidecar` (`.env.sidecar`), which expects
+identity headers from an actual `homectl-auth-proxy` in front of it rather than the
+`pnpm dev` fixed dev principal. To put the real sidecar in the loop without a login
+flow, run it with a fake identity (homectl-auth `docs/sidecar/integration.md` §"Option
+B — `DEV_FAKE_IDENTITY`"), pointed at aivo's local backend port and homectl-auth's
+local auth API (`:4400`, unchanged — no in-cluster DNS locally so
+`PUBLIC_AUTH_URL`/`INTERNAL_AUTH_URL` are the same address):
+
+```bash
+docker run --rm -p 4180:4180 \
+  -e NODE_ENV=development \
+  -e PUBLIC_AUTH_URL=http://localhost:4400 \
+  -e INTERNAL_AUTH_URL=http://localhost:4400 \
+  -e AUTH_CLIENT_ID=aivo \
+  -e AUTH_CLIENT_SECRET=dev \
+  -e APP_BASE_URL=http://localhost:4180 \
+  -e UPSTREAM=http://host.docker.internal:8081 \
+  -e LISTEN_PORT=4180 \
+  -e COOKIE_KEY="$(openssl rand -base64 32)" \
+  -e DEV_FAKE_IDENTITY='{"sub":"dev-user","email":"dev@homectl.no","role":"admin"}' \
+  rg.fr-par.scw.cloud/homectl/homectl-auth-proxy:latest
+```
+
+Start aivo with `pnpm dev:sidecar` first (so `:8081` is up), then hit the dashboard
+through the sidecar on `:4180` instead of `:3001`/`:8081` directly.
