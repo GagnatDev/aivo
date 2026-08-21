@@ -9,7 +9,8 @@ layout, and conventions.
 All commands run from the repo root (swap the filter to `@aivo/frontend` for the SPA):
 
 ```
-pnpm dev                                    # backend :8080 + Vite frontend :3000
+pnpm dev                                    # backend :8081 + Vite frontend :3001
+pnpm dev:sidecar                            # same, with AUTH_MODE=sidecar (see .env.sidecar)
 pnpm --filter @aivo/backend run dev        # watch-mode local run
 pnpm --filter @aivo/backend run typecheck  # tsc --noEmit
 pnpm --filter @aivo/backend run lint        # biome check (format + lint) — CI gate
