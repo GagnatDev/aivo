@@ -1,5 +1,6 @@
 import { useApi } from "../../api/useApi.js";
 import { formatMemoryDate, type ForgottenMemoriesResponse } from "../../lib/memory.js";
+import { ListSkeleton } from "../Skeleton.js";
 
 /** ME-8: the soft-delete audit trail — "forget that" is reversible, so show it. */
 export function ForgottenTab() {
@@ -7,7 +8,7 @@ export function ForgottenTab() {
   const data = forgotten.data;
 
   if (forgotten.error) return <div className="error-banner">{forgotten.error}</div>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <ListSkeleton />;
   if (data.memories.length === 0) {
     return <p className="muted empty-state">Nothing forgotten — every memory is still active.</p>;
   }

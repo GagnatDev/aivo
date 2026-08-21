@@ -76,7 +76,7 @@ Per-user, chat-editable knobs (one row per user).
 - `model_tier` text default `auto` — `auto` | `cheap` | `premium` (the chat
   override "use the cheap model for everything this week")
 - `persona_prompt` text null — editable system-prompt addendum ("be more casual")
-- `proactivity` jsonb — which proactive lanes are enabled (digest, reminders)
+- `proactivity` jsonb — per-lane proactive state (digest lane; weather morning-report lane)
 - `created_at`, `updated_at` timestamptz
 
 ### `memories`
@@ -190,9 +190,18 @@ A digest run and its entries. `digest_items` distinguishes **picks** from the
 
 `digests`
 - `id` uuid pk, `user_id` uuid → users
-- `run_date` date, `status` text — `pending` | `delivered` | `skipped_budget`
-- `covers_since` timestamptz — watermark of "new since last digest"
+- `run_date` date, `status` text — `pending` | `delivered` | `skipped_budget` | `failed`
+- `covers_since` timestamptz — watermark of "new since the last digest that actually
+  reached the owner". Anchored on the most recent `delivered` run's `created_at`, not on
+  the latest run of any status: a `failed`, `skipped_budget`, or still-`pending` run
+  reported nothing, so the next run has to look at its videos again. Until a first run is
+  delivered the window stays at the oldest `covers_since` any run opened, falling back to
+  one `digest_interval_days` back on a truly first run.
 - `delivered_at` timestamptz null
+- `failure_kind` text null, `failure_message` text null — set together with
+  `status = 'failed'`; the kind (`youtube_auth` | `youtube_api` | `llm` | `unknown`) is what
+  the Discord and dashboard layers phrase a message from, the message is the detail shown
+  to the owner. Null on every run that didn't fail.
 - `cost_cents` numeric(12,4) default 0 — fractional cents, summed from this run's
   `llm_usage` rows (see the cents-precision note in [Cross-cutting notes](#cross-cutting-notes))
 
@@ -222,6 +231,33 @@ User-set reminders delivered proactively.
 - `status` text — `pending` | `delivered` | `cancelled`
 - `delivered_at` timestamptz null
 - `created_at`
+
+### `weather_locations`
+Saved weather locations (MET Norway / yr.no). A place named once and resolved to
+coordinates via the geocoder, so repeat forecasts and the morning report skip the name
+lookup. A location is either **private** to the user who saved it or **shared** with the
+whole family (Aivo lives in one family's Discord) — a shared "home"/"cabin" is usable by
+everyone, while a private location shadows a shared one of the same name so "work" can
+differ per person. Added after the initial schema (migration 023).
+
+- `id` uuid pk, `user_id` uuid → users (the creator, even for shared locations)
+- `name` text — the label the location is referred to by
+- `display_name` text null — the geocoder's full resolved name
+- `latitude` / `longitude` double precision
+- `is_shared` boolean — visible to and usable by every family member. Uniqueness is
+  split by scope: one private name per `(user_id, lower(name))`, one shared name per
+  `lower(name)` family-wide (two partial unique indexes)
+- `is_home` boolean — the one location the daily morning report reads (partial unique
+  index enforces at most one home per user)
+- `created_at` / `updated_at`
+
+Reads are scoped to "what the user can see" = their own private locations plus every
+shared one, private shadowing shared on a name clash. Anyone may create or remove either
+kind; only the morning report itself stays owner-scoped.
+
+The morning report's schedule lives in the `weather` lane of `settings.proactivity`
+(enabled, report_hour, last_report_date watermark, run_requested_at) — a sibling of the
+digest lane, owner-scoped and delivered by the scheduler tick.
 
 ### `llm_usage`
 Per-call cost ledger — the basis for budget caps, alerts, and usage reports.

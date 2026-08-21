@@ -69,6 +69,21 @@ Smallest useful slice first, each shippable on its own:
    (10 min / 1 h / tomorrow 09:00 local, per-user only). Natural recurrence
    ("every other Thursday", feature-suggestions B5) is deferred — the locked data
    model has no recurrence column yet.
+5. **Weather.** — ✅ built (2026-07-23). MET Norway / yr.no forecasts via the `weather`
+   chat tool: forecast for any place (saved name, free-form name resolved through the
+   OSM Nominatim geocoder, or explicit coordinates), per-user saved locations
+   (`weather_locations` table, migration 023), and an owner-configured daily morning
+   report pushed to the home channel by the scheduler tick (its schedule lives in the
+   `weather` lane of `settings.proactivity`, watermarked once per local day, with a
+   chat-set "run it now"). Keyless APIs — needs only `WEATHER_USER_AGENT` (their terms
+   require a descriptive UA + contact); base URLs are overridable.
+6. **On-demand video summary.** — ✅ built (2026-07-26). `youtube_summary` chat tool:
+   paste any YouTube URL or video id and get key-point bullets summarized from the
+   caption-track transcript (the same watch-page scraper as the digest's stage 2, now
+   also on `AgentDeps`). The summarization is a dedicated LLM sub-call inside the tool
+   (metered per calling user as `video_summary`, premium tier unless budget-degraded),
+   so the transcript never enters the conversation context. Open to all users; a video
+   without captions gets a clear "can't summarize" reply. Keyless — no new config.
 
 ### 4. Phase 2 — Mail triage (read-only)
 Reuse the YouTube pattern: `mail_importance` profile, importance classification

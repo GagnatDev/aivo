@@ -9,7 +9,8 @@ layout, and conventions.
 All commands run from the repo root (swap the filter to `@aivo/frontend` for the SPA):
 
 ```
-pnpm dev                                    # backend :8080 + Vite frontend :3000
+pnpm dev                                    # backend :8081 + Vite frontend :3001
+pnpm dev:sidecar                            # same, with AUTH_MODE=sidecar (see .env.sidecar)
 pnpm --filter @aivo/backend run dev        # watch-mode local run
 pnpm --filter @aivo/backend run typecheck  # tsc --noEmit
 pnpm --filter @aivo/backend run lint        # biome check (format + lint) — CI gate
@@ -34,6 +35,13 @@ introspecting, so never point it at real data.
 - `youtube/` — YouTube Data API + transcript ports (network impls behind interfaces; fakes in `test/`).
 - `scheduler/` — `tick.ts` (testable `runDueWork`) + `cron.ts` (thin node-cron wiring).
 - `llm/` — provider-agnostic `LlmProvider` interface + `openaiProvider.ts` + error taxonomy.
+- `i18n/` — user-facing string catalogs (`en`/`nb`) + `messages(lang)`/`languageDirective`/
+  `localeFor` helpers. Everything sent to a user **verbatim** (Discord buttons, `!` command
+  output, digest/reminder/weather delivery, approval prompts, error fallbacks) is localized
+  through this via the user's `settings.language`; the agent's LLM replies + digest content
+  are steered by a language directive folded into the prompt. Both catalogs implement the
+  `Messages` interface, so a missing key is a compile error. Tool-result strings the model
+  only consumes stay English (it re-renders them in the user's language).
 - `unforked/` — client for unforked's machine API (the family meal planner; see unforked docs/aivo-integration.md). Its API key is registered on the dashboard Settings page and stored in `unforked_connection` — never via chat or env.
 - `db/` — Kysely wiring, pool, migration runner, and **generated** `schema.ts` (do not edit — run `pnpm --filter @aivo/backend db:codegen`; hand-authored enums live in `schema.enums.ts`).
 - `config/` — Zod-validated env (`loadEnv()` + schema; no eager singleton).

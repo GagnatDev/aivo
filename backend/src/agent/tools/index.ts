@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { Language } from "../../i18n/index.js";
 import type { ToolSchema } from "../../llm/provider.js";
 import type { Tier } from "../budget.js";
 import type { AgentDeps } from "../deps.js";
@@ -9,7 +10,9 @@ import { modelsTool } from "./models.js";
 import { remindersTool } from "./reminders.js";
 import { settingsTool } from "./settings.js";
 import { unforkedTool } from "./unforked.js";
+import { weatherTool } from "./weather.js";
 import { youtubeDigestTool } from "./youtubeDigest.js";
+import { youtubeSummaryTool } from "./youtubeSummary.js";
 
 /** The execution context handed to every tool. `isOwner` is the security boundary. */
 export interface ToolContext {
@@ -18,6 +21,8 @@ export interface ToolContext {
   /** Derived server-side from users.is_owner — never from model output. */
   isOwner: boolean;
   conversationId: string;
+  /** The user's preferred language, for the turn-level fallbacks the loop may emit. */
+  language: Language;
 }
 
 export interface AgentTool {
@@ -52,7 +57,7 @@ export function parse<T>(
   };
 }
 
-/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest, reminder, unforked). */
+/** Build the tool registry the agent exposes (memory, budget, models, settings, youtube_digest, youtube_summary, reminder, unforked, weather). */
 export function buildToolRegistry(): AgentTool[] {
   return [
     memoryTool,
@@ -60,8 +65,10 @@ export function buildToolRegistry(): AgentTool[] {
     modelsTool,
     settingsTool,
     youtubeDigestTool,
+    youtubeSummaryTool,
     remindersTool,
     unforkedTool,
+    weatherTool,
   ];
 }
 

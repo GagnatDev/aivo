@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgent, resumeApprovedAgent } from "./agent.js";
 import { LlmProviderError } from "../llm/errors.js";
+import type { LlmProvider } from "../llm/provider.js";
 import { logger } from "../logger.js";
 import {
   makeFakeLlm,
@@ -56,15 +57,15 @@ describe("runAgent", () => {
       conversationId,
       triggerMessageId: "m1",
     });
-    expect(result.reply).toMatch(/couldn't reach the language model/i);
+    expect(result.reply).toMatch(/kontakt med språkmodellen/i);
   });
 
   it("picks the reply from the LLM error taxonomy kind", async () => {
     const cases: Array<{ kind: "auth" | "rate_limit" | "server" | "network"; match: RegExp }> = [
-      { kind: "auth", match: /credentials problem/i },
-      { kind: "rate_limit", match: /busy right now/i },
-      { kind: "server", match: /couldn't reach the language model/i },
-      { kind: "network", match: /couldn't reach the language model/i },
+      { kind: "auth", match: /legitimasjonsproblem/i },
+      { kind: "rate_limit", match: /opptatt akkurat nå/i },
+      { kind: "server", match: /kontakt med språkmodellen/i },
+      { kind: "network", match: /kontakt med språkmodellen/i },
     ];
     for (const { kind, match } of cases) {
       const llm = makeFakeLlm([new LlmProviderError(kind, `simulated ${kind}`)]);
@@ -142,7 +143,7 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toContain("Here is the start of a very long ans");
-    expect(result.reply).toMatch(/cut off/i);
+    expect(result.reply).toMatch(/kuttet av/i);
   });
 
   it("does not execute a truncated tool call; feeds back why instead", async () => {
@@ -216,8 +217,70 @@ describe("runAgent", () => {
 
     expect(result.reply).toBe("Here's what I found.");
     expect(llm.calls).toHaveLength(3);
-    // The final forced call has no tools, so the model must answer.
-    expect(llm.calls.at(-1)?.tools).toBeUndefined();
+    // The final forced call disables tools in-protocol — the definitions still travel
+    // with the request (the history is full of tool traffic), but `tool_choice: "none"`
+    // means the model must answer in text. Portable across OpenAI-compatible servers.
+    const forced = llm.calls.at(-1);
+    expect(forced?.toolChoice).toBe("none");
+    expect(forced?.tools?.length).toBeGreaterThan(0);
+    // The nudge rides as a `user` note, not a trailing `system` message (some chat
+    // templates reject a system role after tool traffic).
+    expect(forced?.messages.at(-1)?.role).toBe("user");
+    expect(forced?.messages.at(-1)?.content).toMatch(/do not call any tools/i);
+    expect(
+      forced?.messages.some((m) => m.role === "system" && /plain text/i.test(m.content ?? "")),
+    ).toBe(false);
+  });
+
+  it("lets a read repeat when a write changed what it returns", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }, "c1"),
+      toolCallResult("memory", { action: "write", content: "likes hiking" }, "c2"),
+      // Same call as the first, but the write changed the answer — a confirming re-read,
+      // not a stuck model, so the loop keeps its tools and carries on.
+      toolCallResult("memory", { action: "list" }, "c3"),
+      textResult("You've got one thing saved."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("You've got one thing saved.");
+    expect(llm.calls).toHaveLength(4); // no forced answer cut the turn short
+    expect(llm.calls.at(-1)?.tools?.length).toBeGreaterThan(0); // tools still advertised
+  });
+
+  it("forces an answer when a repeated call returns the same result, however it is formatted", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "list" }, "c1"),
+      // Same call, different argument formatting — canonicalized, so still a repeat.
+      {
+        content: null,
+        toolCalls: [{ id: "c2", name: "memory", arguments: '{ "action" :  "list" }' }],
+        finishReason: "tool_calls" as const,
+        usage: { tokensIn: 20, tokensOut: 5 },
+      },
+      textResult("Nothing saved yet."), // the tools-disabled forced answer
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("Nothing saved yet.");
+    expect(llm.calls).toHaveLength(3);
+    expect(llm.calls.at(-1)?.toolChoice).toBe("none"); // forced call has tools disabled
   });
 
   it("forces an answer after the iteration cap with distinct tool calls", async () => {
@@ -262,7 +325,7 @@ describe("runAgent", () => {
       triggerMessageId: "m1",
     });
 
-    expect(result.reply).toMatch(/over this month's budget/i);
+    expect(result.reply).toMatch(/over månedens budsjett/i);
     expect(llm.calls[0]?.model).toBe("llama-3.1-8b-instruct"); // cheap seed
     expect(llm.calls[0]?.maxTokens).toBeLessThanOrEqual(256);
   });
@@ -282,7 +345,7 @@ describe("runAgent", () => {
     });
 
     expect(result.pendingApprovalId).toBeTruthy();
-    expect(result.reply).toMatch(/approve/i);
+    expect(result.reply).toMatch(/[Gg]odkjenn/);
     expect(llm.calls).toHaveLength(0); // not run yet
     expect(await deps.llmUsage.monthToDateCents(userId)).toBe(0); // nothing metered
     const row = await deps.pendingApprovals.findById(result.pendingApprovalId!);
@@ -322,9 +385,9 @@ describe("runAgent", () => {
     });
 
     expect(result.reply).toContain("Here's what I have so far.");
-    expect(result.reply).toMatch(/getting expensive/i); // the early-stop note
+    expect(result.reply).toMatch(/ble dyr/i); // the early-stop note
     expect(llm.calls).toHaveLength(3); // 2 tool round-trips + 1 forced answer
-    expect(llm.calls.at(-1)?.tools).toBeUndefined(); // forced call has tools disabled
+    expect(llm.calls.at(-1)?.toolChoice).toBe("none"); // forced call has tools disabled
   });
 
   it("does not stop a cheap multi-step turn just because a threshold is set", async () => {
@@ -345,6 +408,119 @@ describe("runAgent", () => {
 
     expect(result.reply).toBe("All done."); // no early-stop note
     expect(llm.calls).toHaveLength(2);
+  });
+});
+
+describe("turn cancellation", () => {
+  /** A fake LLM that aborts `controller` as soon as it has served call number `after`. */
+  function abortingLlm(script: Parameters<typeof makeFakeLlm>[0], controller: AbortController) {
+    const base = makeFakeLlm(script);
+    let served = 0;
+    return {
+      ...base,
+      async chat(req: Parameters<typeof base.chat>[0]) {
+        const result = await base.chat(req);
+        served += 1;
+        if (served === 1) controller.abort();
+        return result;
+      },
+    };
+  }
+
+  it("runs nothing when the signal is already aborted", async () => {
+    const llm = makeFakeLlm([textResult("should never run")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(llm.calls).toHaveLength(0);
+    expect(await deps.llmUsage.monthToDateCents(userId)).toBe(0);
+  });
+
+  it("abandons the turn mid-loop without executing the pending tool call", async () => {
+    const controller = new AbortController();
+    const llm = abortingLlm(
+      [
+        toolCallResult("memory", { action: "write", content: "likes hiking" }),
+        textResult("should never run"),
+      ],
+      controller,
+    );
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(llm.calls).toHaveLength(1); // no second round-trip
+    expect(await deps.memories.listActive(userId)).toHaveLength(0); // tool never ran
+  });
+
+  it("leaves the persisted history replayable after an abort", async () => {
+    const controller = new AbortController();
+    const llm = abortingLlm(
+      [toolCallResult("memory", { action: "list" }), textResult("should never run")],
+      controller,
+    );
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    // Every tool call the model made has an answer on record — an assistant row with
+    // unanswered tool_calls would make the next turn's message list invalid.
+    const stored = await deps.messages.listByConversation(conversationId);
+    const assistantCall = stored.find((m) => m.role === "assistant" && m.tool_calls?.length);
+    const answer = stored.find((m) => m.role === "tool");
+    expect(answer?.tool_call_id).toBe(assistantCall?.tool_calls?.[0]?.id);
+    expect(answer?.content).toMatch(/cancelled/i);
+  });
+
+  it("reports an aborted provider call as an abort, not a provider failure", async () => {
+    // The provider throws because we cancelled it (as the real SDK does on abort).
+    const controller = new AbortController();
+    const llm: LlmProvider = {
+      ...makeFakeLlm([]),
+      async chat() {
+        controller.abort();
+        throw new LlmProviderError("aborted", "LLM call aborted");
+      },
+    };
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(result.reply).not.toMatch(/couldn't reach the language model/i);
   });
 });
 

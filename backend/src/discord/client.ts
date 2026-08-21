@@ -1,11 +1,23 @@
-import { Client, Events, GatewayIntentBits, type Interaction, type Message } from "discord.js";
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+  type Interaction,
+  type Message,
+} from "discord.js";
 import { logger } from "../logger.js";
 import { catchUpOnMissedMessages } from "./catchup.js";
 import type { DiscordConfig } from "./config.js";
+import { messages } from "../i18n/index.js";
 import { isCommand, runCommand } from "./commands.js";
 import { resolveFeedbackClick } from "./feedback.js";
 import { resolveReminderClick } from "./reminderButtons.js";
-import { recordAssistantReply, type HandleMessageDeps } from "./handleMessage.js";
+import {
+  languageForDiscordUser,
+  recordAssistantReply,
+  type HandleMessageDeps,
+} from "./handleMessage.js";
 import {
   normalize,
   processAndReply,
@@ -24,37 +36,47 @@ export interface DiscordGateway {
 }
 
 /**
- * Wire the discord.js gateway to the message core. On each guild message we
- * JIT-provision the user, persist the inbound message, reply with the ping-pong
- * stub, and persist the assistant reply linked to the sent message. Messages from
- * bots or from outside the configured guild are ignored. On connect we also catch
- * up on anything sent while the process was offline (see discord/catchup.ts).
- * Turns are serialized per conversation through a shared {@link TurnQueue} so two
- * quick messages (or a live message racing catch-up) can't interleave.
+ * Wire the discord.js gateway to the message core. On each guild or DM message we
+ * JIT-provision the user, persist the inbound message, run the agent, and persist
+ * the assistant reply linked to the sent message. Messages from bots, strangers'
+ * DMs, or outside the configured guild are ignored. On connect we also catch up on
+ * anything sent in guild channels while the process was offline (see
+ * discord/catchup.ts). Turns are serialized per conversation through a shared
+ * {@link TurnQueue} so two quick messages (or a live message racing catch-up)
+ * can't interleave.
+ *
+ * DMs need `DirectMessages` plus `Partials.Channel`: uncached DM channels otherwise
+ * never emit `MessageCreate` (discord.js guide — Partials / Intents).
  */
 export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig): DiscordGateway {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent,
     ],
+    partials: [Partials.Channel],
   });
   const turns = new TurnQueue();
+  // Aborted by `destroy()`, i.e. by the process's graceful shutdown. Turns in flight
+  // stop between round-trips (and cancel the in-flight LLM call) instead of being cut
+  // off mid-request when the process exits; queued turns never start.
+  const shutdown = new AbortController();
 
   client.once(Events.ClientReady, (ready) => {
     logger.info({ tag: ready.user.tag }, "discord gateway ready");
-    void catchUpOnMissedMessages(deps, ready, cfg, turns).catch((err) => {
+    void catchUpOnMissedMessages(deps, ready, cfg, turns, shutdown.signal).catch((err) => {
       logger.error(err, "catch-up on missed messages failed");
     });
   });
 
   client.on(Events.MessageCreate, (message) => {
-    void onMessage(deps, message, cfg, turns);
+    void onMessage(deps, message, cfg, turns, shutdown.signal);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void onInteraction(deps, interaction);
+    void onInteraction(deps, interaction, shutdown.signal);
   });
 
   client.on(Events.Error, (err) => {
@@ -66,7 +88,10 @@ export function createDiscordGateway(deps: HandleMessageDeps, cfg: DiscordConfig
     login: async () => {
       await client.login(cfg.botToken);
     },
-    destroy: () => client.destroy(),
+    destroy: async () => {
+      shutdown.abort();
+      await client.destroy();
+    },
     isReady: () => client.isReady(),
   };
 }
@@ -76,8 +101,9 @@ async function onMessage(
   message: Message,
   cfg: DiscordConfig,
   turns: TurnQueue,
+  signal: AbortSignal,
 ): Promise<void> {
-  const meta = await resolveMessageMeta(message);
+  const meta = await resolveMessageMeta(message, cfg);
   if (!shouldRespond(meta, cfg)) return;
   try {
     // Control commands (e.g. !models) are handled directly — no LLM, no cost, no gating.
@@ -89,7 +115,7 @@ async function onMessage(
     // Queued per conversation: a second message from the same user in the same channel
     // waits for the previous turn, so its context includes that turn's reply.
     await turns.run(turnKey(message.author.id, message.channelId), () =>
-      processAndReply(deps, message, cfg, { meta }),
+      processAndReply(deps, message, cfg, { meta, signal }),
     );
   } catch (err) {
     logger.error(err, "failed to handle discord message");
@@ -97,7 +123,8 @@ async function onMessage(
     // reaching here means something else broke (DB, Discord send). Acknowledge it
     // rather than leaving the user with silence.
     try {
-      await message.reply("Sorry — I ran into a problem handling that. Please try again.");
+      const lang = await languageForDiscordUser(deps, message.author.id);
+      await message.reply(messages(lang).errors.handlingProblem);
     } catch (replyErr) {
       logger.error(replyErr, "failed to send error reply");
     }
@@ -112,7 +139,11 @@ async function onMessage(
  * the turn runs the LLM, which can take longer), then edit the prompt to drop its
  * buttons and, on approval, post the answer as a follow-up and persist it.
  */
-async function onInteraction(deps: HandleMessageDeps, interaction: Interaction): Promise<void> {
+async function onInteraction(
+  deps: HandleMessageDeps,
+  interaction: Interaction,
+  signal: AbortSignal,
+): Promise<void> {
   if (!interaction.isButton()) return;
 
   try {
@@ -143,6 +174,7 @@ async function onInteraction(deps: HandleMessageDeps, interaction: Interaction):
         action,
         approvalId,
         clickerDiscordId: interaction.user.id,
+        signal,
       });
     const outcome = action === "approve" ? await withTyping(channel, resolve) : await resolve();
 
@@ -164,8 +196,9 @@ async function onInteraction(deps: HandleMessageDeps, interaction: Interaction):
   } catch (err) {
     logger.error(err, "failed to handle button interaction");
     try {
+      const lang = await languageForDiscordUser(deps, interaction.user.id);
       await interaction.followUp({
-        content: "Sorry — I ran into a problem with that. Please try again.",
+        content: messages(lang).errors.interactionProblem,
         ephemeral: true,
       });
     } catch (replyErr) {

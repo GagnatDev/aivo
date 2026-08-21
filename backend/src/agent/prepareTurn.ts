@@ -1,9 +1,11 @@
+import { asLanguage, type Language, messages as catalog } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { ConfigError } from "../llm/errors.js";
 import type { ChatMessage, ToolSchema } from "../llm/provider.js";
-import { computeCostCents, preCallCheck, type Tier } from "./budget.js";
+import { computeCostCents, preCallCheck } from "./budget.js";
 import { buildContext } from "./context.js";
 import type { AgentDeps } from "./deps.js";
+import { resolveModel } from "./modelSelection.js";
 import {
   buildToolRegistry,
   resolveTier,
@@ -31,6 +33,12 @@ export interface RunAgentInput {
   triggerMessageId: string;
   /** Skip the approval gate — set when resuming an already-approved turn. */
   bypassApprovalGate?: boolean;
+  /**
+   * Abandons the turn when it fires. The gateway passes its shutdown signal, so a
+   * SIGTERM mid-turn stops the loop between round-trips instead of killing the process
+   * with one in flight (see runToolLoop).
+   */
+  signal?: AbortSignal;
 }
 
 /** A turn that cleared pre-flight and is ready to run through the tool loop. */
@@ -59,6 +67,8 @@ export interface GatedTurn {
   kind: "gated";
   estimatedCostCents: number;
   approvalThresholdCents: number;
+  /** The user's language, so the gate prompt renders in it (built in agent.ts). */
+  language: Language;
 }
 
 /** A turn that can't run and short-circuits to a fixed reply (e.g. no model configured). */
@@ -90,29 +100,6 @@ async function estimateTurnCost(
 }
 
 /**
- * Resolve the model id for a tier, falling back to the other tier if unconfigured.
- * Throws {@link ConfigError} when neither tier has a model — the config boundary is
- * where that fact is known, so it's raised as a typed error rather than a bare null.
- * Exported for the digest pipeline, which resolves its own stage tiers.
- */
-export async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string> {
-  const row = await deps.modelPricing.getByTier(tier);
-  if (row) return row.model_id;
-  const fallbackTier = tier === "cheap" ? "premium" : "cheap";
-  const fallback = await deps.modelPricing.getByTier(fallbackTier);
-  if (fallback) {
-    // No model fills the requested slot — running on the wrong tier degrades quality
-    // silently, so make it loud. Usually means the slot was never (re)assigned.
-    logger.warn(
-      { requestedTier: tier, fallbackModel: fallback.model_id, fallbackTier },
-      "no model configured for requested tier; falling back",
-    );
-    return fallback.model_id;
-  }
-  throw new ConfigError("no model configured for any tier");
-}
-
-/**
  * The turn policy, extracted from the loop as a value-returning function: tier
  * resolution → budget pre-check → model resolution → context build → tool gating →
  * approval-gate decision. It performs no LLM calls and drives no loop, so its
@@ -122,6 +109,7 @@ export async function resolveModel(deps: AgentDeps, tier: Tier): Promise<string>
  */
 export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promise<TurnPlan> {
   const settings = await deps.settings.getOrCreate(input.userId);
+  const language = asLanguage(settings.language);
   const requestedTier = resolveTier(settings.model_tier);
   const decision = await preCallCheck(deps, input.userId, requestedTier);
 
@@ -131,10 +119,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
   } catch (err) {
     if (err instanceof ConfigError) {
       logger.error({ err }, "no model configured");
-      return {
-        kind: "reply",
-        reply: "I have no model configured yet — ask the owner to set up the model/pricing config.",
-      };
+      return { kind: "reply", reply: catalog(language).errors.noModelConfigured };
     }
     throw err;
   }
@@ -182,6 +167,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
         kind: "gated",
         estimatedCostCents: estimatedCost,
         approvalThresholdCents: decision.approvalThresholdCents,
+        language,
       };
     }
   }
@@ -191,6 +177,7 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
     userId: input.userId,
     isOwner: input.isOwner,
     conversationId: input.conversationId,
+    language,
   };
 
   logger.debug(
@@ -222,7 +209,9 @@ export async function prepareTurn(deps: AgentDeps, input: RunAgentInput): Promis
       decision.approvalThresholdCents != null
         ? decision.approvalThresholdCents * deps.config.turnCostCeilingMultiplier
         : null,
-    overBudgetNote: decision.overBudgetNote,
+    // `decision.overBudgetNote` is the over-ceiling signal (its text is not shown);
+    // the displayed note is rendered in the user's language from the i18n catalog.
+    overBudgetNote: decision.overBudgetNote ? catalog(language).budget.overBudgetNote : undefined,
   };
 }
 

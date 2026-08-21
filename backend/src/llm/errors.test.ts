@@ -32,6 +32,16 @@ describe("toLlmProviderError", () => {
     expect(mapped.kind).toBe("network");
   });
 
+  it("maps our own abort to aborted, not to a retryable failure", () => {
+    // The SDK's abort error extends APIError, so it must be matched before the
+    // status-based checks — otherwise a cancelled call reads as a `server` failure and
+    // gets retried while we're shutting down.
+    expect(toLlmProviderError(new OpenAI.APIUserAbortError()).kind).toBe("aborted");
+    const domAbort = new Error("This operation was aborted");
+    domAbort.name = "AbortError";
+    expect(toLlmProviderError(domAbort).kind).toBe("aborted");
+  });
+
   it("maps other 4xx to server", () => {
     const mapped = toLlmProviderError(
       new OpenAI.BadRequestError(400, undefined, "bad", new Headers()),

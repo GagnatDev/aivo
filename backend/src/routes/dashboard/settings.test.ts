@@ -37,6 +37,7 @@ describe("GET /api/dashboard/settings", () => {
     const res = await request(app).get("/api/dashboard/settings");
     expect(res.status).toBe(200);
     expect(res.body.modelTier).toBe("auto");
+    expect(res.body.language).toBe("nb");
     expect(res.body.personaPrompt).toBeNull();
     expect(res.body.digest.proactivity.enabled).toBe(true);
   });

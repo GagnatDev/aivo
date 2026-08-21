@@ -23,6 +23,7 @@ function meta(overrides: Partial<MessageMeta> = {}): MessageMeta {
     channelId: "home-1",
     mentionsMe: false,
     referencedMessageAuthorIsMe: false,
+    authorInHomeGuild: true,
     ...overrides,
   };
 }
@@ -33,10 +34,24 @@ describe("shouldRespond", () => {
     { name: "bot in the home channel", meta: meta({ isBot: true }), expected: false },
     {
       name: "message from another guild",
-      meta: meta({ guildId: "other-guild" }),
+      meta: meta({ guildId: "other-guild", authorInHomeGuild: false }),
       expected: false,
     },
-    { name: "direct message (no guild)", meta: meta({ guildId: null }), expected: false },
+    {
+      name: "direct message from a home-guild member",
+      meta: meta({ guildId: null, channelId: "dm-1", authorInHomeGuild: true }),
+      expected: true,
+    },
+    {
+      name: "direct message from a stranger (not in home guild)",
+      meta: meta({ guildId: null, channelId: "dm-1", authorInHomeGuild: false }),
+      expected: false,
+    },
+    {
+      name: "direct message from a bot",
+      meta: meta({ guildId: null, channelId: "dm-1", isBot: true, authorInHomeGuild: true }),
+      expected: false,
+    },
     {
       name: "other channel, not mentioned, not a reply",
       meta: meta({ channelId: "other-1" }),
@@ -59,7 +74,12 @@ describe("shouldRespond", () => {
     },
     {
       name: "other channel, mentioned but wrong guild",
-      meta: meta({ channelId: "other-1", mentionsMe: true, guildId: "other-guild" }),
+      meta: meta({
+        channelId: "other-1",
+        mentionsMe: true,
+        guildId: "other-guild",
+        authorInHomeGuild: false,
+      }),
       expected: false,
     },
     {
@@ -123,6 +143,22 @@ describe("resolveApproval", () => {
     expect(outcome.type).toBe("denied");
     // Still pending — the intruder's click changed nothing.
     expect((await deps.pendingApprovals.findById(approvalId))?.status).toBe("pending");
+  });
+
+  it("reports a resumed turn abandoned by shutdown as unfinished, with no answer posted", async () => {
+    const { deps, approvalId } = await setupPending();
+    const controller = new AbortController();
+    controller.abort();
+
+    const outcome = await resolveApproval(deps, {
+      action: "approve",
+      approvalId,
+      clickerDiscordId: OWNER_ID,
+      signal: controller.signal,
+    });
+
+    // Not "approved": there is no follow-up reply to post, so the prompt says to ask again.
+    expect(outcome.type).toBe("expired");
   });
 
   it("reports expired on a second resolution of the same approval", async () => {

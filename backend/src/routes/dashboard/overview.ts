@@ -46,6 +46,11 @@ export function overviewRoutes(deps: DashboardDeps): Router {
             cost: money(Number(digest.cost_cents)),
             deliveredAt: digest.delivered_at?.toISOString() ?? null,
             pickCount: digestItems.filter((i) => i.kind === "pick").length,
+            // Why the last run failed, so the home page explains a red state instead of
+            // just naming it (#83). Null unless the run failed.
+            failure: digest.failure_kind
+              ? { kind: digest.failure_kind, message: digest.failure_message ?? "" }
+              : null,
           }
         : null,
       health: {

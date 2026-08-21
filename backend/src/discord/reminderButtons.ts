@@ -1,5 +1,6 @@
 import type { AgentDeps } from "../agent/deps.js";
 import { localDate } from "../digest/due.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { REMINDER_PREFIX, type SnoozeOption } from "./reminderDelivery.js";
 
 /**
@@ -38,27 +39,33 @@ export async function resolveReminderClick(
   if (prefix !== REMINDER_PREFIX || !reminderId) return null;
   if (option !== "10m" && option !== "1h" && option !== "tomorrow") return null;
 
-  const reminder = await deps.reminders.findById(reminderId);
-  if (!reminder) return { ack: "That reminder is gone — nothing to snooze." };
-  if (reminder.status === "cancelled") return { ack: "That reminder was cancelled." };
-
+  // Resolve the clicker first so every ack — including the "gone"/"cancelled" ones — is
+  // rendered in the clicker's own language (the ack is an ephemeral reply to them).
   const clicker = await deps.users.upsertByDiscordId({
     discordUserId: click.clickerDiscordId,
     displayName: click.clickerDisplayName,
     isOwner: click.clickerDiscordId === deps.ownerDiscordUserId,
   });
-  if (clicker.id !== reminder.user_id) {
-    return { ack: "That's someone else's reminder — only they can snooze it." };
-  }
+  const clickerSettings = await deps.settings.getOrCreate(clicker.id);
+  const r = messages(asLanguage(clickerSettings.language)).reminder;
 
-  const settings = await deps.settings.getOrCreate(reminder.user_id);
-  const dueAt = snoozeTarget(option, deps.clock.now(), settings.timezone);
+  const reminder = await deps.reminders.findById(reminderId);
+  if (!reminder) return { ack: r.gone };
+  if (reminder.status === "cancelled") return { ack: r.cancelled };
+  if (clicker.id !== reminder.user_id) return { ack: r.someoneElse };
+
+  // Snooze is gated to the owner, so the clicker is the owner here — reuse their settings.
+  const dueAt = snoozeTarget(option, deps.clock.now(), clickerSettings.timezone);
   await deps.reminders.reschedule(reminder.id, reminder.user_id, dueAt);
-  const when =
-    option === "tomorrow"
-      ? `tomorrow at ${String(TOMORROW_HOUR).padStart(2, "0")}:00`
-      : `in ${option === "10m" ? "10 minutes" : "1 hour"}`;
-  return { ack: `Snoozed — I'll remind you again ${when}.` };
+  const when = snoozeWhen(option, asLanguage(clickerSettings.language));
+  return { ack: r.snoozed(when) };
+}
+
+/** The "<when>" phrase in a snooze confirmation, localized. */
+function snoozeWhen(option: SnoozeOption, lang: Language): string {
+  const r = messages(lang).reminder;
+  if (option === "tomorrow") return r.tomorrowAt(`${String(TOMORROW_HOUR).padStart(2, "0")}:00`);
+  return option === "10m" ? r.inTenMinutes : r.inOneHour;
 }
 
 /**

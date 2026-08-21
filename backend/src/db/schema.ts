@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestFailureKind, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -50,6 +50,8 @@ export interface Digests {
   covers_since: Timestamp;
   created_at: Generated<Timestamp>;
   delivered_at: Timestamp | null;
+  failure_kind: DigestFailureKind | null;
+  failure_message: string | null;
   id: Generated<string>;
   run_date: Timestamp;
   status: ColumnType<DigestStatus, string | undefined, string>;
@@ -160,6 +162,7 @@ export interface Settings {
   digest_cap: Generated<number>;
   digest_hour: Generated<number>;
   digest_interval_days: Generated<number>;
+  language: Generated<string>;
   model_tier: Generated<string>;
   persona_prompt: string | null;
   proactivity: ColumnType<Record<string, unknown>, string | undefined, string>;
@@ -212,6 +215,19 @@ export interface Videos {
   why: string | null;
 }
 
+export interface WeatherLocations {
+  created_at: Generated<Timestamp>;
+  display_name: string | null;
+  id: Generated<string>;
+  is_home: Generated<boolean>;
+  is_shared: Generated<boolean>;
+  latitude: number;
+  longitude: number;
+  name: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
 export interface YoutubeAccount {
   connected_by_user_id: string | null;
   created_at: Generated<Timestamp>;
@@ -253,6 +269,7 @@ export interface DB {
   unforked_connection: UnforkedConnection;
   users: Users;
   videos: Videos;
+  weather_locations: WeatherLocations;
   youtube_account: YoutubeAccount;
   youtube_channels: YoutubeChannels;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { downloadFile } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
 import { ConversationThread } from "../components/activity/ConversationThread.js";
+import { SegGroupSkeleton, ThreadSkeleton } from "../components/Skeleton.js";
 import { CHANNEL_LABELS, formatTimestamp, type Conversations } from "../lib/activity.js";
 
 /** Activity Log (M5) — see PRD §4.7, requirements A-1..A-4. */
@@ -83,7 +84,12 @@ export function ActivityPage() {
           <p className="muted empty-state">No conversations yet — say hi to Aivo in #chat.</p>
         )
       ) : (
-        <p className="muted">Loading…</p>
+        <>
+          <SegGroupSkeleton />
+          <div className="card chart-card">
+            <ThreadSkeleton announce={false} />
+          </div>
+        </>
       )}
     </section>
   );

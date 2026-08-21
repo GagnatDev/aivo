@@ -17,7 +17,7 @@ const tool = (): AgentTool => {
 async function ctxFor(discordId: string): Promise<ToolContext> {
   const deps = makeAgentDeps(undefined, {}, new FakeClock(NOW));
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 async function lane(ctx: ToolContext) {
@@ -36,6 +36,29 @@ describe("youtube_digest tool", () => {
       picks_cap: 8,
       last_run: null,
       interest_profile: "not set up yet",
+    });
+  });
+
+  it("status explains a failed last run so chat can answer 'why no digest?'", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const run = await ctx.deps.digests.create({
+      userId: ctx.userId,
+      runDate: "2026-07-01",
+      coversSince: new Date("2026-06-30T05:00:00Z"),
+    });
+    await ctx.deps.digests.markFailed(run.id, {
+      kind: "youtube_auth",
+      message: "YouTube OAuth token refresh failed (400 invalid_grant)",
+    });
+
+    const res = JSON.parse(await tool().execute({ action: "status" }, ctx));
+    expect(res.last_run).toEqual({
+      date: "2026-07-01",
+      status: "failed",
+      failure: {
+        kind: "youtube_auth",
+        detail: "YouTube OAuth token refresh failed (400 invalid_grant)",
+      },
     });
   });
 
@@ -88,6 +111,18 @@ describe("youtube_digest tool", () => {
     expect((await lane(ctx)).runRequestedAt?.toISOString()).toBe(NOW.toISOString());
   });
 
+  it("resync_subscriptions clears the sync watermarks and arms a run", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    await ctx.deps.youtubeAccount.markSubscriptionsSynced(new Date("2026-06-30T06:00:00Z"));
+    await ctx.deps.youtubeAccount.markVideosPolled(new Date("2026-06-30T07:00:00Z"));
+    const res = await tool().execute({ action: "resync_subscriptions" }, ctx);
+    expect(res).toMatch(/[Rr]e-sync/);
+    const account = await ctx.deps.youtubeAccount.find();
+    expect(account?.subscriptions_synced_at).toBeNull();
+    expect(account?.videos_polled_at).toBeNull();
+    expect((await lane(ctx)).runRequestedAt?.toISOString()).toBe(NOW.toISOString());
+  });
+
   it("set_interests writes a versioned profile", async () => {
     const ctx = await ctxFor(OWNER_ID);
     await tool().execute({ action: "set_interests", interests: "woodworking, no shorts" }, ctx);
@@ -119,7 +154,14 @@ describe("youtube_digest tool", () => {
 
   it("refuses mutating actions from a non-owner but allows status and feedback", async () => {
     const ctx = await ctxFor("member-1");
-    for (const action of ["configure", "pause", "resume", "run_now", "set_interests"]) {
+    for (const action of [
+      "configure",
+      "pause",
+      "resume",
+      "run_now",
+      "resync_subscriptions",
+      "set_interests",
+    ]) {
       expect(await tool().execute({ action, digest_hour: 9 }, ctx)).toMatch(/Refused/);
     }
     expect(await tool().execute({ action: "status" }, ctx)).toMatch(/enabled/);

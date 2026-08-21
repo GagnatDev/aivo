@@ -1,4 +1,4 @@
-import { DIGEST_STATUS_META, type DigestRunSummary } from "../../lib/digests.js";
+import { describeFailure, DIGEST_STATUS_META, type DigestRunSummary } from "../../lib/digests.js";
 import { formatShortDate } from "../../lib/overview.js";
 
 /** D-1: the run history table — date, status, picks/rejects, cost, delivery. */
@@ -25,6 +25,9 @@ export function DigestRunList({
         <tbody>
           {runs.map((run) => {
             const status = DIGEST_STATUS_META[run.status];
+            // A failed run explains itself in place — the reason is the whole point of
+            // the row (#83).
+            const failure = describeFailure(run.failure);
             return (
               <tr key={run.id}>
                 <td>
@@ -36,6 +39,7 @@ export function DigestRunList({
                   <span style={{ color: status.color }}>
                     <span aria-hidden="true">{status.icon}</span> {status.label}
                   </span>
+                  {failure ? <div className="digest-row-failure">{failure}</div> : null}
                 </td>
                 <td className="num">{run.pickCount}</td>
                 <td className="num">{run.rejectCount}</td>

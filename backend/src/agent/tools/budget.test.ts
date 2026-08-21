@@ -16,7 +16,7 @@ const tool = (name: string): AgentTool => {
 async function ctxFor(discordId: string): Promise<ToolContext> {
   const deps = makeAgentDeps();
   const { userId, isOwner, conversationId } = await provisionUser(deps, discordId);
-  return { deps, userId, isOwner, conversationId };
+  return { deps, userId, isOwner, conversationId, language: "nb" };
 }
 
 describe("budget tool", () => {
@@ -53,7 +53,7 @@ describe("budget tool", () => {
     const clock = new FakeClock();
     const deps = makeAgentDeps(makeFakeLlm([]), {}, clock);
     const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
-    const ctx: ToolContext = { deps, userId, isOwner, conversationId };
+    const ctx: ToolContext = { deps, userId, isOwner, conversationId, language: "nb" };
     await deps.llmUsage.insert({
       userId,
       taskType: "chat",

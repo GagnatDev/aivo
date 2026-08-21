@@ -1,5 +1,7 @@
 import type { LlmProvider } from "../llm/provider.js";
 import type { UnforkedClient } from "../unforked/client.js";
+import type { WeatherClient } from "../weather/client.js";
+import type { Geocoder } from "../weather/geocoder.js";
 import type { Clock } from "./clock.js";
 import type { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
 import type { ConversationRepository } from "../storage/conversationRepository.js";
@@ -17,8 +19,10 @@ import type { SettingsPermissionsRepository } from "../storage/settingsPermissio
 import type { SettingsRepository } from "../storage/settingsRepository.js";
 import type { UserRepository } from "../storage/userRepository.js";
 import type { VideoRepository } from "../storage/videoRepository.js";
+import type { WeatherLocationRepository } from "../storage/weatherLocationRepository.js";
 import type { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
 import type { YoutubeChannelRepository } from "../storage/youtubeChannelRepository.js";
+import type { TranscriptSource } from "../youtube/transcripts.js";
 
 /**
  * The agent-relevant config knobs, populated once from `loadEnv()` at the composition
@@ -76,6 +80,7 @@ export interface AgentDeps {
   digests: DigestRepository;
   digestItems: DigestItemRepository;
   feedback: FeedbackRepository;
+  weatherLocations: WeatherLocationRepository;
   llm: LlmProvider;
   /**
    * Read client for unforked, the family meal planner — null until
@@ -83,6 +88,21 @@ export interface AgentDeps {
    * unforked_connection (registered via the dashboard, see routes/dashboard/unforked.ts).
    */
   unforked: UnforkedClient | null;
+  /**
+   * MET Norway (yr.no) forecast client for the weather tool and the morning report —
+   * keyless, so it's configured whenever WEATHER_USER_AGENT is set (effectively always
+   * in prod); null only when a test/deployment leaves it out, disabling the capability.
+   */
+  weather: WeatherClient | null;
+  /** OSM Nominatim geocoder that resolves place names to coordinates for the weather
+   * tool. Null follows the same rule as {@link weather}. */
+  geocoder: Geocoder | null;
+  /**
+   * YouTube caption-track transcript source for the on-demand `youtube_summary` tool —
+   * the same watch-page scraper the digest's stage 2 uses. Keyless (no OAuth, unlike
+   * the Data API), so it's always wired in prod; tests inject a fake.
+   */
+  transcripts: TranscriptSource;
   /** Reads "now" for time-dependent business logic (rollover, expiry, staleness). */
   clock: Clock;
   /** Discord id of the owner; flags is_owner on JIT provisioning. */

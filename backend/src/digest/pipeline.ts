@@ -1,11 +1,15 @@
 import { loadBudgetSnapshot, preCallCheck, recordUsageAndAlert } from "../agent/budget.js";
 import type { AgentDeps } from "../agent/deps.js";
-import { resolveModel } from "../agent/prepareTurn.js";
+import { resolveModel } from "../agent/modelSelection.js";
+import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
+import type { SettingsRow } from "../storage/settingsRepository.js";
 import type { VideoRow } from "../storage/videoRepository.js";
 import type { YoutubeApi } from "../youtube/api.js";
 import type { TranscriptSource } from "../youtube/transcripts.js";
 import { localDate } from "./due.js";
+import { classifyDigestFailure, type DigestFailure } from "./failure.js";
+import { ingestNewVideos } from "./ingest.js";
 import { buildProfileFoldMessages, parseProfileFoldResponse } from "./profileFold.js";
 import { buildStage1Messages, parseStage1Response } from "./rank.js";
 import { buildStage2Messages, parseStage2Response, type Stage2Verdict } from "./summarize.js";
@@ -28,6 +32,8 @@ export interface DeliverablePick {
   summaryBullets: string[];
   why: string;
   rank: number;
+  /** Publish/premiere instant — used to surface still-unreleased videos below the rest. */
+  publishedAt: Date;
 }
 
 export interface DeliverableReject {
@@ -39,6 +45,8 @@ export interface DeliverableReject {
 export type DigestOutcome =
   | { kind: "skipped_budget"; digestId: string }
   | { kind: "no_profile"; digestId: string }
+  /** The run threw; the `digests` row is `failed` and carries this reason. */
+  | { kind: "failed"; digestId: string; failure: DigestFailure }
   | {
       kind: "digest";
       digestId: string;
@@ -58,7 +66,13 @@ const STAGE2_EXTRA = 4; // shortlist = cap + this, so rejects exist to calibrate
 const STAGE1_FLOOR = 0.3;
 const STAGE1_REJECTS_SHOWN = 3;
 const AGREEMENT_WINDOW_DAYS = 14;
-const SUBSCRIPTION_SYNC_MAX_AGE_MS = 20 * 60 * 60 * 1000;
+
+/** What the run has spent so far — shared with the failure path so a partial run's cost
+ * is still recorded on the digests row. */
+interface Spend {
+  costCents: number;
+  alertPct?: number;
+}
 
 /**
  * One digest run: fold pending feedback into the profile, ingest new videos from
@@ -67,6 +81,11 @@ const SUBSCRIPTION_SYNC_MAX_AGE_MS = 20 * 60 * 60 * 1000;
  * the caller delivers the returned outcome and marks the digest delivered. Owner-scoped
  * by design — `userId` must be the is_owner user (the scheduler and the owner-gated
  * tool both guarantee this).
+ *
+ * Never throws. A failing phase (an expired YouTube refresh token, a dead provider)
+ * becomes a `failed` outcome with the reason persisted on the row and returned for the
+ * deliverer to report — previously such a run threw past the scheduler and left its row
+ * `pending` forever, with the cause only in the pod log.
  */
 export async function runDigest(
   deps: AgentDeps,
@@ -75,15 +94,63 @@ export async function runDigest(
   now: Date,
 ): Promise<DigestOutcome> {
   const settings = await deps.settings.getOrCreate(userId);
-  const latest = await deps.digests.latestForUser(userId);
-  const coversSince =
-    latest?.created_at ??
-    new Date(now.getTime() - settings.digest_interval_days * 24 * 60 * 60 * 1000);
+  const coversSince = await coverageStart(deps, userId, settings, now);
   const digest = await deps.digests.create({
     userId,
     runDate: localDate(now, settings.timezone),
     coversSince,
   });
+  const spend: Spend = { costCents: 0 };
+
+  try {
+    return await buildDigest(deps, yt, { userId, now, settings, coversSince, digest, spend });
+  } catch (err) {
+    const failure = classifyDigestFailure(err);
+    logger.error({ err, userId, digestId: digest.id, failure: failure.kind }, "digest run failed");
+    // Record what the aborted run already spent before marking it failed, so the
+    // dashboard's per-run cost stays honest.
+    await deps.digests.setCostCents(digest.id, spend.costCents);
+    await deps.digests.markFailed(digest.id, failure);
+    return { kind: "failed", digestId: digest.id, failure };
+  }
+}
+
+/**
+ * Where this run's coverage window starts: the end of the last run that actually reached
+ * the owner. A failed, budget-skipped, or still-pending run reported nothing, so anchoring
+ * on it (the previous behaviour — "the latest run, whatever its status") silently dropped
+ * every video published while the digest was broken. When nothing has ever been delivered
+ * we fall back to the oldest window an earlier attempt opened, and only on a truly first
+ * run to one interval back.
+ */
+async function coverageStart(
+  deps: AgentDeps,
+  userId: string,
+  settings: SettingsRow,
+  now: Date,
+): Promise<Date> {
+  const lastDelivered = await deps.digests.latestDeliveredForUser(userId);
+  if (lastDelivered) return lastDelivered.created_at;
+  const firstAttempted = await deps.digests.earliestCoversSince(userId);
+  return (
+    firstAttempted ?? new Date(now.getTime() - settings.digest_interval_days * 24 * 60 * 60 * 1000)
+  );
+}
+
+/** The run itself, once its `digests` row exists. Throws; `runDigest` classifies. */
+async function buildDigest(
+  deps: AgentDeps,
+  yt: YoutubeIntegrations,
+  run: {
+    userId: string;
+    now: Date;
+    settings: SettingsRow;
+    coversSince: Date;
+    digest: { id: string; run_date: string };
+    spend: Spend;
+  },
+): Promise<DigestOutcome> {
+  const { userId, now, settings, coversSince, digest, spend } = run;
 
   // Graceful degradation stage 2+: proactive work pauses, chat keeps answering.
   const snapshot = await loadBudgetSnapshot(deps, userId);
@@ -100,14 +167,14 @@ export async function runDigest(
     return { kind: "no_profile", digestId: digest.id };
   }
 
-  let costCents = 0;
-  let alertPct: number | undefined;
   const meter = (record: { alertPct?: number; costCents: number }): void => {
-    costCents += record.costCents;
-    if (record.alertPct) alertPct = Math.max(alertPct ?? 0, record.alertPct);
+    spend.costCents += record.costCents;
+    if (record.alertPct) spend.alertPct = Math.max(spend.alertPct ?? 0, record.alertPct);
   };
 
-  const profileBody = await foldPendingFeedback(deps, userId, profile.body, meter);
+  const language = asLanguage(settings.language);
+  const m = messages(language);
+  const profileBody = await foldPendingFeedback(deps, userId, profile.body, language, meter);
 
   await ingestNewVideos(deps, yt, now, coversSince);
   const candidates = await deps.videos.listCandidatesSince(coversSince, MAX_CANDIDATES);
@@ -118,7 +185,7 @@ export async function runDigest(
   });
 
   if (candidates.length === 0) {
-    await deps.digests.setCostCents(digest.id, costCents);
+    await deps.digests.setCostCents(digest.id, spend.costCents);
     return {
       kind: "digest",
       digestId: digest.id,
@@ -126,7 +193,7 @@ export async function runDigest(
       picks: [],
       morePicksCount: 0,
       rejects: [],
-      alertPct,
+      alertPct: spend.alertPct,
     };
   }
 
@@ -144,6 +211,7 @@ export async function runDigest(
         description: v.description,
         durationSeconds: v.duration_seconds,
       })),
+      language,
     ),
     maxTokens: deps.config.llmMaxOutputTokens,
   });
@@ -177,6 +245,7 @@ export async function runDigest(
       profileBody,
       model: stage2Model,
       brief,
+      language,
       meter,
     });
     if (verdict) verdicts.push({ video, verdict });
@@ -201,17 +270,17 @@ export async function runDigest(
     ...stage2Rejects.map((r) => ({
       videoId: r.video.id,
       kind: "reject" as const,
-      reason: r.verdict.reason ?? "not a fit today",
+      reason: r.verdict.reason ?? m.digest.reasonNotFit,
       confidence: r.verdict.confidence,
     })),
     ...stage1Rejects.map((s) => ({
       videoId: s.id,
       kind: "reject" as const,
-      reason: s.reason ?? "low match to your interests",
+      reason: s.reason ?? m.digest.reasonLowMatch,
       confidence: s.score,
     })),
   ]);
-  await deps.digests.setCostCents(digest.id, costCents);
+  await deps.digests.setCostCents(digest.id, spend.costCents);
 
   const stats = await deps.feedback.agreementStats(
     userId,
@@ -220,14 +289,14 @@ export async function runDigest(
   const rejects: DeliverableReject[] = [
     ...stage2Rejects.map((r) => ({
       ...label(r.video),
-      reason: r.verdict.reason ?? "not a fit today",
+      reason: r.verdict.reason ?? m.digest.reasonNotFit,
     })),
     ...stage1Rejects.map((s) => {
       const video = byId.get(s.id);
       return {
         title: video?.title ?? s.id,
         channelTitle: video ? label(video).channelTitle : "",
-        reason: s.reason ?? "low match to your interests",
+        reason: s.reason ?? m.digest.reasonLowMatch,
       };
     }),
   ].slice(0, rejectedListLimit(stats));
@@ -247,10 +316,11 @@ export async function runDigest(
       summaryBullets: p.verdict.summaryBullets,
       why: p.verdict.why,
       rank: i + 1,
+      publishedAt: p.video.published_at,
     })),
     morePicksCount: Math.max(0, picks.length - settings.digest_cap),
     rejects,
-    alertPct,
+    alertPct: spend.alertPct,
   };
 }
 
@@ -259,6 +329,7 @@ async function foldPendingFeedback(
   deps: AgentDeps,
   userId: string,
   currentBody: string,
+  language: Language,
   meter: (r: { alertPct?: number; costCents: number }) => void,
 ): Promise<string> {
   const pending = await deps.feedback.listUnapplied(userId);
@@ -293,6 +364,7 @@ async function foldPendingFeedback(
           freeformText: f.freeform_text,
         };
       }),
+      language,
     ),
     maxTokens: deps.config.llmMaxOutputTokens,
   });
@@ -308,38 +380,6 @@ async function foldPendingFeedback(
   return revised;
 }
 
-/** Refresh the subscription cache (when stale) and poll for new uploads. */
-async function ingestNewVideos(
-  deps: AgentDeps,
-  yt: YoutubeIntegrations,
-  now: Date,
-  coversSince: Date,
-): Promise<void> {
-  const account = await deps.youtubeAccount.getOrCreate();
-  const syncedAt = account.subscriptions_synced_at?.getTime() ?? 0;
-  if (now.getTime() - syncedAt > SUBSCRIPTION_SYNC_MAX_AGE_MS) {
-    await deps.youtubeChannels.syncSubscriptions(await yt.api.listSubscriptions(), now);
-    await deps.youtubeAccount.markSubscriptionsSynced(now);
-  }
-  const active = await deps.youtubeChannels.listActive();
-  const discovered = await yt.api.listNewVideos(
-    active.map((c) => c.id),
-    account.videos_polled_at ?? coversSince,
-  );
-  await deps.videos.upsertDiscovered(
-    discovered.map((v) => ({
-      id: v.id,
-      channelId: v.channelId,
-      title: v.title,
-      description: v.description,
-      durationSeconds: v.durationSeconds,
-      publishedAt: v.publishedAt,
-      thumbnailUrl: v.thumbnailUrl,
-    })),
-  );
-  await deps.youtubeAccount.markVideosPolled(now);
-}
-
 /** One stage-2 call; null when the provider call failed (video skipped this run). */
 async function runStage2(
   deps: AgentDeps,
@@ -351,6 +391,7 @@ async function runStage2(
     profileBody: string;
     model: string;
     brief: boolean;
+    language: Language;
     meter: (r: { alertPct?: number; costCents: number }) => void;
   },
 ): Promise<Stage2Verdict | null> {
@@ -370,6 +411,7 @@ async function runStage2(
         },
         transcript,
         brief: input.brief,
+        language: input.language,
       }),
       maxTokens: deps.config.llmMaxOutputTokens,
     });
@@ -385,7 +427,7 @@ async function runStage2(
     confidence: 0.2,
     summaryBullets: [],
     why: "",
-    reason: "couldn't process this one",
+    reason: messages(input.language).digest.reasonCouldntProcess,
   };
   await deps.videos.saveStage2(video.id, {
     transcriptStatus: transcript ? "fetched" : "unavailable",

@@ -34,6 +34,8 @@ export async function catchUpOnMissedMessages(
   client: Client<true>,
   cfg: DiscordConfig,
   turns: TurnQueue,
+  /** The gateway's shutdown signal: stop replaying the backlog once it fires. */
+  signal?: AbortSignal,
 ): Promise<void> {
   const watermark = await deps.messages.getLatestDiscordMessageId();
   if (!watermark) return;
@@ -44,8 +46,9 @@ export async function catchUpOnMissedMessages(
 
   let handled = 0;
   for (const channel of channels) {
+    if (signal?.aborted) break;
     try {
-      handled += await catchUpChannel(deps, channel, watermark, cfg, turns);
+      handled += await catchUpChannel(deps, channel, watermark, cfg, turns, signal);
     } catch (err) {
       logger.error({ err, channelId: channel.id }, "catch-up failed for channel");
     }
@@ -60,18 +63,26 @@ async function catchUpChannel(
   watermark: string,
   cfg: DiscordConfig,
   turns: TurnQueue,
+  signal?: AbortSignal,
 ): Promise<number> {
   let handled = 0;
   for (const message of await missedSince(channel, watermark)) {
+    // Shutting down: leave the rest of the backlog for the next start (the watermark
+    // only advances for messages actually answered).
+    if (signal?.aborted) break;
     // Skip anything already recorded (e.g. handled live during startup).
     if (await deps.messages.existsByDiscordMessageId(message.id)) continue;
     // Commands are immediate instructions — a missed one is stale, so don't replay it
     // (and never send a command through the agent loop).
     if (isCommand(message.content)) continue;
-    const meta = await resolveMessageMeta(message);
+    const meta = await resolveMessageMeta(message, cfg);
     if (!shouldRespond(meta, cfg)) continue;
     await turns.run(turnKey(message.author.id, message.channelId), () =>
-      processAndReply(deps, message, cfg, { acknowledgeIfStale: true, meta }),
+      processAndReply(deps, message, cfg, {
+        acknowledgeIfStale: true,
+        meta,
+        ...(signal ? { signal } : {}),
+      }),
     );
     handled += 1;
   }

@@ -1,6 +1,7 @@
 import { runAgent } from "../agent/agent.js";
 import type { AgentDeps } from "../agent/deps.js";
 import { transcribeVoiceMessage, type VoiceAttachment } from "../agent/transcription.js";
+import { asLanguage, DEFAULT_LANGUAGE, type Language } from "../i18n/index.js";
 
 /**
  * The dependencies the message core needs, injected so the core stays free of
@@ -46,6 +47,16 @@ export interface HandleMessageResult {
   pendingApprovalId?: string;
   /** Set when a budget alert threshold was newly crossed this turn. */
   alertPct?: number;
+  /**
+   * The turn was abandoned mid-flight (shutdown). The inbound message is still
+   * recorded, but there is no answer to send — the caller must not reply.
+   */
+  aborted?: boolean;
+}
+
+export interface HandleMessageOptions {
+  /** Abandons the turn when it fires; the gateway passes its shutdown signal. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -57,6 +68,7 @@ export interface HandleMessageResult {
 export async function handleIncomingMessage(
   deps: HandleMessageDeps,
   msg: IncomingMessage,
+  opts: HandleMessageOptions = {},
 ): Promise<HandleMessageResult> {
   const user = await deps.users.upsertByDiscordId({
     discordUserId: msg.authorId,
@@ -114,6 +126,7 @@ export async function handleIncomingMessage(
     isOwner: user.is_owner,
     conversationId: conversation.id,
     triggerMessageId: msg.id,
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
   // Surface whichever budget alert crossed higher — transcription may have tipped a
@@ -128,7 +141,28 @@ export async function handleIncomingMessage(
     conversationId: result.conversationId,
     pendingApprovalId: result.pendingApprovalId,
     alertPct,
+    ...(result.aborted ? { aborted: true } : {}),
   };
+}
+
+/**
+ * Best-effort preferred language for a Discord user, for the verbatim notes the gateway
+ * appends around an agent turn (budget alert, offline ack, approval buttons, catch-all
+ * error replies). Falls back to the default on a missing user or any error — these are
+ * decorations on a reply, never worth failing the send over.
+ */
+export async function languageForDiscordUser(
+  deps: HandleMessageDeps,
+  discordUserId: string,
+): Promise<Language> {
+  try {
+    const user = await deps.users.findByDiscordId(discordUserId);
+    if (!user) return DEFAULT_LANGUAGE;
+    const settings = await deps.settings.getOrCreate(user.id);
+    return asLanguage(settings.language);
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
 }
 
 /** Persist the assistant reply after it has been sent to Discord. */

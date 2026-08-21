@@ -61,15 +61,15 @@ describe("runCommand", () => {
   it("!budget reports spend against the ceiling for a provisioned user", async () => {
     const deps = makeAgentDeps();
     const reply = await runCommand(deps, incoming({ content: "!budget" }));
-    expect(reply).toContain("Budget");
-    expect(reply).toContain("Month to date");
+    expect(reply).toContain("Budsjett");
+    expect(reply).toContain("Hittil i måneden");
   });
 
   it("!settings returns the user's default settings", async () => {
     const deps = makeAgentDeps();
     const reply = await runCommand(deps, incoming({ content: "!settings" }));
-    expect(reply).toContain("Settings");
-    expect(reply).toContain("Model tier");
+    expect(reply).toContain("Innstillinger");
+    expect(reply).toContain("Modellnivå");
   });
 
   it("!help lists all four commands", async () => {
@@ -84,7 +84,7 @@ describe("runCommand", () => {
   it("unknown commands point at !help", async () => {
     const deps = makeAgentDeps();
     const reply = await runCommand(deps, incoming({ content: "!bogus" }));
-    expect(reply).toContain("Unknown command");
+    expect(reply).toContain("Ukjent kommando");
     expect(reply).toContain("!help");
   });
 

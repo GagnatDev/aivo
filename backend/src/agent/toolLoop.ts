@@ -1,59 +1,65 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
+import { type Language, messages as catalog } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
-import type { ChatMessage, ChatResult, FinishReason, ToolSchema } from "../llm/provider.js";
+import type {
+  ChatMessage,
+  ChatResult,
+  FinishReason,
+  ToolCall,
+  ToolSchema,
+} from "../llm/provider.js";
 import { truncateToTokens } from "../llm/tokens.js";
 import { recordUsageAndAlert } from "./budget.js";
 import type { AgentDeps } from "./deps.js";
+import { RepeatTracker } from "./repeatDetection.js";
 import type { AgentTool, ToolContext } from "./tools/index.js";
 
 // The metering task type for chat turns — every usage row this loop records is tagged
 // with it (kept in step with the approval gate's task type in prepareTurn.ts).
 export const TASK_TYPE = "chat";
-// Discord rejects empty message bodies, so never return "" to the caller.
-const EMPTY_REPLY_FALLBACK = "I don't have anything to add to that.";
-// Shown when the LLM provider call fails, chosen by the failure's taxonomy `kind` so
-// the reply matches the cause instead of collapsing every failure to one string.
-// server/network (transient outage) → retry hint; rate_limit → busy hint; auth
-// (permanent, needs the owner) → point at the config.
-const LLM_ERROR_FALLBACK =
-  "Sorry — I couldn't reach the language model just now. Please try again in a moment.";
-const LLM_RATE_LIMIT_FALLBACK =
-  "Sorry — the language model is busy right now. Please try again in a moment.";
-const LLM_AUTH_FALLBACK =
-  "Sorry — I can't reach the language model because of a credentials problem. " +
-  "The owner needs to check the API configuration.";
-// Last-resort reply when even the tools-disabled final answer yields nothing.
-const STUCK_FALLBACK = "I got a bit tangled working through that — can you rephrase?";
-// Appended when the turn was stopped by the in-flight cost ceiling, so the user knows
-// the answer may be partial and why (mirrors the truncation note's transparency).
-const COST_CEILING_NOTE =
-  "\n\n(I wrapped that up early — this turn was getting expensive. Ask again if you want me to dig deeper.)";
-// Appended when the model's text was cut off by the output-token cap (finishReason
-// `length`), so a truncated reply is never passed off as a complete one.
-const TRUNCATION_NOTE = "\n\n(…that got cut off by my reply-length limit.)";
 // Fed back as the tool result when a `length` stop truncated the tool call itself —
 // its arguments JSON is almost certainly incomplete, so executing it would only yield
-// a confusing parse error. Telling the model why lets it recover deliberately.
+// a confusing parse error. Telling the model why lets it recover deliberately. Stays
+// English: it is model-facing (never shown to the user), like the other tool results.
 const TOOL_CALL_TRUNCATED_FEEDBACK =
   "Tool call not executed: it was cut off by the output token limit. " +
   "Make a shorter tool call (smaller arguments), or answer in plain text.";
+// Persisted for every tool call left unexecuted when a turn is abandoned mid-round.
+// Not cosmetic: an assistant row carrying tool_calls with no matching tool results
+// replays as an invalid message list, so backfilling these is what keeps the
+// conversation usable on the next turn. Model-facing (never shown to the user), so English.
+const TOOL_CALL_CANCELLED_FEEDBACK = "Tool call not executed: the turn was cancelled.";
+// Returned (not normally sent) when a turn is abandoned — see LoopResult.aborted.
+const ABORTED_REPLY = "Stopped there.";
+// The textual half of the forced final answer (see forceFinalAnswer): `tool_choice: "none"`
+// already forbids tools in-protocol, but a lax server can ignore it, so the intent is
+// restated in prose too. Sent as a `user` note rather than a trailing `system` message —
+// some chat templates reject a system role after tool traffic. Model-facing, so English.
+const FORCE_ANSWER_NUDGE =
+  "Answer the user now in plain text, using the information you already have. " +
+  "Do not call any tools.";
 
-/** Pick the user-facing reply for a failed LLM call from its taxonomy `kind`. */
-function llmErrorReply(err: unknown): string {
+/**
+ * Pick the user-facing reply for a failed LLM call from its taxonomy `kind`, in the
+ * user's language. server/network (transient outage) → retry hint; rate_limit → busy
+ * hint; auth (permanent, needs the owner) → point at the config.
+ */
+function llmErrorReply(err: unknown, lang: Language): string {
+  const e = catalog(lang).errors;
   if (err instanceof LlmProviderError) {
     switch (err.kind) {
       case "auth":
-        return LLM_AUTH_FALLBACK;
+        return e.llmAuth;
       case "rate_limit":
-        return LLM_RATE_LIMIT_FALLBACK;
+        return e.llmRateLimit;
       case "server":
       case "network":
-        return LLM_ERROR_FALLBACK;
+        return e.llmError;
     }
   }
-  return LLM_ERROR_FALLBACK;
+  return e.llmError;
 }
 
 export interface LoopParams {
@@ -68,11 +74,23 @@ export interface LoopParams {
    * approval gate only priced the first call.
    */
   costCeilingCents?: number | null;
+  /**
+   * Abandons the turn when it fires (graceful shutdown today; a user-facing "stop"
+   * would use the same seam). Checked before each round-trip and before each tool
+   * execution, and passed to the provider so an in-flight call is cancelled too.
+   */
+  signal?: AbortSignal;
 }
 
 export interface LoopResult {
   reply: string;
   alertPct?: number;
+  /**
+   * The turn was abandoned via {@link LoopParams.signal} rather than finished. The
+   * caller should normally drop the reply instead of sending it — nobody asked for a
+   * half-answer, and during shutdown the transport is going away anyway.
+   */
+  aborted?: boolean;
 }
 
 /** How a turn ended, for the per-turn observability record. */
@@ -81,7 +99,8 @@ export type TurnOutcome =
   | "forced_answer"
   | "iteration_cap"
   | "cost_ceiling"
-  | "provider_error";
+  | "provider_error"
+  | "aborted";
 
 /**
  * Running totals for one turn, accumulated across every model round-trip (including
@@ -111,6 +130,8 @@ export async function runToolLoop(
   registry: AgentTool[],
   params: LoopParams,
 ): Promise<LoopResult> {
+  // Verbatim fallbacks (empty/stuck/truncation/cost-ceiling) render in the user's language.
+  const m = catalog(ctx.language);
   // Every log line this turn emits carries the same turn id, so a turn's round-trips
   // can be correlated in production output without debug-level reconstruction.
   const log = logger.child({
@@ -139,11 +160,21 @@ export async function runToolLoop(
 
   const messages = params.messages;
   let alertPct: number | undefined;
-  // Signatures (name+args) of tool calls already executed this turn — used to detect
-  // a model stuck re-issuing the same calls (a common open-model failure mode).
-  const executed = new Set<string>();
+  // Tracks calls already executed this turn (and what they returned) to detect a model
+  // stuck re-issuing the same calls — see repeatDetection.ts for what counts as stuck.
+  const repeats = new RepeatTracker();
+
+  /** Abandon the turn: one info-level record, no reply sent by the caller. */
+  const abort = (iteration: number): LoopResult => {
+    log.info({ iteration }, "agent turn aborted");
+    return finish("aborted", { reply: ABORTED_REPLY, alertPct, aborted: true });
+  };
 
   for (let i = 0; i < deps.config.agentMaxToolIterations; i++) {
+    // Cancellation is checked here first: everything below this line spends money or
+    // time, and a turn abandoned between rounds leaves the persisted history complete.
+    if (params.signal?.aborted) return abort(i);
+
     // In-flight cost ceiling: the approval gate priced only the first call's worst
     // case, so re-check the turn's ACTUAL accumulated cost before spending another
     // round-trip on the ever-growing context. Checked at the top of the iteration so
@@ -161,7 +192,7 @@ export async function runToolLoop(
         "agent turn reached in-flight cost ceiling; forcing answer",
       );
       const forced = await forceFinalAnswer(deps, ctx, params, messages, alertPct, log, stats);
-      return finish("cost_ceiling", { ...forced, reply: forced.reply + COST_CEILING_NOTE });
+      return finish("cost_ceiling", { ...forced, reply: forced.reply + m.errors.costCeilingNote });
     }
 
     let result: ChatResult;
@@ -171,13 +202,16 @@ export async function runToolLoop(
         messages,
         tools: params.tools,
         maxTokens: params.maxTokens,
+        ...(params.signal ? { signal: params.signal } : {}),
       });
     } catch (err) {
+      // Our own cancellation, not a provider failure — the call was aborted in flight.
+      if (params.signal?.aborted) return abort(i);
       // Provider failure (auth/403, rate limit, outage). Surface a reply matched to the
       // cause rather than letting the turn throw and leave the user with no response.
       const kind = err instanceof LlmProviderError ? err.kind : "unknown";
       log.error({ err, kind }, "llm chat call failed");
-      return finish("provider_error", { reply: llmErrorReply(err), alertPct });
+      return finish("provider_error", { reply: llmErrorReply(err, ctx.language), alertPct });
     }
 
     const record = await recordUsageAndAlert(
@@ -217,9 +251,9 @@ export async function runToolLoop(
           { model: params.model, maxTokens: params.maxTokens },
           "agent reply truncated by output token limit",
         );
-        return finish("final_answer", { reply: text + TRUNCATION_NOTE, alertPct });
+        return finish("final_answer", { reply: text + m.errors.truncationNote, alertPct });
       }
-      return finish("final_answer", { reply: text || EMPTY_REPLY_FALLBACK, alertPct });
+      return finish("final_answer", { reply: text || m.errors.emptyReply, alertPct });
     }
 
     // Replay the assistant message that requested the tools into THIS turn's context,
@@ -253,30 +287,24 @@ export async function runToolLoop(
         },
         "agent tool call truncated by output token limit; feeding back",
       );
-      for (const call of result.toolCalls) {
-        await deps.messages.insert({
-          conversationId: ctx.conversationId,
-          role: "tool",
-          content: TOOL_CALL_TRUNCATED_FEEDBACK,
-          toolCallId: call.id,
-          toolName: call.name,
-          discordMessageId: null,
-        });
-        messages.push({
-          role: "tool",
-          content: TOOL_CALL_TRUNCATED_FEEDBACK,
-          tool_call_id: call.id,
-          name: call.name,
-        });
-      }
+      await answerToolCalls(deps, ctx, messages, result.toolCalls, TOOL_CALL_TRUNCATED_FEEDBACK);
       continue;
     }
 
     let allRepeats = true;
-    for (const call of result.toolCalls) {
-      const signature = `${call.name}:${call.arguments}`;
-      if (!executed.has(signature)) allRepeats = false;
-      executed.add(signature);
+    for (const [index, call] of result.toolCalls.entries()) {
+      // Cancelled between tools: don't start another one, but do answer the calls we're
+      // walking away from, or the assistant row above would replay unanswered.
+      if (params.signal?.aborted) {
+        await answerToolCalls(
+          deps,
+          ctx,
+          messages,
+          result.toolCalls.slice(index),
+          TOOL_CALL_CANCELLED_FEEDBACK,
+        );
+        return abort(i);
+      }
       const execution = await executeToolCall(registry, call.name, call.arguments, ctx, log);
       stats.toolsCalled.push(call.name);
       if (execution.isError) stats.toolErrors += 1;
@@ -285,6 +313,9 @@ export async function runToolLoop(
       // capped text is what the model sees AND what we persist, so replay (see #52) stays
       // faithful to — and as bounded as — what actually happened this turn.
       const toolResult = capToolResult(execution.text, deps.config.toolResultMaxTokens);
+      // Judged on the capped text — that's what the model actually sees, so it's what
+      // decides whether this call told it anything new.
+      if (!repeats.record(call.name, call.arguments, toolResult)) allRepeats = false;
       log.debug(
         {
           tool: call.name,
@@ -305,8 +336,8 @@ export async function runToolLoop(
       messages.push({ role: "tool", content: toolResult, tool_call_id: call.id, name: call.name });
     }
 
-    // The model re-issued only tool calls it had already made this turn — it's stuck.
-    // Stop looping and force a plain-text answer from what it already has.
+    // Every call in this round re-ran an earlier one and learned nothing new from it —
+    // the model is stuck. Stop looping and force a plain-text answer from what it has.
     if (allRepeats) {
       log.warn({ model: params.model, iteration: i }, "agent repeated tool calls; forcing answer");
       return finish(
@@ -331,6 +362,11 @@ export async function runToolLoop(
  * text from the context it already has. Used when the loop is stuck (repeated tool
  * calls) or hit the iteration cap, turning a dead-end into a useful reply. The nudge
  * is not persisted; the resulting text is returned for the caller to send + record.
+ *
+ * "Disabled" means `tool_choice: "none"` with the tool definitions still attached — the
+ * in-protocol way to say "no more tools", and portable across the OpenAI-compatible
+ * servers aivo targets (dropping `tools` from a history full of tool traffic, or bolting
+ * a `system` message onto the end of it, is what some of them choke on).
  */
 async function forceFinalAnswer(
   deps: AgentDeps,
@@ -341,20 +377,15 @@ async function forceFinalAnswer(
   log: Logger,
   stats: TurnStats,
 ): Promise<LoopResult> {
-  const nudged: ChatMessage[] = [
-    ...messages,
-    {
-      role: "system",
-      content:
-        "Answer the user now in plain text, using the information you already have. " +
-        "Do not call any tools.",
-    },
-  ];
+  const nudged: ChatMessage[] = [...messages, { role: "user", content: FORCE_ANSWER_NUDGE }];
   try {
     const result = await deps.llm.chat({
       model: params.model,
       messages: nudged,
+      tools: params.tools,
+      toolChoice: "none",
       maxTokens: params.maxTokens,
+      ...(params.signal ? { signal: params.signal } : {}),
     });
     const record = await recordUsageAndAlert(
       deps,
@@ -372,13 +403,42 @@ async function forceFinalAnswer(
     const text = (result.content ?? "").trim();
     if (text) {
       // The forced answer can be length-truncated too — flag it the same way.
-      const reply = result.finishReason === "length" ? text + TRUNCATION_NOTE : text;
+      const reply =
+        result.finishReason === "length"
+          ? text + catalog(ctx.language).errors.truncationNote
+          : text;
       return { reply, alertPct: nextAlert };
     }
-    return { reply: STUCK_FALLBACK, alertPct: nextAlert };
+    return { reply: catalog(ctx.language).errors.stuck, alertPct: nextAlert };
   } catch (err) {
     log.error(err, "forced final answer failed");
-    return { reply: STUCK_FALLBACK, alertPct };
+    return { reply: catalog(ctx.language).errors.stuck, alertPct };
+  }
+}
+
+/**
+ * Answer `calls` with a fixed explanation instead of executing them — used when the
+ * calls arrived truncated, and when a turn is abandoned mid-round. Every tool call the
+ * model makes must get a result, both in the replayed context and in the persisted
+ * history, or the next turn's message list is invalid.
+ */
+async function answerToolCalls(
+  deps: AgentDeps,
+  ctx: ToolContext,
+  messages: ChatMessage[],
+  calls: ToolCall[],
+  text: string,
+): Promise<void> {
+  for (const call of calls) {
+    await deps.messages.insert({
+      conversationId: ctx.conversationId,
+      role: "tool",
+      content: text,
+      toolCallId: call.id,
+      toolName: call.name,
+      discordMessageId: null,
+    });
+    messages.push({ role: "tool", content: text, tool_call_id: call.id, name: call.name });
   }
 }
 

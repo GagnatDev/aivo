@@ -1,5 +1,8 @@
 import type { LlmProvider } from "../llm/provider.js";
 import type { UnforkedClient } from "../unforked/client.js";
+import type { WeatherClient } from "../weather/client.js";
+import type { Geocoder } from "../weather/geocoder.js";
+import type { TranscriptSource } from "../youtube/transcripts.js";
 import type { AgentConfig, AgentDeps } from "../agent/deps.js";
 import { systemClock, type Clock } from "../agent/clock.js";
 import { BudgetConfigRepository } from "../storage/budgetConfigRepository.js";
@@ -18,6 +21,7 @@ import { SettingsPermissionsRepository } from "../storage/settingsPermissionsRep
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { UserRepository } from "../storage/userRepository.js";
 import { VideoRepository } from "../storage/videoRepository.js";
+import { WeatherLocationRepository } from "../storage/weatherLocationRepository.js";
 import { YoutubeAccountRepository } from "../storage/youtubeAccountRepository.js";
 import { YoutubeChannelRepository } from "../storage/youtubeChannelRepository.js";
 import { makeFakeLlm } from "./fakeLlm.js";
@@ -73,6 +77,11 @@ export function makeAgentDeps(
   config: Partial<AgentConfig> = {},
   clock: Clock = systemClock,
   unforked: UnforkedClient | null = null,
+  weather: WeatherClient | null = null,
+  geocoder: Geocoder | null = null,
+  // "No captions anywhere" by default; tests that need transcripts pass a fake
+  // (e.g. makeFakeYoutube(...).transcripts).
+  transcripts: TranscriptSource = { fetchTranscript: async () => null },
 ): AgentDeps {
   const db = testDb();
   return {
@@ -94,8 +103,12 @@ export function makeAgentDeps(
     digests: new DigestRepository(db),
     digestItems: new DigestItemRepository(db),
     feedback: new FeedbackRepository(db),
+    weatherLocations: new WeatherLocationRepository(db),
     llm,
     unforked,
+    weather,
+    geocoder,
+    transcripts,
     clock,
     ownerDiscordUserId: OWNER_ID,
     config: { ...TEST_AGENT_CONFIG, ...config },

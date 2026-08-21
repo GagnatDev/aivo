@@ -1,4 +1,5 @@
 import { logger } from "../logger.js";
+import { tokenRefreshError, YoutubeApiError } from "./errors.js";
 
 /**
  * Port + implementation for the YouTube Data API v3 (subscriptions-only, per
@@ -89,7 +90,9 @@ export function createYoutubeDataApi(cfg: YoutubeOauthConfig): YoutubeApi {
       }),
     });
     if (!res.ok) {
-      throw new Error(`YouTube OAuth token refresh failed: ${res.status} ${await res.text()}`);
+      // Typed so the digest pipeline can tell "the owner must re-authorize" apart from
+      // "Google's token endpoint is having a bad day" (youtube/errors.ts).
+      throw tokenRefreshError(res.status, await res.text());
     }
     const body = (await res.json()) as { access_token: string; expires_in: number };
     token = { accessToken: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };
@@ -103,7 +106,13 @@ export function createYoutubeDataApi(cfg: YoutubeOauthConfig): YoutubeApi {
       headers: { authorization: `Bearer ${await accessToken()}` },
     });
     if (!res.ok) {
-      throw new Error(`YouTube API ${path} failed: ${res.status} ${await res.text()}`);
+      // A 401/403 here means the access token we just minted was rejected (scope revoked
+      // mid-flight); everything else is the Data API erroring.
+      throw new YoutubeApiError(
+        res.status === 401 || res.status === 403 ? "auth" : "api",
+        `YouTube API ${path} failed: ${res.status} ${(await res.text()).slice(0, 200).trim()}`,
+        { status: res.status },
+      );
     }
     return res.json();
   }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { FakeClock, makeAgentDeps, OWNER_ID, provisionUser } from "../test/agentDeps.js";
-import { useCleanDb } from "../test/db.js";
+import { testDb, useCleanDb } from "../test/db.js";
 import { makeFakeLlm, textResult } from "../test/fakeLlm.js";
 import { makeFakeYoutube } from "../test/fakeYoutube.js";
+import { tokenRefreshError } from "../youtube/errors.js";
 import { runDigest } from "./pipeline.js";
 
 useCleanDb();
@@ -66,6 +67,7 @@ describe("runDigest", () => {
       url: "https://www.youtube.com/watch?v=v1",
       summaryBullets: ["half-blind dovetails", "tool list"],
       why: "hand-tool joinery is your thing",
+      publishedAt: new Date("2026-06-30T18:00:00Z"),
     });
     // Cold start: both the stage-2 reject and the stage-1 near-miss are shown.
     expect(outcome.rejects).toEqual([
@@ -127,6 +129,130 @@ describe("runDigest", () => {
     expect(profile?.version).toBe(2);
     expect(profile?.body).toMatch(/no shorts/);
     expect(await deps.feedback.listUnapplied(userId)).toHaveLength(0);
+  });
+
+  it("marks the run failed with the reason when the OAuth refresh token is dead (#83)", async () => {
+    const { deps, userId } = await setupOwner([]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "anything");
+    const yt = makeFakeYoutube();
+    yt.api.listSubscriptions = () => {
+      throw tokenRefreshError(
+        400,
+        '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}',
+      );
+    };
+
+    const outcome = await runDigest(deps, yt, userId, NOW);
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind !== "failed") throw new Error("unreachable");
+    expect(outcome.failure.kind).toBe("youtube_auth");
+    expect(outcome.failure.message).toContain("invalid_grant");
+    const digest = await deps.digests.latestForUser(userId);
+    expect(digest?.status).toBe("failed");
+    expect(digest?.failure_kind).toBe("youtube_auth");
+    expect(digest?.failure_message).toContain("invalid_grant");
+    expect(digest?.delivered_at).toBeNull();
+  });
+
+  it("records the partial spend of a run that fails after paying for stage 1", async () => {
+    const { deps, userId } = await setupOwner([textResult('[{"id":"v1","score":0.9}]')]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "anything");
+    const yt = makeFakeYoutube({
+      subscriptions: SUBSCRIPTIONS,
+      videos: [uploaded("v1", "UC1", "Dovetails by hand")],
+    });
+    // The transcript fetch is the first thing stage 2 does — fail it to abort the run
+    // once stage 1 has already been billed.
+    yt.transcripts.fetchTranscript = () => {
+      throw new Error("transcript service unreachable");
+    };
+
+    const outcome = await runDigest(deps, yt, userId, NOW);
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind !== "failed") throw new Error("unreachable");
+    expect(outcome.failure).toEqual({ kind: "unknown", message: "transcript service unreachable" });
+    const digest = await deps.digests.latestForUser(userId);
+    expect(digest?.status).toBe("failed");
+    expect(Number(digest?.cost_cents)).toBeGreaterThan(0);
+  });
+
+  it("re-covers the videos a failed run never reported", async () => {
+    const pick =
+      '{"decision":"pick","confidence":0.9,"summary":["half-blind dovetails"],"why":"joinery"}';
+    const { deps, userId } = await setupOwner([
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult(pick),
+    ]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "likes hand-tool woodworking");
+    const yt = makeFakeYoutube({
+      subscriptions: SUBSCRIPTIONS,
+      videos: [uploaded("v1", "UC1", "Dovetails by hand")],
+      transcripts: { v1: "long transcript about dovetails" },
+    });
+
+    // First run ingests v1, then dies in stage 2 — the owner is told nothing about it.
+    const fetchTranscript = yt.transcripts.fetchTranscript;
+    yt.transcripts.fetchTranscript = () => {
+      throw new Error("transcript service unreachable");
+    };
+    expect((await runDigest(deps, yt, userId, NOW)).kind).toBe("failed");
+
+    // The retry must still consider v1: it was published inside the failed run's window,
+    // and no digest has reported it. Anchoring on the failed run would drop it forever.
+    yt.transcripts.fetchTranscript = fetchTranscript;
+    const outcome = await runDigest(deps, yt, userId, NOW);
+    expect(outcome.kind).toBe("digest");
+    if (outcome.kind !== "digest") throw new Error("unreachable");
+    expect(outcome.picks.map((p) => p.videoId)).toEqual(["v1"]);
+  });
+
+  it("anchors the window on the last delivered run, not a later failed one", async () => {
+    const pick =
+      '{"decision":"pick","confidence":0.9,"summary":["half-blind dovetails"],"why":"joinery"}';
+    const { deps, userId } = await setupOwner([
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult(pick),
+    ]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "likes hand-tool woodworking");
+    // A delivered run two days back, then a failed run whose window already started after
+    // v1 went up (what the old "latest run, any status" anchor left behind).
+    await testDb()
+      .insertInto("digests")
+      .values([
+        {
+          user_id: userId,
+          run_date: "2026-06-29",
+          status: "delivered",
+          covers_since: new Date("2026-06-28T05:00:00Z"),
+          created_at: new Date("2026-06-29T05:00:00Z"),
+        },
+        {
+          user_id: userId,
+          run_date: "2026-06-30",
+          status: "failed",
+          covers_since: new Date("2026-06-30T20:00:00Z"),
+          created_at: new Date("2026-06-30T20:00:00Z"),
+        },
+      ])
+      .execute();
+
+    const outcome = await runDigest(
+      deps,
+      makeFakeYoutube({
+        subscriptions: SUBSCRIPTIONS,
+        videos: [uploaded("v1", "UC1", "Dovetails by hand")], // published 06-30T18:00Z
+        transcripts: { v1: "long transcript about dovetails" },
+      }),
+      userId,
+      NOW,
+    );
+
+    expect(outcome.kind).toBe("digest");
+    if (outcome.kind !== "digest") throw new Error("unreachable");
+    expect(outcome.picks.map((p) => p.videoId)).toEqual(["v1"]);
   });
 
   it("returns an empty digest when nothing new was published", async () => {

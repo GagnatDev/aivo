@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi.js";
+import { DigestFailureNote } from "../components/digests/DigestFailureNote.js";
+import { CardGridSkeleton, StatGridSkeleton } from "../components/Skeleton.js";
 import { DIGEST_STATUS_LABELS, formatShortDate, type Overview } from "../lib/overview.js";
 import { DEGRADATION_META } from "../lib/palette.js";
 
@@ -28,7 +30,12 @@ export function OverviewPage() {
       </div>
 
       {overview.error ? <div className="error-banner">{overview.error}</div> : null}
-      {!data && !overview.error ? <p className="muted">Loading…</p> : null}
+      {!data && !overview.error ? (
+        <>
+          <StatGridSkeleton />
+          <CardGridSkeleton cards={2} lines={3} announce={false} />
+        </>
+      ) : null}
 
       {data && status ? (
         <>
@@ -69,15 +76,18 @@ export function OverviewPage() {
             <div className="card">
               <h2>Last digest</h2>
               {data.digest ? (
-                <p className="muted overview-lines">
-                  {data.digest.runDate} — {DIGEST_STATUS_LABELS[data.digest.status]}
-                  <br />
-                  {data.digest.pickCount} {data.digest.pickCount === 1 ? "pick" : "picks"} · cost{" "}
-                  {data.digest.cost.formatted}
-                  {data.digest.deliveredAt
-                    ? ` · delivered ${formatShortDate(data.digest.deliveredAt)}`
-                    : ""}
-                </p>
+                <>
+                  <p className="muted overview-lines">
+                    {data.digest.runDate} — {DIGEST_STATUS_LABELS[data.digest.status]}
+                    <br />
+                    {data.digest.pickCount} {data.digest.pickCount === 1 ? "pick" : "picks"} · cost{" "}
+                    {data.digest.cost.formatted}
+                    {data.digest.deliveredAt
+                      ? ` · delivered ${formatShortDate(data.digest.deliveredAt)}`
+                      : ""}
+                  </p>
+                  <DigestFailureNote failure={data.digest.failure} />
+                </>
               ) : (
                 <p className="muted">No digest runs yet — connect YouTube and one will appear.</p>
               )}

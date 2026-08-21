@@ -38,8 +38,23 @@ export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   tools?: ToolSchema[];
+  /**
+   * Whether the model may call the supplied `tools` this round: `auto` (the default)
+   * leaves the choice to the model, `none` forbids tool calls so it must answer in
+   * plain text. Only meaningful alongside `tools` — `none` is how the agent loop
+   * disables tools for its forced final answer while still sending the tool
+   * definitions, which OpenAI-compatible servers expect when the history contains
+   * tool traffic.
+   */
+  toolChoice?: "auto" | "none";
   /** Upper bound on completion tokens — also the worst-case used by cost estimation. */
   maxTokens: number;
+  /**
+   * Aborts the in-flight request (graceful shutdown, or a future user-facing "stop").
+   * The provider surfaces an aborted call as an `aborted` {@link LlmErrorKind}, which is
+   * never retried.
+   */
+  signal?: AbortSignal;
 }
 
 export interface TokenUsage {

@@ -1,5 +1,6 @@
 // Types mirroring the dashboard overview API (backend routes/dashboard/overview.ts).
 
+import type { DigestFailure, DigestStatus } from "./digests.js";
 import type { DegradationState, Money } from "./usage.js";
 
 export interface Overview {
@@ -16,10 +17,12 @@ export interface Overview {
   };
   digest: {
     runDate: string;
-    status: "pending" | "delivered" | "skipped_budget";
+    status: DigestStatus;
     cost: Money;
     deliveredAt: string | null;
     pickCount: number;
+    /** Set only on a failed run — why it failed (#83). */
+    failure: DigestFailure | null;
   } | null;
   health: {
     db: "ok";
@@ -37,4 +40,5 @@ export const DIGEST_STATUS_LABELS: Record<NonNullable<Overview["digest"]>["statu
   pending: "pending — run started but not delivered",
   delivered: "delivered",
   skipped_budget: "skipped — budget degraded",
+  failed: "failed — the run did not complete",
 };

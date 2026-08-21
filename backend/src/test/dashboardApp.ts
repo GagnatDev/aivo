@@ -35,6 +35,8 @@ export interface DashboardTestOptions {
   provider?: AuthProvider;
   /** unforked client (usually test/fakeUnforked.ts); omitted = "not configured". */
   unforked?: UnforkedClient | null;
+  /** Whether the YouTube OAuth handshake is mounted; defaults to false (unconfigured). */
+  youtubeOauthConfigured?: boolean;
 }
 
 /** The dashboard app wired to the test DB with the dev auth provider by default. */
@@ -59,6 +61,7 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
     unforked: options.unforked ?? null,
     config: {
       memoryInjectLimit: options.memoryInjectLimit ?? 20,
+      youtubeOauthConfigured: options.youtubeOauthConfigured ?? false,
     },
     ...(options.gatewayStatus ? { gatewayStatus: options.gatewayStatus } : {}),
   };

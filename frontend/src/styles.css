@@ -725,6 +725,20 @@ a {
   margin-top: 0.15rem;
 }
 
+.digest-upcoming-badge {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.digest-upcoming-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .digest-summary {
   margin: 0.6rem 0 0;
   overflow-wrap: anywhere;
@@ -860,6 +874,58 @@ a {
   margin: 0.75rem 0 0;
 }
 
+/* A failed run explains itself: same danger treatment as .error-banner, but this is
+   recorded state rather than a request that just failed. */
+.digest-failure-note {
+  background: rgba(229, 100, 94, 0.12);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  padding: 0.6rem 0.9rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Reconnect guidance: a quiet disclosure that opens itself when the YouTube grant is
+   what's broken. */
+.digest-reconnect {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+.digest-reconnect > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.digest-reconnect[open] > summary {
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.digest-reconnect-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.digest-reconnect-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.digest-row-failure {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+  max-width: 32rem;
+  overflow-wrap: anywhere;
+}
+
 .memory-forgotten .memory-content {
   color: var(--text-muted);
   text-decoration: line-through;
@@ -929,4 +995,60 @@ fieldset.seg-group {
 .settings-key-input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* ── Loading skeletons ─────────────────────────────────────────────────── */
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.skeleton {
+  display: inline-block;
+  vertical-align: middle;
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 0%,
+    #2a3344 45%,
+    var(--bg-hover) 90%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.35s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.skeleton-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.skeleton-chart-plot {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.skeleton-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.25rem;
+}
+
+.skeleton-table th,
+.skeleton-table td {
+  vertical-align: middle;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--bg-hover);
+  }
 }

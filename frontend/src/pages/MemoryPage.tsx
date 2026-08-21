@@ -3,6 +3,7 @@ import { useApi } from "../api/useApi.js";
 import { ForgottenTab } from "../components/memory/ForgottenTab.js";
 import { MemoryList } from "../components/memory/MemoryList.js";
 import { ProfileTab } from "../components/memory/ProfileTab.js";
+import { ListSkeleton } from "../components/Skeleton.js";
 import type { MemoriesResponse, MemoryCategory } from "../lib/memory.js";
 
 const CATEGORIES: Array<{ value: MemoryCategory | ""; label: string }> = [
@@ -98,7 +99,7 @@ function MemoriesTab() {
           </p>
         )
       ) : (
-        <p className="muted">Loading…</p>
+        <ListSkeleton />
       )}
     </>
   );

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { downloadFile } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
+import { ChartSkeleton, StatGridSkeleton, TableSkeleton } from "../components/Skeleton.js";
 import { BurnDownChart } from "../components/usage/BurnDownChart.js";
 import { DailySpendChart } from "../components/usage/DailySpendChart.js";
 import { DriversTable } from "../components/usage/DriversTable.js";
@@ -121,12 +122,19 @@ export function UsagePage() {
       {error ? <div className="error-banner">{error}</div> : null}
 
       {summary.data ? <SummaryCards summary={summary.data} /> : null}
+      {!summary.data && !summary.error ? <StatGridSkeleton /> : null}
 
       {summary.data && burnDown ? (
         <div className="card chart-card">
           <h2>Month-to-date burn-down</h2>
           <p className="muted">Cumulative spend vs. the monthly ceiling and alert thresholds.</p>
           <BurnDownChart points={burnDown} summary={summary.data} />
+        </div>
+      ) : !summary.error && (summary.loading || burnDownSeries.loading) ? (
+        <div className="card chart-card">
+          <h2>Month-to-date burn-down</h2>
+          <p className="muted">Cumulative spend vs. the monthly ceiling and alert thresholds.</p>
+          <ChartSkeleton />
         </div>
       ) : null}
 
@@ -163,7 +171,7 @@ export function UsagePage() {
         {pivot && hasUsage ? (
           <DailySpendChart pivot={pivot} />
         ) : series.loading ? (
-          <p className="muted">Loading…</p>
+          <ChartSkeleton />
         ) : (
           <p className="muted empty-state">No usage yet — start a chat in #chat.</p>
         )}
@@ -175,12 +183,22 @@ export function UsagePage() {
           <p className="muted">Tokens in vs. tokens out per day (informational, not billing).</p>
           <TokenMixChart points={tokenMix} />
         </div>
+      ) : series.loading ? (
+        <div className="card chart-card">
+          <h2>Token mix</h2>
+          <p className="muted">Tokens in vs. tokens out per day (informational, not billing).</p>
+          <ChartSkeleton height={180} />
+        </div>
       ) : null}
 
       <div className="card chart-card">
         <h2>Top spend drivers</h2>
         <p className="muted">Grouped by model and task type since the start of the range.</p>
-        {drivers.data ? <DriversTable drivers={drivers.data} /> : <p className="muted">Loading…</p>}
+        {drivers.data ? (
+          <DriversTable drivers={drivers.data} />
+        ) : drivers.error ? null : (
+          <TableSkeleton rows={5} cols={4} />
+        )}
       </div>
     </section>
   );

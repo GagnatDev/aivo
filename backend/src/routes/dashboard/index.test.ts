@@ -95,4 +95,25 @@ describe("SPA static serving", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
   });
+
+  it("serves the PWA service worker and SPA shell no-cache so updates are discovered", async () => {
+    const webRoot = mkdtempSync(path.join(tmpdir(), "aivo-web-"));
+    writeFileSync(path.join(webRoot, "index.html"), "<html><body>aivo shell</body></html>");
+    writeFileSync(path.join(webRoot, "sw.js"), "/* service worker */");
+    const { app, deps } = buildDashboardTestApp({ webRoot });
+    await provisionTestOwner(deps);
+
+    // A cached sw.js pins a client to a stale build (it never sees a new worker
+    // or its fresh precache manifest), so it must always be revalidated.
+    const sw = await request(app).get("/sw.js");
+    expect(sw.status).toBe(200);
+    expect(sw.headers["cache-control"]).toBe("no-cache");
+
+    // index.html is the version anchor (references hashed assets) — never cache
+    // it, on either the direct hit or the client-route fallback.
+    const shell = await request(app).get("/");
+    expect(shell.headers["cache-control"]).toBe("no-cache");
+    const fallback = await request(app).get("/usage");
+    expect(fallback.headers["cache-control"]).toBe("no-cache");
+  });
 });

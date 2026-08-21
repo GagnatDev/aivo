@@ -36,7 +36,9 @@ describe("prepareTurn", () => {
       "reminder",
       "settings",
       "unforked",
+      "weather",
       "youtube_digest",
+      "youtube_summary",
     ]);
   });
 
@@ -81,7 +83,7 @@ describe("prepareTurn", () => {
     if (plan.kind !== "prepared") throw new Error("expected prepared");
     expect(plan.model).toBe("llama-3.1-8b-instruct"); // cheap seed
     expect(plan.maxTokens).toBeLessThanOrEqual(256);
-    expect(plan.overBudgetNote).toMatch(/over this month's budget/i);
+    expect(plan.overBudgetNote).toMatch(/over månedens budsjett/i);
   });
 
   it("gates a turn whose estimate exceeds the threshold, with no side effects", async () => {
