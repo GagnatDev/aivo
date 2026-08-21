@@ -22,10 +22,22 @@ describe("auth (auth-agnostic SPA behind the sidecar)", () => {
     expect(location.href).toBe("/");
   });
 
-  it("logout navigates to the sidecar logout path", () => {
-    const location = { href: "" };
-    vi.stubGlobal("window", { location });
+  it("logout submits a top-level POST to the sidecar logout path", () => {
+    // The sidecar handles logout on POST only (a GET 404s at the app), so logout
+    // drives a top-level POST navigation via a hidden form and lets the browser
+    // follow the sidecar's 302 home.
+    const submit = vi.fn();
+    const form: Record<string, unknown> = { submit };
+    const createElement = vi.fn(() => form);
+    const appendChild = vi.fn();
+    vi.stubGlobal("document", { createElement, body: { appendChild } });
+
     auth.logout();
-    expect(location.href).toBe("/auth/logout");
+
+    expect(createElement).toHaveBeenCalledWith("form");
+    expect(form.method).toBe("post");
+    expect(form.action).toBe("/auth/logout");
+    expect(appendChild).toHaveBeenCalledWith(form);
+    expect(submit).toHaveBeenCalledOnce();
   });
 });

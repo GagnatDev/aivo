@@ -9,7 +9,14 @@
  *  - `fetch` is a plain same-origin fetch.
  *  - `login()` bounces to a full page load so the sidecar can do the top-level
  *    login redirect (called when an API request comes back 401).
- *  - `logout()` navigates to the sidecar's logout path, which clears the session.
+ *  - `logout()` submits a top-level POST to the sidecar's logout path, which
+ *    clears the session and 302s home (where the now session-less navigation is
+ *    bounced to central login). The sidecar handles logout on POST only, so a
+ *    plain `window.location` GET would fall through to the app and 404
+ *    ("Cannot GET /auth/logout") — hence the hidden-form POST.
+ *
+ * Both navigations go through `throughSidecar`, which drops the PWA service
+ * worker first so the browser actually asks the network (and thus the sidecar).
  *
  * With `VITE_DISABLE_AUTH=true` (the committed .env.development overlay) there is
  * no sidecar and the backend's dev provider supplies a fixed principal, so logout
@@ -20,27 +27,33 @@ export interface AuthClient {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
   /** Full-page navigation so the sidecar can run the top-level login redirect. */
   login(): void;
-  /** Navigate to the sidecar logout path (clears `hs_session`), then home. */
+  /** POST to the sidecar logout path (clears `hs_session`), then land home. */
   logout(): void;
 }
 
 const disableAuth = import.meta.env.VITE_DISABLE_AUTH === "true";
 
-/** Path the sidecar handles for logout (its LOGOUT_PATH default). */
+/**
+ * Path the sidecar handles for logout (its LOGOUT_PATH default). The sidecar
+ * registers this as a POST route (`app.post(logoutPath, …)`); a GET is not its
+ * route and is proxied through to the app, which 404s.
+ */
 const LOGOUT_PATH = "/auth/logout";
 
 /**
- * Full-page navigation to `to` that is guaranteed to reach the auth sidecar.
+ * Run `navigate` as a top-level navigation that is guaranteed to reach the auth
+ * sidecar.
  *
  * The PWA service worker answers navigations from its precache
- * (`navigateFallback: index.html`), so a plain `location.href = "/"` is served
- * from cache and never produces a network request — the sidecar never gets the
- * chance to 302 an expired session to central login, and an installed PWA would
- * sit on the cached shell forever (unforked docs/auth-sidecar-migration.md).
- * Unregistering the service worker(s) first makes the next top-level navigation
- * hit the network; the worker re-registers (and re-precaches) after login.
+ * (`navigateFallback: index.html`), so a plain `location.href = "/"` — or the
+ * sidecar's 302 home after logout — is served from cache and never produces a
+ * network request: the sidecar never gets the chance to 302 a session-less
+ * navigation to central login, and an installed PWA would sit on the cached
+ * shell forever (unforked docs/auth-sidecar-migration.md). Unregistering the
+ * service worker(s) first makes the next top-level navigation hit the network;
+ * the worker re-registers (and re-precaches) after login.
  */
-async function navigateThroughSidecar(to: string): Promise<void> {
+async function throughSidecar(navigate: () => void): Promise<void> {
   if ("serviceWorker" in navigator) {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
@@ -49,7 +62,29 @@ async function navigateThroughSidecar(to: string): Promise<void> {
       // Best effort — navigate regardless.
     }
   }
-  window.location.href = to;
+  navigate();
+}
+
+/** Full-page GET navigation to `to`, past the service worker. */
+function navigateThroughSidecar(to: string): void {
+  void throughSidecar(() => {
+    window.location.href = to;
+  });
+}
+
+/**
+ * Top-level POST navigation to `to`, past the service worker. There is no
+ * `location` API for a POST, so submit a hidden form and let the browser follow
+ * the response's redirect.
+ */
+function postThroughSidecar(to: string): void {
+  void throughSidecar(() => {
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = to;
+    document.body.appendChild(form);
+    form.submit();
+  });
 }
 
 export const auth: AuthClient = {
@@ -57,9 +92,18 @@ export const auth: AuthClient = {
   // A full page load at "/" lets the sidecar 302 an unauthenticated top-level
   // navigation to central login before the shell is served.
   login: () => {
-    void navigateThroughSidecar("/");
+    navigateThroughSidecar("/");
   },
   logout: () => {
-    void navigateThroughSidecar(disableAuth ? "/" : LOGOUT_PATH);
+    // Dev (no sidecar) has nowhere to log out — just return home.
+    if (disableAuth) {
+      navigateThroughSidecar("/");
+      return;
+    }
+    // The sidecar owns logout as POST /auth/logout: it clears `hs_session` and
+    // 302s to "/", where the now session-less top-level navigation is bounced to
+    // central login. A GET falls through to the app and 404s, so drive a
+    // top-level POST navigation instead.
+    postThroughSidecar(LOGOUT_PATH);
   },
 };
