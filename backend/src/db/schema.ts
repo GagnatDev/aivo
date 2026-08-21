@@ -205,6 +205,7 @@ export interface Videos {
   duration_seconds: number | null;
   id: string;
   published_at: Timestamp;
+  scheduled_start_time: Timestamp | null;
   stage1_at: Timestamp | null;
   stage1_score: number | null;
   stage2_decision: Stage2Decision | null;

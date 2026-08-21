@@ -21,6 +21,8 @@ async function seedDeliveredRun(deps: DashboardDeps, userId: string) {
       description: "",
       durationSeconds: 600,
       publishedAt: new Date("2026-07-01T08:00:00Z"),
+      // v2 is an announced premiere — the detail payload has to carry its air time.
+      scheduledStartTime: id === "v2" ? new Date("2026-07-04T16:00:00Z") : null,
       thumbnailUrl: null,
     })),
   );
@@ -178,8 +180,11 @@ describe("GET /api/dashboard/digests/:id", () => {
         title: "Video v1",
         channelTitle: "Kurzgesagt",
         durationSeconds: 600,
+        scheduledStartTime: null,
       },
     });
+    // The premiere's air time — what tells the page the pick isn't out yet.
+    expect(res.body.picks[1].video.scheduledStartTime).toBe("2026-07-04T16:00:00.000Z");
     expect(res.body.rejects).toHaveLength(1);
     expect(res.body.rejects[0].reason).toMatch(/news recap/);
     expect(res.body.rejects[0].video.id).toBe("v3");

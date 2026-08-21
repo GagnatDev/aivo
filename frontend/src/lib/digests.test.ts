@@ -7,6 +7,7 @@ import {
   formatReleaseAt,
   needsReconnect,
   partitionDigestItems,
+  releaseAt,
   type DigestItem,
   type DigestRunSummary,
   type YoutubeStatus,
@@ -120,7 +121,12 @@ describe("formatConfidence", () => {
 
 describe("partitionDigestItems", () => {
   const NOW = new Date("2026-08-05T06:00:00Z");
-  const item = (id: string, publishedAt: string, rank: number): DigestItem => ({
+  const item = (
+    id: string,
+    publishedAt: string,
+    rank: number,
+    scheduledStartTime: string | null = null,
+  ): DigestItem => ({
     id,
     rank,
     confidence: 0.8,
@@ -131,6 +137,7 @@ describe("partitionDigestItems", () => {
       channelTitle: "Chan",
       durationSeconds: 600,
       publishedAt,
+      scheduledStartTime,
       thumbnailUrl: null,
       summary: null,
       why: null,
@@ -148,6 +155,39 @@ describe("partitionDigestItems", () => {
     );
     expect(released.map((i) => i.id)).toEqual(["a"]);
     expect(upcoming.map((i) => i.id)).toEqual(["c", "b"]);
+  });
+
+  it("groups premieres by their air time, not their publish instant", () => {
+    // All three were published before NOW; only the premiere schedule says two of them
+    // aren't out yet (see backend digest/present.ts).
+    const { released, upcoming } = partitionDigestItems(
+      [
+        item("out", "2026-08-04T10:00:00Z", 1),
+        item("late", "2026-08-04T08:00:00Z", 2, "2026-08-08T18:00:00Z"),
+        item("soon", "2026-08-03T08:00:00Z", 3, "2026-08-05T18:00:00Z"),
+        item("aired", "2026-08-01T08:00:00Z", 4, "2026-08-02T18:00:00Z"),
+      ],
+      NOW,
+    );
+    expect(released.map((i) => i.id)).toEqual(["out", "aired"]);
+    expect(upcoming.map((i) => i.id)).toEqual(["soon", "late"]);
+  });
+});
+
+describe("releaseAt", () => {
+  it("is the publish instant without a premiere schedule", () => {
+    expect(releaseAt({ publishedAt: "2026-08-04T10:00:00Z", scheduledStartTime: null })).toBe(
+      new Date("2026-08-04T10:00:00Z").getTime(),
+    );
+  });
+
+  it("is the air time of an already-published premiere", () => {
+    expect(
+      releaseAt({
+        publishedAt: "2026-08-04T10:00:00Z",
+        scheduledStartTime: "2026-08-06T16:00:00Z",
+      }),
+    ).toBe(new Date("2026-08-06T16:00:00Z").getTime());
   });
 });
 

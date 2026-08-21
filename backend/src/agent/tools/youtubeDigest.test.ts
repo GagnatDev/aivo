@@ -185,6 +185,8 @@ describe("youtube_digest tool", () => {
         description: "",
         durationSeconds: null,
         publishedAt: NOW,
+        // v2 is an announced premiere: published now, airing in two days.
+        scheduledStartTime: id === "v2" ? new Date(NOW.getTime() + 2 * 24 * 60 * 60 * 1000) : null,
         thumbnailUrl: null,
       })),
     );
@@ -200,5 +202,7 @@ describe("youtube_digest tool", () => {
     const res = await tool().execute({ action: "show_more_picks" }, ctx);
     expect(res).toMatch(/Video v2/);
     expect(res).not.toMatch(/Video v1/);
+    // Flagged from the premiere schedule; its publish instant alone reads as released.
+    expect(res).toMatch(/not released yet — releases 2026-07-03T10:00:00.000Z/);
   });
 });

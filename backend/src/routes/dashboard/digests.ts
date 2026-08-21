@@ -50,6 +50,10 @@ function itemJson(
           channelTitle: channelTitles.get(video.channel_id) ?? null,
           durationSeconds: video.duration_seconds,
           publishedAt: video.published_at.toISOString(),
+          // The premiere/scheduled-stream release instant, when YouTube reported one —
+          // what tells the page a pick isn't out yet (publishedAt is already past for an
+          // announced premiere). Null for an ordinary upload.
+          scheduledStartTime: video.scheduled_start_time?.toISOString() ?? null,
           thumbnailUrl: video.thumbnail_url,
           summary: video.summary,
           why: video.why,

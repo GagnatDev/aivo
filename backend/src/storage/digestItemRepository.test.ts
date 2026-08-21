@@ -27,6 +27,7 @@ async function setup() {
       description: "",
       durationSeconds: null,
       publishedAt: new Date(),
+      scheduledStartTime: null,
       thumbnailUrl: null,
     })),
   );

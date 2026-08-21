@@ -8,6 +8,8 @@ export interface VideoRow {
   description: string;
   duration_seconds: number | null;
   published_at: Date;
+  /** Premiere / live-stream start instant; null for an ordinary upload. */
+  scheduled_start_time: Date | null;
   thumbnail_url: string | null;
   stage1_score: number | null;
   transcript_status: TranscriptStatus;
@@ -23,6 +25,7 @@ const VIDEO_COLUMNS = [
   "description",
   "duration_seconds",
   "published_at",
+  "scheduled_start_time",
   "thumbnail_url",
   "stage1_score",
   "transcript_status",
@@ -38,6 +41,7 @@ export interface DiscoveredVideoInput {
   description: string;
   durationSeconds: number | null;
   publishedAt: Date;
+  scheduledStartTime: Date | null;
   thumbnailUrl: string | null;
 }
 
@@ -65,6 +69,7 @@ export class VideoRepository {
           description: v.description,
           duration_seconds: v.durationSeconds,
           published_at: v.publishedAt,
+          scheduled_start_time: v.scheduledStartTime,
           thumbnail_url: v.thumbnailUrl,
         })),
       )

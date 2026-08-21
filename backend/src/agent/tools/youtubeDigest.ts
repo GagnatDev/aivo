@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isUpcoming, releaseAt } from "../../digest/present.js";
 import { parseDigestLane, withDigestLane } from "../../digest/proactivity.js";
 import { OWNER_ONLY, parse, type AgentTool, type ToolContext } from "./index.js";
 
@@ -212,12 +213,15 @@ async function showMorePicks(ctx: ToolContext): Promise<string> {
   if (overflow.length === 0) return "No further picks in the latest digest.";
   const videos = await ctx.deps.videos.findByIds(overflow.map((i) => i.video_id));
   const byId = new Map(videos.map((v) => [v.id, v]));
-  const now = ctx.deps.clock.now().getTime();
+  const now = ctx.deps.clock.now();
   const lines = overflow.map((i) => {
     const v = byId.get(i.video_id);
+    const release = v
+      ? { publishedAt: v.published_at, scheduledStartTime: v.scheduled_start_time }
+      : null;
     const releaseNote =
-      v && v.published_at.getTime() > now
-        ? ` [not released yet — releases ${v.published_at.toISOString()}]`
+      release && isUpcoming(release, now)
+        ? ` [not released yet — releases ${releaseAt(release).toISOString()}]`
         : "";
     return `${i.rank}. ${v?.title ?? i.video_id} — https://www.youtube.com/watch?v=${i.video_id}${releaseNote}${v?.why ? ` (${v.why})` : ""}`;
   });

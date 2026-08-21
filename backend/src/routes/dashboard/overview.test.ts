@@ -35,6 +35,7 @@ describe("GET /api/dashboard/overview", () => {
         description: "",
         durationSeconds: null,
         publishedAt: new Date(),
+        scheduledStartTime: null,
         thumbnailUrl: null,
       },
     ]);

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { DeliverablePick } from "./pipeline.js";
-import { formatReleaseAt, isUpcoming, partitionPicks } from "./present.js";
+import { formatReleaseAt, isUpcoming, partitionPicks, releaseAt } from "./present.js";
 
-const pick = (id: string, publishedAt: string, rank: number): DeliverablePick => ({
+const pick = (
+  id: string,
+  publishedAt: string,
+  rank: number,
+  scheduledStartTime: string | null = null,
+): DeliverablePick => ({
   itemId: `item-${id}`,
   videoId: id,
   title: `Title ${id}`,
@@ -14,15 +19,64 @@ const pick = (id: string, publishedAt: string, rank: number): DeliverablePick =>
   why: "",
   rank,
   publishedAt: new Date(publishedAt),
+  scheduledStartTime: scheduledStartTime ? new Date(scheduledStartTime) : null,
 });
 
 const NOW = new Date("2026-08-05T06:00:00Z");
 
+describe("releaseAt", () => {
+  it("is the publish instant for an ordinary upload", () => {
+    const at = new Date("2026-08-04T10:00:00Z");
+    expect(releaseAt({ publishedAt: at, scheduledStartTime: null })).toEqual(at);
+  });
+
+  it("is the premiere time even though the placeholder was published earlier", () => {
+    // How YouTube reports an announced premiere: the uploads playlist carries it the
+    // moment it is announced, so publishedAt is already in the past.
+    const scheduled = new Date("2026-08-07T18:00:00Z");
+    expect(
+      releaseAt({ publishedAt: new Date("2026-08-04T09:00:00Z"), scheduledStartTime: scheduled }),
+    ).toEqual(scheduled);
+  });
+
+  it("keeps a future publish instant over an earlier scheduled start", () => {
+    const published = new Date("2026-08-09T12:00:00Z");
+    expect(
+      releaseAt({ publishedAt: published, scheduledStartTime: new Date("2026-08-01T12:00:00Z") }),
+    ).toEqual(published);
+  });
+});
+
 describe("isUpcoming", () => {
-  it("treats publishedAt strictly after now as upcoming", () => {
-    expect(isUpcoming(new Date("2026-08-05T06:00:01Z"), NOW)).toBe(true);
-    expect(isUpcoming(new Date("2026-08-05T06:00:00Z"), NOW)).toBe(false);
-    expect(isUpcoming(new Date("2026-08-04T12:00:00Z"), NOW)).toBe(false);
+  it("treats a release instant strictly after now as upcoming", () => {
+    const at = (iso: string) => ({ publishedAt: new Date(iso), scheduledStartTime: null });
+    expect(isUpcoming(at("2026-08-05T06:00:01Z"), NOW)).toBe(true);
+    expect(isUpcoming(at("2026-08-05T06:00:00Z"), NOW)).toBe(false);
+    expect(isUpcoming(at("2026-08-04T12:00:00Z"), NOW)).toBe(false);
+  });
+
+  it("treats an already-published premiere that hasn't started as upcoming", () => {
+    expect(
+      isUpcoming(
+        {
+          publishedAt: new Date("2026-08-04T09:00:00Z"),
+          scheduledStartTime: new Date("2026-08-06T16:00:00Z"),
+        },
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a premiere that has already started as released", () => {
+    expect(
+      isUpcoming(
+        {
+          publishedAt: new Date("2026-08-01T09:00:00Z"),
+          scheduledStartTime: new Date("2026-08-04T16:00:00Z"),
+        },
+        NOW,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -37,6 +91,21 @@ describe("partitionPicks", () => {
     const { released, upcoming } = partitionPicks(picks, NOW);
     expect(released.map((p) => p.videoId)).toEqual(["a", "d"]);
     expect(upcoming.map((p) => p.videoId)).toEqual(["c", "b"]);
+  });
+
+  it("groups premieres whose placeholder is already published, in premiere order", () => {
+    // Every one of these was "published" before now — only the premiere schedule says
+    // they aren't out yet. Before scheduledStartTime existed they all landed in
+    // `released` and were listed among the watchable picks.
+    const picks = [
+      pick("out", "2026-08-04T10:00:00Z", 1),
+      pick("late-premiere", "2026-08-04T08:00:00Z", 2, "2026-08-08T18:00:00Z"),
+      pick("soon-premiere", "2026-08-03T08:00:00Z", 3, "2026-08-05T18:00:00Z"),
+      pick("aired-premiere", "2026-08-01T08:00:00Z", 4, "2026-08-02T18:00:00Z"),
+    ];
+    const { released, upcoming } = partitionPicks(picks, NOW);
+    expect(released.map((p) => p.videoId)).toEqual(["out", "aired-premiere"]);
+    expect(upcoming.map((p) => p.videoId)).toEqual(["soon-premiere", "late-premiere"]);
   });
 
   it("returns empty buckets when there are no picks", () => {

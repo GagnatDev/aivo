@@ -15,12 +15,18 @@ const SUBSCRIPTIONS = [
   { id: "UC2", title: "News", thumbnailUrl: null },
 ];
 
-const uploaded = (id: string, channelId: string, title: string) => ({
+const uploaded = (
+  id: string,
+  channelId: string,
+  title: string,
+  scheduledStartTime: Date | null = null,
+) => ({
   id,
   channelId,
   title,
   description: `about ${title}`,
   publishedAt: new Date("2026-06-30T18:00:00Z"),
+  scheduledStartTime,
   thumbnailUrl: `https://i.ytimg.com/${id}.jpg`,
   durationSeconds: 900,
 });
@@ -68,6 +74,7 @@ describe("runDigest", () => {
       summaryBullets: ["half-blind dovetails", "tool list"],
       why: "hand-tool joinery is your thing",
       publishedAt: new Date("2026-06-30T18:00:00Z"),
+      scheduledStartTime: null,
     });
     // Cold start: both the stage-2 reject and the stage-1 near-miss are shown.
     expect(outcome.rejects).toEqual([
@@ -153,6 +160,39 @@ describe("runDigest", () => {
     expect(digest?.failure_kind).toBe("youtube_auth");
     expect(digest?.failure_message).toContain("invalid_grant");
     expect(digest?.delivered_at).toBeNull();
+  });
+
+  it("carries a premiere's scheduled start through to the deliverable pick", async () => {
+    // The premiere's placeholder was published inside the coverage window (that is how it
+    // becomes a candidate at all); only the scheduled start says it isn't out yet, so it
+    // has to survive ingest → storage → the pick the deliverer groups on.
+    const premiereAt = new Date("2026-07-03T16:00:00Z");
+    const pick =
+      '{"decision":"pick","confidence":0.9,"summary":["live Q&A"],"why":"joinery premiere"}';
+    const { deps, userId } = await setupOwner([
+      textResult('[{"id":"v1","score":0.9}]'),
+      textResult(pick),
+    ]);
+    await deps.profiles.setCurrent(userId, "youtube_interest", "likes hand-tool woodworking");
+
+    const outcome = await runDigest(
+      deps,
+      makeFakeYoutube({
+        subscriptions: SUBSCRIPTIONS,
+        videos: [uploaded("v1", "UC1", "Live dovetail Q&A", premiereAt)],
+        transcripts: { v1: "announcement transcript" },
+      }),
+      userId,
+      NOW,
+    );
+
+    expect(outcome.kind).toBe("digest");
+    if (outcome.kind !== "digest") throw new Error("unreachable");
+    expect(outcome.picks[0]).toMatchObject({
+      videoId: "v1",
+      publishedAt: new Date("2026-06-30T18:00:00Z"),
+      scheduledStartTime: premiereAt,
+    });
   });
 
   it("records the partial spend of a run that fails after paying for stage 1", async () => {

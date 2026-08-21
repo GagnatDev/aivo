@@ -60,6 +60,8 @@ export interface DigestItemVideo {
   channelTitle: string | null;
   durationSeconds: number | null;
   publishedAt: string;
+  /** Premiere / scheduled-stream release instant; null for an ordinary upload. */
+  scheduledStartTime: string | null;
   thumbnailUrl: string | null;
   summary: string | null;
   why: string | null;
@@ -148,9 +150,27 @@ export function videoUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
-/** True when the video's publish/premiere instant is still in the future. */
-export function isUpcoming(publishedAt: string, now: Date = new Date()): boolean {
-  return new Date(publishedAt).getTime() > now.getTime();
+/**
+ * When a video becomes watchable: its premiere/scheduled-stream time when YouTube
+ * reported one, else its publish instant (see backend digest/present.ts). `publishedAt`
+ * alone can't answer this — YouTube publishes a premiere's placeholder as soon as it is
+ * announced, so an unreleased video's publish instant is already in the past.
+ */
+export function releaseAt(
+  video: Pick<DigestItemVideo, "publishedAt" | "scheduledStartTime">,
+): number {
+  const published = new Date(video.publishedAt).getTime();
+  if (!video.scheduledStartTime) return published;
+  const scheduled = new Date(video.scheduledStartTime).getTime();
+  return Math.max(published, scheduled);
+}
+
+/** True when the video hasn't come out yet. */
+export function isUpcoming(
+  video: Pick<DigestItemVideo, "publishedAt" | "scheduledStartTime">,
+  now: Date = new Date(),
+): boolean {
+  return releaseAt(video) > now.getTime();
 }
 
 /** Released picks keep API order; upcoming are sorted earliest-first. */
@@ -161,14 +181,10 @@ export function partitionDigestItems(
   const released: DigestItem[] = [];
   const upcoming: DigestItem[] = [];
   for (const item of picks) {
-    if (item.video && isUpcoming(item.video.publishedAt, now)) upcoming.push(item);
+    if (item.video && isUpcoming(item.video, now)) upcoming.push(item);
     else released.push(item);
   }
-  upcoming.sort((a, b) => {
-    const aAt = a.video ? new Date(a.video.publishedAt).getTime() : 0;
-    const bAt = b.video ? new Date(b.video.publishedAt).getTime() : 0;
-    return aAt - bAt;
-  });
+  upcoming.sort((a, b) => (a.video ? releaseAt(a.video) : 0) - (b.video ? releaseAt(b.video) : 0));
   return { released, upcoming };
 }
 
@@ -176,7 +192,7 @@ export function partitionDigestItems(
  * Weekday + date + time for a release instant (dashboard is English-only),
  * e.g. "Thursday, 6 Aug, 18:00".
  */
-export function formatReleaseAt(iso: string, timeZone = "UTC"): string {
+export function formatReleaseAt(at: string | number, timeZone = "UTC"): string {
   const opts: Intl.DateTimeFormatOptions = {
     weekday: "long",
     day: "numeric",
@@ -186,8 +202,8 @@ export function formatReleaseAt(iso: string, timeZone = "UTC"): string {
     hourCycle: "h23",
   };
   try {
-    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone }).format(new Date(iso));
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone }).format(new Date(at));
   } catch {
-    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(new Date(iso));
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(new Date(at));
   }
 }
