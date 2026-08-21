@@ -32,8 +32,13 @@ export interface DeliverablePick {
   summaryBullets: string[];
   why: string;
   rank: number;
-  /** Publish/premiere instant — used to surface still-unreleased videos below the rest. */
+  /** Uploads-playlist publish instant (already past for an announced premiere). */
   publishedAt: Date;
+  /**
+   * Premiere / scheduled-stream release instant, null for an ordinary upload. Together
+   * with `publishedAt` this decides whether a pick is out yet — see digest/present.ts.
+   */
+  scheduledStartTime: Date | null;
 }
 
 export interface DeliverableReject {
@@ -317,6 +322,7 @@ async function buildDigest(
       why: p.verdict.why,
       rank: i + 1,
       publishedAt: p.video.published_at,
+      scheduledStartTime: p.video.scheduled_start_time,
     })),
     morePicksCount: Math.max(0, picks.length - settings.digest_cap),
     rejects,

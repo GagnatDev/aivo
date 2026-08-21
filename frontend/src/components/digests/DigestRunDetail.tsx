@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatReleaseAt,
   partitionDigestItems,
+  releaseAt,
   summarizeFeedback,
   videoUrl,
   type DigestDetail,
@@ -17,7 +18,7 @@ import { DigestFailureNote } from "./DigestFailureNote.js";
 function PickCard({ item, upcoming = false }: { item: DigestItem; upcoming?: boolean }) {
   const confidence = formatConfidence(item.confidence);
   const duration = !upcoming && item.video ? formatDuration(item.video.durationSeconds) : null;
-  const releaseAt = upcoming && item.video ? formatReleaseAt(item.video.publishedAt) : null;
+  const releasesAt = upcoming && item.video ? formatReleaseAt(releaseAt(item.video)) : null;
   return (
     <li className={`card digest-pick${upcoming ? " digest-pick-upcoming" : ""}`}>
       <div className="digest-pick-head">
@@ -34,7 +35,7 @@ function PickCard({ item, upcoming = false }: { item: DigestItem; upcoming?: boo
           <div className="digest-pick-meta">
             {item.video?.channelTitle ? <span>{item.video.channelTitle}</span> : null}
             {duration ? <span>{duration}</span> : null}
-            {releaseAt ? <span>Releases {releaseAt}</span> : null}
+            {releasesAt ? <span>Releases {releasesAt}</span> : null}
             {!upcoming && item.video ? (
               <span>{formatShortDate(item.video.publishedAt)}</span>
             ) : null}

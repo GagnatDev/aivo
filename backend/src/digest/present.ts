@@ -2,13 +2,33 @@ import { localeFor, type Language } from "../i18n/index.js";
 import type { DeliverablePick } from "./pipeline.js";
 
 /**
- * Presentation helpers for digest picks: split already-out videos from those whose
- * `publishedAt` is still in the future (YouTube premieres / scheduled uploads), and
- * format the release instant in the owner's language + timezone.
+ * Presentation helpers for digest picks: split already-watchable videos from those that
+ * haven't come out yet (YouTube premieres / scheduled live streams), and format the
+ * release instant in the owner's language + timezone.
+ *
+ * "Not out yet" cannot be read off `publishedAt` alone. That value is the uploads-playlist
+ * publish instant, and YouTube publishes a premiere's placeholder the moment it is
+ * announced — so a video releasing tomorrow already has a `publishedAt` in the past. The
+ * release instant is `scheduledStartTime` when YouTube reported one (youtube/api.ts reads
+ * it from `liveStreamingDetails`); the later of the two otherwise, so a genuinely
+ * future-dated publish still counts as unreleased.
  */
 
-export function isUpcoming(publishedAt: Date, now: Date): boolean {
-  return publishedAt.getTime() > now.getTime();
+/** What both timestamps a video can carry look like, wherever they come from. */
+export interface Releasable {
+  publishedAt: Date;
+  scheduledStartTime: Date | null;
+}
+
+/** When a video becomes watchable: its premiere time, or its publish instant. */
+export function releaseAt(video: Releasable): Date {
+  const scheduled = video.scheduledStartTime;
+  if (!scheduled) return video.publishedAt;
+  return scheduled.getTime() > video.publishedAt.getTime() ? scheduled : video.publishedAt;
+}
+
+export function isUpcoming(video: Releasable, now: Date): boolean {
+  return releaseAt(video).getTime() > now.getTime();
 }
 
 /** Released picks keep their confidence order; upcoming are sorted earliest-first. */
@@ -19,10 +39,10 @@ export function partitionPicks(
   const released: DeliverablePick[] = [];
   const upcoming: DeliverablePick[] = [];
   for (const pick of picks) {
-    if (isUpcoming(pick.publishedAt, now)) upcoming.push(pick);
+    if (isUpcoming(pick, now)) upcoming.push(pick);
     else released.push(pick);
   }
-  upcoming.sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime());
+  upcoming.sort((a, b) => releaseAt(a).getTime() - releaseAt(b).getTime());
   return { released, upcoming };
 }
 

@@ -8,7 +8,7 @@ import {
 import type { AgentDeps } from "../agent/deps.js";
 import type { DigestFailure } from "../digest/failure.js";
 import type { DeliverablePick, DeliverableReject, DigestOutcome } from "../digest/pipeline.js";
-import { formatReleaseAt, partitionPicks } from "../digest/present.js";
+import { formatReleaseAt, isUpcoming, partitionPicks, releaseAt } from "../digest/present.js";
 import type { FeedbackSignal } from "../db/schema.enums.js";
 import { asLanguage, type Language, messages } from "../i18n/index.js";
 import { logger } from "../logger.js";
@@ -82,8 +82,8 @@ export function pickEmbed(
   ctx: PickEmbedContext,
 ): EmbedBuilder {
   const d = messages(lang).digest;
-  const upcoming = pick.publishedAt.getTime() > ctx.now.getTime();
-  const releaseWhen = upcoming ? formatReleaseAt(pick.publishedAt, ctx.timezone, lang) : null;
+  const upcoming = isUpcoming(pick, ctx.now);
+  const releaseWhen = upcoming ? formatReleaseAt(releaseAt(pick), ctx.timezone, lang) : null;
   const duration =
     !upcoming && pick.durationSeconds
       ? d.durationPrefix(Math.round(pick.durationSeconds / 60))
@@ -149,7 +149,7 @@ export function conversationSummary(outcome: DigestOutcome, now: Date = new Date
       const { released, upcoming } = partitionPicks(outcome.picks, now);
       const releasedLines = released.map((p) => `${p.rank}. ${p.title} (${p.channelTitle})`);
       const upcomingLines = upcoming.map(
-        (p) => `${p.title} (${p.channelTitle}, releases ${p.publishedAt.toISOString()})`,
+        (p) => `${p.title} (${p.channelTitle}, releases ${releaseAt(p).toISOString()})`,
       );
       if (releasedLines.length === 0 && upcomingLines.length === 0) {
         return `Delivered empty YouTube digest ${outcome.runDate} (nothing new).`;

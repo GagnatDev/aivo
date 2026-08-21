@@ -20,6 +20,7 @@ async function setupItem() {
       description: "",
       durationSeconds: null,
       publishedAt: new Date(),
+      scheduledStartTime: null,
       thumbnailUrl: null,
     },
   ]);

@@ -24,6 +24,14 @@ export interface DiscoveredVideo {
   publishedAt: Date;
   thumbnailUrl: string | null;
   durationSeconds: number | null;
+  /**
+   * When a premiere / live stream goes live — `liveStreamingDetails.actualStartTime` once
+   * it has begun, else `scheduledStartTime` — or null for an ordinary upload. This, not
+   * `publishedAt`, is what makes a video "not out yet": YouTube publishes a premiere's
+   * placeholder (and lists it in the uploads playlist) as soon as it is announced, so
+   * `publishedAt` is already in the past while the video is still hours or days away.
+   */
+  scheduledStartTime: Date | null;
 }
 
 export interface YoutubeApi {
@@ -47,6 +55,13 @@ const UPLOADS_PER_CHANNEL = 10;
 // Refresh the access token a minute early so an in-flight batch never expires mid-run.
 const TOKEN_SLACK_MS = 60_000;
 
+/** A timestamp field YouTube may omit or leave unparsable; null unless it is usable. */
+export function parseApiInstant(input: string | undefined): Date | null {
+  if (!input) return null;
+  const at = new Date(input);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
 /**
  * Parse an ISO-8601 duration ("PT1H2M3S") to seconds; null for missing/unparsable
  * input (e.g. live streams report "P0D").
@@ -66,6 +81,12 @@ export function parseIso8601Duration(input: string | undefined): number | null {
  */
 export function uploadsPlaylistId(channelId: string): string {
   return channelId.startsWith("UC") ? `UU${channelId.slice(2)}` : channelId;
+}
+
+/** What pass 2's videos.list adds to a discovered video. */
+interface VideoDetails {
+  durationSeconds: number | null;
+  scheduledStartTime: Date | null;
 }
 
 interface TokenState {
@@ -154,7 +175,7 @@ export function createYoutubeDataApi(cfg: YoutubeOauthConfig): YoutubeApi {
     async listNewVideos(channelIds: string[], since: Date): Promise<DiscoveredVideo[]> {
       // Pass 1: each channel's uploads playlist (1 quota unit per channel) for ids +
       // snippets newer than the watermark.
-      const found: Omit<DiscoveredVideo, "durationSeconds">[] = [];
+      const found: Omit<DiscoveredVideo, "durationSeconds" | "scheduledStartTime">[] = [];
       for (const channelId of channelIds) {
         let page: unknown;
         try {
@@ -202,19 +223,40 @@ export function createYoutubeDataApi(cfg: YoutubeOauthConfig): YoutubeApi {
         }
       }
 
-      // Pass 2: durations in batches of 50 (1 quota unit per batch).
-      const durations = new Map<string, number | null>();
+      // Pass 2: durations + premiere schedules in batches of 50. videos.list costs 1
+      // quota unit per call whatever the `part` list, so `liveStreamingDetails` rides
+      // along free — and it is the only place the real release time of an upcoming
+      // premiere or scheduled stream is reported.
+      const details = new Map<string, VideoDetails>();
       for (let i = 0; i < found.length; i += 50) {
         const batch = found.slice(i, i + 50);
         const page = (await get("videos", {
-          part: "contentDetails",
+          part: "contentDetails,liveStreamingDetails",
           id: batch.map((v) => v.id).join(","),
-        })) as { items?: Array<{ id?: string; contentDetails?: { duration?: string } }> };
+        })) as {
+          items?: Array<{
+            id?: string;
+            contentDetails?: { duration?: string };
+            liveStreamingDetails?: { scheduledStartTime?: string; actualStartTime?: string };
+          }>;
+        };
         for (const item of page.items ?? []) {
-          if (item.id) durations.set(item.id, parseIso8601Duration(item.contentDetails?.duration));
+          if (!item.id) continue;
+          details.set(item.id, {
+            durationSeconds: parseIso8601Duration(item.contentDetails?.duration),
+            // A stream that already started releases at its actual start, however late
+            // it ran against the schedule; one that hasn't releases at the scheduled time.
+            scheduledStartTime: item.liveStreamingDetails?.actualStartTime
+              ? parseApiInstant(item.liveStreamingDetails.actualStartTime)
+              : parseApiInstant(item.liveStreamingDetails?.scheduledStartTime),
+          });
         }
       }
-      return found.map((v) => ({ ...v, durationSeconds: durations.get(v.id) ?? null }));
+      return found.map((v) => ({
+        ...v,
+        durationSeconds: details.get(v.id)?.durationSeconds ?? null,
+        scheduledStartTime: details.get(v.id)?.scheduledStartTime ?? null,
+      }));
     },
   };
 }

@@ -38,6 +38,7 @@ export async function ingestNewVideos(
       description: v.description,
       durationSeconds: v.durationSeconds,
       publishedAt: v.publishedAt,
+      scheduledStartTime: v.scheduledStartTime,
       thumbnailUrl: v.thumbnailUrl,
     })),
   );

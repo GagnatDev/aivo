@@ -7,7 +7,12 @@ useCleanDb();
 
 const NOW = new Date("2026-07-01T07:00:00Z");
 
-function video(id: string, channelId: string, publishedAt: Date): DiscoveredVideoInput {
+function video(
+  id: string,
+  channelId: string,
+  publishedAt: Date,
+  scheduledStartTime: Date | null = null,
+): DiscoveredVideoInput {
   return {
     id,
     channelId,
@@ -15,6 +20,7 @@ function video(id: string, channelId: string, publishedAt: Date): DiscoveredVide
     description: "desc",
     durationSeconds: 600,
     publishedAt,
+    scheduledStartTime,
     thumbnailUrl: null,
   };
 }

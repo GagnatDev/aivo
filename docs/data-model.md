@@ -172,6 +172,11 @@ Candidate videos discovered from subscriptions, carrying both filter stages.
 - `channel_id` text → youtube_channels
 - `title` text, `description` text, `duration_seconds` int
 - `published_at` timestamptz, `thumbnail_url` text
+- `scheduled_start_time` timestamptz null — when a premiere / scheduled live stream
+  actually airs (`liveStreamingDetails.scheduledStartTime`), null for an ordinary upload.
+  `published_at` cannot stand in for it: YouTube lists a premiere in the uploads playlist
+  as soon as it is announced, so an unreleased video's `published_at` is already in the
+  past. Presentation groups "not out yet" picks on the later of the two (`digest/present.ts`).
 - `stage1_score` real null, `stage1_at` timestamptz null
 - `transcript_status` text — `none` | `fetched` | `unavailable`
 - `stage2_decision` text null — `pick` | `reject` (same vocabulary as

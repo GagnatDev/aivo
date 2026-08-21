@@ -25,6 +25,7 @@ const pick = {
   why: "hand-tool joinery is your thing",
   rank: 1,
   publishedAt: new Date("2026-08-04T18:00:00Z"),
+  scheduledStartTime: null,
 };
 
 const upcomingPick = {
@@ -37,8 +38,11 @@ const upcomingPick = {
   summaryBullets: ["viewer questions"],
   why: "premiere of a live session you care about",
   rank: 2,
+  // A premiere as YouTube actually reports one: the placeholder went up yesterday
+  // (publishedAt is in the past), and the video itself airs tomorrow.
+  publishedAt: new Date("2026-08-04T09:00:00Z"),
   // 16:00Z = 18:00 Europe/Oslo in August.
-  publishedAt: new Date("2026-08-06T16:00:00Z"),
+  scheduledStartTime: new Date("2026-08-06T16:00:00Z"),
 };
 
 const digestOutcome = (
