@@ -37,6 +37,9 @@ const OVERRIDES = {
     "digest_items.kind": "DigestItemKind",
     "feedback.signal": "FeedbackSignal",
     "reminders.status": "ColumnType<ReminderStatus, string | undefined, string>",
+    "turn_summaries.outcome": "TurnOutcome",
+    "turn_summaries.tools_called": "ColumnType<string[], string, string>",
+    "turn_summaries.finish_reasons": "ColumnType<StoredFinishReason[], string, string>",
   },
 } as const;
 
@@ -58,6 +61,8 @@ const CUSTOM_IMPORTS = {
   DigestItemKind: "./schema.enums.js",
   FeedbackSignal: "./schema.enums.js",
   ReminderStatus: "./schema.enums.js",
+  TurnOutcome: "./schema.enums.js",
+  StoredFinishReason: "./schema.enums.js",
 } as const;
 
 /**

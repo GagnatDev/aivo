@@ -10,6 +10,7 @@ import { FeedbackRepository } from "../storage/feedbackRepository.js";
 import { LlmUsageRepository } from "../storage/llmUsageRepository.js";
 import { MemoryRepository } from "../storage/memoryRepository.js";
 import { MessageRepository } from "../storage/messageRepository.js";
+import { TurnSummaryRepository } from "../storage/turnSummaryRepository.js";
 import { ModelPricingRepository } from "../storage/modelPricingRepository.js";
 import { ProfileRepository } from "../storage/profileRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
@@ -54,6 +55,7 @@ export function buildDashboardTestApp(options: DashboardTestOptions = {}): Dashb
     videos: new VideoRepository(db),
     conversations: new ConversationRepository(db),
     messages: new MessageRepository(db),
+    turnSummaries: new TurnSummaryRepository(db),
     profiles: new ProfileRepository(db),
     feedback: new FeedbackRepository(db),
     youtubeAccount: new YoutubeAccountRepository(db),

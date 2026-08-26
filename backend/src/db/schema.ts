@@ -3,7 +3,7 @@
  * Please do not edit it manually.
  */
 
-import type { ApprovalStatus, Channel, DegradationState, DigestFailureKind, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredToolCall, TranscriptStatus } from "./schema.enums.js";
+import type { ApprovalStatus, Channel, DegradationState, DigestFailureKind, DigestItemKind, DigestStatus, FeedbackSignal, MessageRole, ModelCapability, ModelTierRole, ProfileKind, ReminderStatus, Stage2Decision, StoredFinishReason, StoredToolCall, TranscriptStatus, TurnOutcome } from "./schema.enums.js";
 import type { ColumnType } from "kysely";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -177,6 +177,23 @@ export interface SettingsPermissions {
   updated_at: Generated<Timestamp>;
 }
 
+export interface TurnSummaries {
+  conversation_id: string;
+  cost_cents: Numeric;
+  created_at: Generated<Timestamp>;
+  finish_reasons: ColumnType<StoredFinishReason[], string, string>;
+  id: Generated<string>;
+  iterations: number;
+  latency_ms: number;
+  outcome: TurnOutcome;
+  tokens_in: number;
+  tokens_out: number;
+  tool_errors: number;
+  tools_called: ColumnType<string[], string, string>;
+  turn_id: string;
+  user_id: string;
+}
+
 export interface UnforkedConnection {
   api_key: string;
   connected_by_user_id: string | null;
@@ -267,6 +284,7 @@ export interface DB {
   reminders: Reminders;
   settings: Settings;
   settings_permissions: SettingsPermissions;
+  turn_summaries: TurnSummaries;
   unforked_connection: UnforkedConnection;
   users: Users;
   videos: Videos;

@@ -2,16 +2,21 @@ import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { getJson } from "../../api/client.js";
 import {
   formatTimestamp,
+  mergeThreadEntries,
   ROLE_LABELS,
   type MessagesPage,
   type ThreadMessage,
+  type TurnSummary,
 } from "../../lib/activity.js";
 import { ThreadSkeleton } from "../Skeleton.js";
+import { TurnSummaryRow } from "./TurnSummaryRow.js";
 
 const PAGE_SIZE = 50;
 
 interface ThreadState {
   messages: ThreadMessage[];
+  /** Per-turn observability records covering the pages loaded so far, oldest first. */
+  turns: TurnSummary[];
   hasMore: boolean;
   loading: boolean;
   error: string | null;
@@ -25,6 +30,7 @@ interface ThreadState {
 function useThread(conversationId: string) {
   const [state, setState] = useState<ThreadState>({
     messages: [],
+    turns: [],
     hasMore: false,
     loading: true,
     error: null,
@@ -32,18 +38,24 @@ function useThread(conversationId: string) {
 
   useEffect(() => {
     let cancelled = false;
-    setState({ messages: [], hasMore: false, loading: true, error: null });
+    setState({ messages: [], turns: [], hasMore: false, loading: true, error: null });
     getJson<MessagesPage>(
       `/api/dashboard/conversations/${conversationId}/messages?limit=${PAGE_SIZE}`,
     )
       .then((page) => {
         if (cancelled) return;
-        setState({ messages: page.messages, hasMore: page.hasMore, loading: false, error: null });
+        setState({
+          messages: page.messages,
+          turns: page.turns,
+          hasMore: page.hasMore,
+          loading: false,
+          error: null,
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : String(err);
-        setState({ messages: [], hasMore: false, loading: false, error: message });
+        setState({ messages: [], turns: [], hasMore: false, loading: false, error: message });
       });
     return () => {
       cancelled = true;
@@ -61,6 +73,8 @@ function useThread(conversationId: string) {
           setState((s) => ({
             ...s,
             messages: [...page.messages, ...s.messages],
+            // The API windows turns to the page it returned, so pages never overlap.
+            turns: [...page.turns, ...s.turns],
             hasMore: page.hasMore,
             loading: false,
           }));
@@ -104,7 +118,29 @@ function messageBody(m: ThreadMessage): ReactElement {
   return <span className="muted">(no content recorded)</span>;
 }
 
-/** A-2/A-3/A-4: the message thread — roles, timestamps, token counts, tool calls highlighted. */
+/** One message row — role, timestamp, per-message tokens, body (A-2/A-3/A-4). */
+function MessageRow({ message }: { message: ThreadMessage }) {
+  const tokens = tokensNote(message);
+  return (
+    <li className={`thread-msg thread-${message.role}`}>
+      <div className="thread-meta">
+        <span className="thread-role">
+          {ROLE_LABELS[message.role]}
+          {message.role === "tool" && message.toolName ? `: ${message.toolName}` : ""}
+        </span>
+        <span>{formatTimestamp(message.createdAt)}</span>
+        {tokens ? <span>{tokens}</span> : null}
+      </div>
+      <div className="thread-content">{messageBody(message)}</div>
+    </li>
+  );
+}
+
+/**
+ * A-2/A-3/A-4: the message thread — roles, timestamps, token counts, tool calls
+ * highlighted — interleaved with the per-turn observability records (A-6), which carry
+ * the things no single message row can: round-trips, latency, and how the turn ended.
+ */
 export function ConversationThread({ conversationId }: { conversationId: string }) {
   const thread = useThread(conversationId);
 
@@ -114,29 +150,21 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     return <p className="muted empty-state">No messages in this conversation yet.</p>;
   }
 
-  // Messages are held oldest-first internally (so the `before` cursor keys off
-  // messages[0]); render newest-first so the latest message sits at the top.
-  const rendered = [...thread.messages].reverse();
+  // Entries are merged oldest-first (so the `before` cursor keys off messages[0]);
+  // render newest-first so the latest message sits at the top. A turn's record is
+  // written when the turn ends, so reversed it heads the messages it summarizes.
+  const rendered = mergeThreadEntries(thread.messages, thread.turns).reverse();
 
   return (
     <div className="thread">
       <ol className="thread-list">
-        {rendered.map((m) => {
-          const tokens = tokensNote(m);
-          return (
-            <li key={m.id} className={`thread-msg thread-${m.role}`}>
-              <div className="thread-meta">
-                <span className="thread-role">
-                  {ROLE_LABELS[m.role]}
-                  {m.role === "tool" && m.toolName ? `: ${m.toolName}` : ""}
-                </span>
-                <span>{formatTimestamp(m.createdAt)}</span>
-                {tokens ? <span>{tokens}</span> : null}
-              </div>
-              <div className="thread-content">{messageBody(m)}</div>
-            </li>
-          );
-        })}
+        {rendered.map((entry) =>
+          entry.kind === "turn" ? (
+            <TurnSummaryRow key={`turn-${entry.turn.id}`} turn={entry.turn} />
+          ) : (
+            <MessageRow key={entry.message.id} message={entry.message} />
+          ),
+        )}
       </ol>
       {thread.hasMore ? (
         <button

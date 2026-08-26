@@ -12,6 +12,7 @@ import type { MessageRepository } from "../../storage/messageRepository.js";
 import type { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
 import type { ProfileRepository } from "../../storage/profileRepository.js";
 import type { SettingsRepository } from "../../storage/settingsRepository.js";
+import type { TurnSummaryRepository } from "../../storage/turnSummaryRepository.js";
 import type { UnforkedConnectionRepository } from "../../storage/unforkedConnectionRepository.js";
 import type { UserRepository } from "../../storage/userRepository.js";
 import type { UnforkedClient } from "../../unforked/client.js";
@@ -43,6 +44,7 @@ export interface DashboardDeps {
   videos: VideoRepository;
   conversations: ConversationRepository;
   messages: MessageRepository;
+  turnSummaries: TurnSummaryRepository;
   profiles: ProfileRepository;
   feedback: FeedbackRepository;
   youtubeAccount: YoutubeAccountRepository;

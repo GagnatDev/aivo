@@ -17,6 +17,7 @@ import type { ProfileRepository } from "../storage/profileRepository.js";
 import type { ReminderRepository } from "../storage/reminderRepository.js";
 import type { SettingsPermissionsRepository } from "../storage/settingsPermissionsRepository.js";
 import type { SettingsRepository } from "../storage/settingsRepository.js";
+import type { TurnSummaryRepository } from "../storage/turnSummaryRepository.js";
 import type { UserRepository } from "../storage/userRepository.js";
 import type { VideoRepository } from "../storage/videoRepository.js";
 import type { WeatherLocationRepository } from "../storage/weatherLocationRepository.js";
@@ -65,6 +66,8 @@ export interface AgentDeps {
   users: UserRepository;
   conversations: ConversationRepository;
   messages: MessageRepository;
+  /** Per-turn observability records (see agent/toolLoop.ts); read by the dashboard. */
+  turnSummaries: TurnSummaryRepository;
   memories: MemoryRepository;
   settings: SettingsRepository;
   settingsPermissions: SettingsPermissionsRepository;

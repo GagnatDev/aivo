@@ -544,7 +544,9 @@ describe("turn observability record", () => {
       expect(completed).toHaveLength(1);
       return completed[0]?.[0] as Record<string, unknown>;
     };
-    return { child, record };
+    /** The turn id bound onto every line of the turn (and onto its persisted row). */
+    const turnId = (): string => (child.mock.calls[0]?.[0] as { turnId: string }).turnId;
+    return { child, record, turnId };
   }
 
   it("emits one info-level record per turn with totals and a correlating turn id", async () => {
@@ -640,5 +642,69 @@ describe("turn observability record", () => {
     await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
 
     expect(record()).toMatchObject({ outcome: "provider_error", iterations: 0, tokensIn: 0 });
+  });
+
+  it("persists the same record for the dashboard, correlated by the logged turn id", async () => {
+    const { record, turnId } = captureTurnLog();
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "write", content: "likes hiking" }),
+      textResult("Got it."),
+    ]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    expect(rows).toHaveLength(1);
+    const logged = record();
+    expect(rows[0]).toMatchObject({
+      user_id: userId,
+      conversation_id: conversationId,
+      outcome: "final_answer",
+      iterations: 2,
+      tools_called: ["memory"],
+      tool_errors: 0,
+      tokens_in: 40,
+      tokens_out: 15,
+      finish_reasons: ["tool_calls", "stop"],
+      latency_ms: logged.latencyMs,
+    });
+    // Stored at the ledger's precision (numeric(12,4)), so a sub-cent turn rounds.
+    expect(rows[0]?.cost_cents).toBeCloseTo(logged.costCents as number, 4);
+    // Same id on the row and on every log line of the turn, so the two correlate.
+    expect(rows[0]?.turn_id).toBe(turnId());
+  });
+
+  it("persists a row for a turn that ended on the iteration cap", async () => {
+    const llm = makeFakeLlm([
+      toolCallResult("memory", { action: "search", term: "a" }, "c1"),
+      toolCallResult("memory", { action: "search", term: "b" }, "c2"),
+      textResult("Best I can do."),
+    ]);
+    const deps = makeAgentDeps(llm, { agentMaxToolIterations: 2 });
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+
+    await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
+
+    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    expect(rows.map((r) => r.outcome)).toEqual(["iteration_cap"]);
+    expect(rows[0]?.iterations).toBe(2);
+  });
+
+  it("still answers the user when the record cannot be persisted", async () => {
+    const llm = makeFakeLlm([textResult("Noted.")]);
+    const deps = makeAgentDeps(llm);
+    const { userId, isOwner, conversationId } = await provisionUser(deps, OWNER_ID);
+    vi.spyOn(deps.turnSummaries, "insert").mockRejectedValue(new Error("db down"));
+
+    const result = await runAgent(deps, {
+      userId,
+      isOwner,
+      conversationId,
+      triggerMessageId: "m1",
+    });
+
+    expect(result.reply).toBe("Noted.");
   });
 });

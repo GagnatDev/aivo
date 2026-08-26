@@ -51,3 +51,20 @@ export type DigestItemKind = "pick" | "reject";
 export type FeedbackSignal = "keep" | "drop" | "too_long" | "wrong_topic" | "freeform";
 /** Lifecycle of a reminder; a snooze moves a delivered row back to pending. */
 export type ReminderStatus = "pending" | "delivered" | "cancelled";
+/**
+ * How an agent turn ended, as recorded in `turn_summaries.outcome` — mirrors the
+ * agent loop's exit paths (agent/toolLoop.ts re-exports this name).
+ */
+export type TurnOutcome =
+  | "final_answer"
+  | "forced_answer"
+  | "iteration_cap"
+  | "cost_ceiling"
+  | "provider_error"
+  | "aborted";
+/**
+ * One model round-trip's stop reason, as recorded in `turn_summaries.finish_reasons`.
+ * Mirrors `FinishReason` in llm/provider.ts rather than importing it, for the same
+ * reason {@link StoredToolCall} does: `db/` stays at the edge of the layering.
+ */
+export type StoredFinishReason = "stop" | "length" | "tool_calls" | "other";

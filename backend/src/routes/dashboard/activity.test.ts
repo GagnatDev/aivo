@@ -87,6 +87,101 @@ describe("GET /api/dashboard/conversations/:id/messages", () => {
     expect(new Set(ids).size).toBe(5);
   });
 
+  it("returns the turn records covering the page, oldest first (A-6)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const convo = await deps.conversations.getOrCreate(owner.id, "chat", "chan-1");
+    await deps.messages.insert({ conversationId: convo.id, role: "user", content: "hi" });
+    await deps.messages.insert({ conversationId: convo.id, role: "assistant", content: "hello!" });
+    const turn = await deps.turnSummaries.insert({
+      turnId: "22222222-2222-4222-8222-222222222222",
+      conversationId: convo.id,
+      userId: owner.id,
+      outcome: "iteration_cap",
+      iterations: 5,
+      toolsCalled: ["memory", "weather"],
+      toolErrors: 1,
+      tokensIn: 120,
+      tokensOut: 40,
+      costCents: 2.5,
+      latencyMs: 4321,
+      finishReasons: ["tool_calls", "stop"],
+    });
+
+    const res = await request(app).get(`/api/dashboard/conversations/${convo.id}/messages`);
+    expect(res.status).toBe(200);
+    expect(res.body.turns).toEqual([
+      {
+        id: turn.id,
+        turnId: "22222222-2222-4222-8222-222222222222",
+        outcome: "iteration_cap",
+        iterations: 5,
+        toolsCalled: ["memory", "weather"],
+        toolErrors: 1,
+        tokensIn: 120,
+        tokensOut: 40,
+        costCents: 2.5,
+        latencyMs: 4321,
+        finishReasons: ["tool_calls", "stop"],
+        createdAt: turn.created_at.toISOString(),
+      },
+    ]);
+  });
+
+  it("windows turn records to the page, so paging back never repeats one (A-6)", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const convo = await deps.conversations.getOrCreate(owner.id, "chat", "chan-1");
+    const record = (outcome: "final_answer" | "provider_error") =>
+      deps.turnSummaries.insert({
+        turnId: "33333333-3333-4333-8333-333333333333",
+        conversationId: convo.id,
+        userId: owner.id,
+        outcome,
+        iterations: 1,
+        toolsCalled: [],
+        toolErrors: 0,
+        tokensIn: 10,
+        tokensOut: 5,
+        costCents: 0.1,
+        latencyMs: 100,
+        finishReasons: ["stop"],
+      });
+    // Two turns of two messages each, each closed by its own record.
+    for (const text of ["a", "b"]) {
+      await deps.messages.insert({ conversationId: convo.id, role: "user", content: text });
+      await deps.messages.insert({ conversationId: convo.id, role: "assistant", content: text });
+    }
+    const first = await record("final_answer");
+    for (const text of ["c", "d"]) {
+      await deps.messages.insert({ conversationId: convo.id, role: "user", content: text });
+      await deps.messages.insert({ conversationId: convo.id, role: "assistant", content: text });
+    }
+    const second = await record("provider_error");
+
+    const newest = await request(app).get(
+      `/api/dashboard/conversations/${convo.id}/messages?limit=4`,
+    );
+    const older = await request(app).get(
+      `/api/dashboard/conversations/${convo.id}/messages?limit=4&before=${newest.body.messages[0].id}`,
+    );
+
+    // The newest page carries the record written after its last message; the older
+    // page carries only the earlier one. The two windows tile without overlap.
+    expect(newest.body.turns.map((t: { id: string }) => t.id)).toEqual([second.id]);
+    expect(older.body.turns.map((t: { id: string }) => t.id)).toEqual([first.id]);
+  });
+
+  it("returns no turn records for an empty thread", async () => {
+    const { app, deps } = buildDashboardTestApp();
+    const owner = await provisionTestOwner(deps);
+    const convo = await deps.conversations.getOrCreate(owner.id, "chat", "chan-1");
+
+    const res = await request(app).get(`/api/dashboard/conversations/${convo.id}/messages`);
+    expect(res.body.messages).toEqual([]);
+    expect(res.body.turns).toEqual([]);
+  });
+
   it("404s another user's thread and 400s bad params", async () => {
     const { app, deps } = buildDashboardTestApp();
     await provisionTestOwner(deps);
