@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
+import type { TurnOutcome } from "../db/schema.enums.js";
 import { type Language, messages as catalog } from "../i18n/index.js";
 import { logger } from "../logger.js";
 import { LlmProviderError, ToolExecutionError } from "../llm/errors.js";
@@ -93,14 +94,12 @@ export interface LoopResult {
   aborted?: boolean;
 }
 
-/** How a turn ended, for the per-turn observability record. */
-export type TurnOutcome =
-  | "final_answer"
-  | "forced_answer"
-  | "iteration_cap"
-  | "cost_ceiling"
-  | "provider_error"
-  | "aborted";
+/**
+ * How a turn ended, for the per-turn observability record. Defined alongside the
+ * column that stores it (`turn_summaries.outcome`) and re-exported here, so the
+ * loop's exit paths and the persisted vocabulary can't drift apart.
+ */
+export type { TurnOutcome };
 
 /**
  * Running totals for one turn, accumulated across every model round-trip (including
@@ -134,8 +133,9 @@ export async function runToolLoop(
   const m = catalog(ctx.language);
   // Every log line this turn emits carries the same turn id, so a turn's round-trips
   // can be correlated in production output without debug-level reconstruction.
+  const turnId = randomUUID();
   const log = logger.child({
-    turnId: randomUUID(),
+    turnId,
     userId: ctx.userId,
     conversationId: ctx.conversationId,
   });
@@ -149,12 +149,34 @@ export async function runToolLoop(
     costCents: 0,
     finishReasons: [],
   };
-  // The one info-level record per turn — every exit path funnels through here.
-  const finish = (outcome: TurnOutcome, result: LoopResult): LoopResult => {
-    log.info(
-      { ...stats, outcome, latencyMs: deps.clock.now().getTime() - startedAtMs },
-      "agent turn completed",
-    );
+  // The one record per turn — every exit path funnels through here. It goes to two
+  // destinations from the same data: the info-level log line (production debugging via
+  // log aggregation) and the `turn_summaries` row the dashboard activity view reads,
+  // which is what makes latency/outcome/iterations queryable rather than greppable.
+  const finish = async (outcome: TurnOutcome, result: LoopResult): Promise<LoopResult> => {
+    const latencyMs = deps.clock.now().getTime() - startedAtMs;
+    log.info({ ...stats, outcome, latencyMs }, "agent turn completed");
+    try {
+      await deps.turnSummaries.insert({
+        turnId,
+        conversationId: ctx.conversationId,
+        userId: ctx.userId,
+        outcome,
+        latencyMs,
+        iterations: stats.iterations,
+        toolsCalled: stats.toolsCalled,
+        toolErrors: stats.toolErrors,
+        tokensIn: stats.tokensIn,
+        tokensOut: stats.tokensOut,
+        costCents: stats.costCents,
+        finishReasons: stats.finishReasons,
+      });
+    } catch (err) {
+      // Observability must never cost the user their reply: the turn is already done
+      // and the log line above still carries the record, so a failed write is noted
+      // and swallowed rather than thrown out of a completed turn.
+      log.warn({ err }, "failed to persist turn summary");
+    }
     return result;
   };
 
@@ -165,7 +187,7 @@ export async function runToolLoop(
   const repeats = new RepeatTracker();
 
   /** Abandon the turn: one info-level record, no reply sent by the caller. */
-  const abort = (iteration: number): LoopResult => {
+  const abort = (iteration: number): Promise<LoopResult> => {
     log.info({ iteration }, "agent turn aborted");
     return finish("aborted", { reply: ABORTED_REPLY, alertPct, aborted: true });
   };

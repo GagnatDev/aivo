@@ -14,9 +14,10 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 /**
  * Activity log endpoints (M5, PRD §4.7): the per-channel conversation list (A-1),
  * the paginated message thread with roles, timestamps, and per-message token
- * counts where recorded (A-2, A-3), and a CSV download of a thread (M6 polish).
- * Threads are read newest-page-first with a `before` cursor — full history
- * retention makes them unbounded.
+ * counts where recorded (A-2, A-3) plus the per-turn observability records covering
+ * that page, and a CSV download of a thread (M6 polish). Threads are read
+ * newest-page-first with a `before` cursor — full history retention makes them
+ * unbounded.
  */
 export function activityRoutes(deps: DashboardDeps): Router {
   const router = Router();
@@ -50,6 +51,18 @@ export function activityRoutes(deps: DashboardDeps): Router {
       limit,
       ...(before !== undefined && { before }),
     });
+    // The per-turn observability records covering this page (A-6). Scoped to the
+    // same half-open window as the messages, so paging back never repeats a turn: the
+    // window starts at the page's oldest message and ends just before the `before`
+    // anchor (unbounded on the newest page, whose last turn's record is written after
+    // its final message). An empty page has no window, hence no turns.
+    const oldest = page.messages[0];
+    const turns = oldest
+      ? await deps.turnSummaries.listForWindow(conversation.id, {
+          since: oldest.created_at,
+          ...(before !== undefined && { beforeMessageId: before }),
+        })
+      : [];
     res.json({
       conversation: { id: conversation.id, channel: conversation.channel },
       messages: page.messages.map((m) => ({
@@ -64,6 +77,23 @@ export function activityRoutes(deps: DashboardDeps): Router {
         createdAt: m.created_at.toISOString(),
         tokensIn: m.tokens_in,
         tokensOut: m.tokens_out,
+      })),
+      // One entry per agent turn that finished inside this window, oldest first — what
+      // a message row can't say: how many round-trips it took, how long it ran, whether
+      // it ended on a forced answer or a cap, and how many tool calls failed.
+      turns: turns.map((t) => ({
+        id: t.id,
+        turnId: t.turn_id,
+        outcome: t.outcome,
+        iterations: t.iterations,
+        toolsCalled: t.tools_called,
+        toolErrors: t.tool_errors,
+        tokensIn: t.tokens_in,
+        tokensOut: t.tokens_out,
+        costCents: t.cost_cents,
+        latencyMs: t.latency_ms,
+        finishReasons: t.finish_reasons,
+        createdAt: t.created_at.toISOString(),
       })),
       hasMore: page.hasMore,
     });

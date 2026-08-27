@@ -21,6 +21,7 @@ import { FeedbackRepository } from "./storage/feedbackRepository.js";
 import { LlmUsageRepository } from "./storage/llmUsageRepository.js";
 import { MemoryRepository } from "./storage/memoryRepository.js";
 import { MessageRepository } from "./storage/messageRepository.js";
+import { TurnSummaryRepository } from "./storage/turnSummaryRepository.js";
 import { ModelPricingRepository } from "./storage/modelPricingRepository.js";
 import { PendingApprovalRepository } from "./storage/pendingApprovalRepository.js";
 import { ProfileRepository } from "./storage/profileRepository.js";
@@ -111,6 +112,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
     users: new UserRepository(db),
     conversations: new ConversationRepository(db),
     messages: new MessageRepository(db),
+    turnSummaries: new TurnSummaryRepository(db),
     memories: new MemoryRepository(db),
     settings: new SettingsRepository(db),
     settingsPermissions: new SettingsPermissionsRepository(db),
@@ -197,6 +199,7 @@ export async function startServer(connectionString?: string): Promise<StartedSer
         videos: deps.videos,
         conversations: deps.conversations,
         messages: deps.messages,
+        turnSummaries: deps.turnSummaries,
         profiles: deps.profiles,
         feedback: deps.feedback,
         youtubeAccount: deps.youtubeAccount,

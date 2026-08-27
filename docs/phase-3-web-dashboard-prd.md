@@ -295,8 +295,9 @@ models. Superset of Discord `!models`.
 | A-3 | Show per-message `tokens_in`/`tokens_out` where present (informational; not billing) | P2 |
 | A-4 | Highlight tool call messages (role = `tool`) | P2 |
 | A-5 | List pending approvals: estimated cost, task type, status, created time | P2 |
+| A-6 | Per-turn record in the thread: round-trips, latency, tokens, cost, tool count/errors, and how the turn ended | P2 |
 
-**Data sources:** `conversations`, `messages`, `pending_approvals`.
+**Data sources:** `conversations`, `messages`, `turn_summaries`, `pending_approvals`.
 
 **Note:** Full history retention is v1 policy; pagination is required for large threads.
 

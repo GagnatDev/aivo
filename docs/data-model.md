@@ -37,6 +37,7 @@ erDiagram
   users ||--o{ profiles : has
   users ||--o{ conversations : has
   conversations ||--o{ messages : contains
+  conversations ||--o{ turn_summaries : records
   users ||--o{ digests : "receives (owner only)"
   digests ||--o{ digest_items : contains
   videos ||--o{ digest_items : appears_in
@@ -133,6 +134,28 @@ and to attribute spend.
   showing per-message size in context; **`llm_usage` is the authoritative cost/token
   ledger** (these may be null, e.g. inbound user messages, and must never be summed for
   billing)
+- `created_at`
+
+### `turn_summaries`
+One row per finished agent turn — the per-turn observability record the tool loop
+already emits as a structured log line, persisted so the dashboard activity view can
+answer "why did that take 40 seconds / cost 12¢" without log aggregation. Written on
+every exit path (a failed write is logged and swallowed: observability never costs the
+user their reply).
+
+- `id` uuid pk, `conversation_id` uuid → conversations, `user_id` uuid → users
+- `turn_id` uuid — the same id the turn's log lines are tagged with, so a dashboard row
+  and a log line correlate
+- `outcome` text — `final_answer` | `forced_answer` | `iteration_cap` | `cost_ceiling` |
+  `provider_error` | `aborted`
+- `iterations` int — model round-trips this turn took
+- `tools_called` jsonb — tool names in execution order (repeats included),
+  `tool_errors` int
+- `tokens_in` int, `tokens_out` int, `cost_cents` numeric(12,4) — a denormalized display
+  copy of the turn's spend; **`llm_usage` remains the authoritative ledger** and this
+  must never be summed for billing
+- `latency_ms` int — wall clock for the whole turn
+- `finish_reasons` jsonb — one stop reason per round-trip, forced answer included
 - `created_at`
 
 ### `youtube_account`
