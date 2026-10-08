@@ -7,6 +7,8 @@ export interface InsertUsageInput {
   model: string;
   tokensIn: number;
   tokensOut: number;
+  /** How many of `tokensIn` were prompt-cache hits (a subset, not extra). Defaults to 0. */
+  tokensCached?: number;
   /** Fractional cents for this single call. */
   costCents: number;
 }
@@ -24,6 +26,8 @@ export interface ModelUsageTotal {
   calls: number;
   tokensIn: number;
   tokensOut: number;
+  /** Prompt-cache hits among `tokensIn` — tokensCached/tokensIn is the hit ratio. */
+  tokensCached: number;
 }
 
 export interface UsageLedgerRow {
@@ -32,6 +36,7 @@ export interface UsageLedgerRow {
   taskType: string;
   tokensIn: number;
   tokensOut: number;
+  tokensCached: number;
   costCents: number;
 }
 
@@ -72,6 +77,7 @@ export class LlmUsageRepository {
         model: input.model,
         tokens_in: input.tokensIn,
         tokens_out: input.tokensOut,
+        tokens_cached: input.tokensCached ?? 0,
         cost_cents: input.costCents,
       })
       .execute();
@@ -167,6 +173,7 @@ export class LlmUsageRepository {
         eb.fn.countAll<string>().as("calls"),
         eb.fn.coalesce(eb.fn.sum("tokens_in"), sql<string>`0`).as("tokensIn"),
         eb.fn.coalesce(eb.fn.sum("tokens_out"), sql<string>`0`).as("tokensOut"),
+        eb.fn.coalesce(eb.fn.sum("tokens_cached"), sql<string>`0`).as("tokensCached"),
       ])
       .where("user_id", "=", userId)
       .where("created_at", ">=", since)
@@ -179,6 +186,7 @@ export class LlmUsageRepository {
       calls: Number(r.calls),
       tokensIn: Number(r.tokensIn),
       tokensOut: Number(r.tokensOut),
+      tokensCached: Number(r.tokensCached),
     }));
   }
 
@@ -192,7 +200,15 @@ export class LlmUsageRepository {
   ): Promise<UsageLedgerRow[]> {
     const rows = await this.db
       .selectFrom("llm_usage")
-      .select(["created_at", "model", "task_type", "tokens_in", "tokens_out", "cost_cents"])
+      .select([
+        "created_at",
+        "model",
+        "task_type",
+        "tokens_in",
+        "tokens_out",
+        "tokens_cached",
+        "cost_cents",
+      ])
       .where("user_id", "=", userId)
       .where("created_at", ">=", opts.from)
       .where("created_at", "<", opts.to)
@@ -205,6 +221,7 @@ export class LlmUsageRepository {
       taskType: r.task_type,
       tokensIn: r.tokens_in,
       tokensOut: r.tokens_out,
+      tokensCached: r.tokens_cached,
       costCents: Number(r.cost_cents),
     }));
   }

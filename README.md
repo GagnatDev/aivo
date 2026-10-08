@@ -50,6 +50,21 @@ are seeded to voxtral — ~10× cheaper than whisper per minute *and* the strong
 transcriber — so either tier lands on it out of the box; whisper stays priced but
 unassigned, one `set_tier_role` away if you ever want to point a slot at it.
 
+## Prompt-cache pricing
+
+Scaleway caches request prefixes automatically (per project, no opt-in) and bills
+input tokens that hit the cache at a discounted rate. `model_pricing` carries that as an
+optional `cached_input_cost_per_mtok_cents`; NULL means no known discount, so cache hits
+bill at the full input price. The hit count comes from the provider's response —
+`usage.prompt_tokens_details.cached_tokens`, the OpenAI-compatible field — and is stored
+per call in `llm_usage.tokens_cached` (a subset of `tokens_in`). A server that omits the
+field simply reports zero hits, which bills conservatively at full price. The pre-call
+approval-gate estimate deliberately ignores caching (it can't know the hit rate ahead of
+time), so it stays an over-estimate. Cache hits need a byte-identical prefix, which is
+why `buildContext` orders the prompt most-stable-first (persona → memories → the volatile
+clock line → transcript). The dashboard's Models page shows each model's cached price
+and its observed cache-hit ratio.
+
 ## Getting started
 
 Requires Node (see `.nvmrc`), pnpm, and Docker (for backend tests). Copy `.env.example`

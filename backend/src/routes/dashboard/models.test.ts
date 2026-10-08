@@ -43,6 +43,7 @@ describe("GET /api/dashboard/models", () => {
       roles: [{ capability: "chat", role: "cheap" }],
       capabilities: ["chat"],
       inputCentsPerMtok: 20,
+      cachedInputCentsPerMtok: null,
       outputCentsPerMtok: 20,
       audioCentsPerMin: null,
       currency: "EUR",
@@ -134,6 +135,7 @@ describe("GET /api/dashboard/models/usage", () => {
         calls: 1,
         tokensIn: 100,
         tokensOut: 50,
+        tokensCached: 0,
       },
       {
         model: SEEDED_CHEAP,
@@ -141,6 +143,7 @@ describe("GET /api/dashboard/models/usage", () => {
         calls: 2,
         tokensIn: 200,
         tokensOut: 100,
+        tokensCached: 0,
       },
     ]);
   });

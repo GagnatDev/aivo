@@ -295,6 +295,9 @@ Per-call cost ledger — the basis for budget caps, alerts, and usage reports.
 - `task_type` text — `chat` | `stage1_rank` | `stage2_summary` | `onboarding` |
   `mail_classify` (phase 2)
 - `model` text, `tokens_in` int, `tokens_out` int
+- `tokens_cached` int (default 0) — how many of `tokens_in` the provider served from its
+  prompt cache (a subset, not extra); billed at `model_pricing.cached_input_cost_per_mtok_cents`
+  when set, otherwise at the full input price (migration 028)
 - `cost_cents` numeric(12,4) — fractional cents (a single cheap call can cost a
   fraction of a cent); see the cents-precision note in [Cross-cutting notes](#cross-cutting-notes)
 - `created_at` timestamptz

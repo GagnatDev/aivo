@@ -41,6 +41,32 @@ describe("computeCostCents", () => {
     );
     expect(cost).toBeCloseTo(0.135, 6);
   });
+
+  it("bills prompt-cache hits at the cached input price", () => {
+    // deepseek-v4-flash shape: 1M in of which 800k cached, 0 out.
+    // 200k @ 40¢ + 800k @ 8¢ = 8¢ + 6.4¢ = 14.4¢ (vs 40¢ uncached).
+    const cost = computeCostCents(
+      { inputCostPerMtokCents: 40, cachedInputCostPerMtokCents: 8, outputCostPerMtokCents: 80 },
+      { tokensIn: 1_000_000, tokensCached: 800_000, tokensOut: 0 },
+    );
+    expect(cost).toBeCloseTo(14.4, 6);
+  });
+
+  it("bills cache hits at the full input price when the model has no cached price", () => {
+    const cost = computeCostCents(
+      { inputCostPerMtokCents: 40, cachedInputCostPerMtokCents: null, outputCostPerMtokCents: 80 },
+      { tokensIn: 1_000_000, tokensCached: 800_000, tokensOut: 0 },
+    );
+    expect(cost).toBeCloseTo(40, 6);
+  });
+
+  it("never discounts more tokens than were sent", () => {
+    const cost = computeCostCents(
+      { inputCostPerMtokCents: 40, cachedInputCostPerMtokCents: 8, outputCostPerMtokCents: 80 },
+      { tokensIn: 1_000_000, tokensCached: 5_000_000, tokensOut: 0 },
+    );
+    expect(cost).toBeCloseTo(8, 6);
+  });
 });
 
 describe("computeAudioCostCents", () => {
@@ -144,6 +170,24 @@ describe("recordUsageAndAlert", () => {
       tokensOut: 0,
     });
     expect(await deps.llmUsage.monthToDateCents(userId)).toBeCloseTo(90, 4);
+  });
+
+  it("applies the cached input price and records the cache hits on the ledger", async () => {
+    const { deps, userId } = await setup();
+    // Seeded by migration 028: 40¢ in / 8¢ cached / 80¢ out per Mtok.
+    const record = await recordUsageAndAlert(deps, userId, "chat", "deepseek-v4-flash-0731", {
+      tokensIn: 1_000_000,
+      tokensCached: 800_000,
+      tokensOut: 0,
+    });
+    expect(record.costCents).toBeCloseTo(14.4, 4);
+    const [row] = await deps.llmUsage.listRows(userId, {
+      from: new Date(0),
+      to: new Date(Date.now() + 60_000),
+      limit: 10,
+    });
+    expect(row?.tokensIn).toBe(1_000_000);
+    expect(row?.tokensCached).toBe(800_000);
   });
 
   it("fires an alert once per threshold crossing, not on every call", async () => {

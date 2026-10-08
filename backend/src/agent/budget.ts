@@ -43,14 +43,24 @@ export interface PreCallDecision {
 
 /**
  * Cost of a single call in fractional cents. Prices are cents per 1,000,000 tokens.
- * cost = (tokensIn*input + tokensOut*output) / 1_000_000.
+ * Prompt-cache hits (`usage.tokensCached`, a subset of `tokensIn`) bill at the cached
+ * input price when the model has one, and at the full input price otherwise:
+ * cost = ((tokensIn-cached)*input + cached*cachedInput + tokensOut*output) / 1_000_000.
  */
 export function computeCostCents(
-  pricing: { inputCostPerMtokCents: number; outputCostPerMtokCents: number },
+  pricing: {
+    inputCostPerMtokCents: number;
+    outputCostPerMtokCents: number;
+    /** Cents per 1M cache-hit input tokens; null/absent = no discount. */
+    cachedInputCostPerMtokCents?: number | null;
+  },
   usage: TokenUsage,
 ): number {
+  const cached = Math.min(usage.tokensCached ?? 0, usage.tokensIn);
+  const cachedRate = pricing.cachedInputCostPerMtokCents ?? pricing.inputCostPerMtokCents;
   return (
-    (usage.tokensIn * pricing.inputCostPerMtokCents +
+    ((usage.tokensIn - cached) * pricing.inputCostPerMtokCents +
+      cached * cachedRate +
       usage.tokensOut * pricing.outputCostPerMtokCents) /
     1_000_000
   );
@@ -172,8 +182,9 @@ export interface UsageRecord {
 
 /**
  * Write the ledger row for a completed call and decide whether a budget alert should
- * fire. Cost is computed from the actual model's pricing and real token usage, so the
- * ledger is exact regardless of any pre-call estimate. An alert fires only when the
+ * fire. Cost is computed from the actual model's pricing and real token usage —
+ * including the provider-reported prompt-cache hits — so the ledger is exact
+ * regardless of any pre-call estimate. An alert fires only when the
  * month-to-date percentage newly crosses up through a configured threshold; the
  * `last_alerted_pct` watermark debounces repeats and self-resets at month rollover
  * (spend drops, so the crossed threshold drops, and the watermark follows it down).
@@ -191,6 +202,10 @@ export async function recordUsageAndAlert(
         {
           inputCostPerMtokCents: Number(pricing.input_cost_per_mtok_cents),
           outputCostPerMtokCents: Number(pricing.output_cost_per_mtok_cents),
+          cachedInputCostPerMtokCents:
+            pricing.cached_input_cost_per_mtok_cents != null
+              ? Number(pricing.cached_input_cost_per_mtok_cents)
+              : null,
         },
         usage,
       )
@@ -202,6 +217,7 @@ export async function recordUsageAndAlert(
     model,
     tokensIn: usage.tokensIn,
     tokensOut: usage.tokensOut,
+    tokensCached: usage.tokensCached ?? 0,
     costCents,
   });
 

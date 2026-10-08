@@ -17,6 +17,7 @@ export function UsageShareList({ shares }: { shares: ModelShare[] }) {
             <span className="share-figures">
               {s.cost.formatted} · {s.calls} {s.calls === 1 ? "call" : "calls"} ·{" "}
               {Math.round(s.share * 100)}%
+              {s.cacheHitRatio ? ` · ${Math.round(s.cacheHitRatio * 100)}% cached` : ""}
             </span>
           </div>
           <div className="share-track">

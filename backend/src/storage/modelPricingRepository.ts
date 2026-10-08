@@ -9,6 +9,11 @@ export interface ModelPricingRow {
   capabilities: ModelCapability[];
   /** Cents per 1,000,000 input tokens. */
   input_cost_per_mtok_cents: string;
+  /**
+   * Cents per 1,000,000 input tokens served from the provider's prompt cache; null when
+   * the model has no known cache discount (cache hits then bill at the input price).
+   */
+  cached_input_cost_per_mtok_cents: string | null;
   /** Cents per 1,000,000 output tokens. */
   output_cost_per_mtok_cents: string;
   /** Cents per minute of audio — set only on audio models (null otherwise). */
@@ -34,6 +39,7 @@ const PRICING_COLUMNS = [
   "model_id",
   "capabilities",
   "input_cost_per_mtok_cents",
+  "cached_input_cost_per_mtok_cents",
   "output_cost_per_mtok_cents",
   "audio_cost_per_min_cents",
   "currency",
@@ -87,6 +93,7 @@ export class ModelPricingRepository {
         "p.model_id",
         "p.capabilities",
         "p.input_cost_per_mtok_cents",
+        "p.cached_input_cost_per_mtok_cents",
         "p.output_cost_per_mtok_cents",
         "p.audio_cost_per_min_cents",
         "p.currency",
@@ -108,7 +115,8 @@ export class ModelPricingRepository {
 
   /**
    * Upsert a model and its prices (owner-only path). Prices are cents per Mtok;
-   * `audioCostPerMinCents` is set only for audio models. `capabilities` is applied on
+   * `cachedInputCostPerMtokCents` (prompt-cache hit price) and `audioCostPerMinCents`
+   * are touched only when passed, so a plain in/out refresh never clears them. `capabilities` is applied on
    * insert (defaults to the DB's `["chat"]`); an existing row's capabilities are updated
    * only when the caller passes them explicitly, so a plain price refresh never changes
    * what a model is declared able to do. Never touches slot assignments.
@@ -119,8 +127,10 @@ export class ModelPricingRepository {
     outputCostPerMtokCents: number;
     currency?: string;
     capabilities?: ModelCapability[];
+    cachedInputCostPerMtokCents?: number | null;
     audioCostPerMinCents?: number | null;
   }): Promise<ModelPricingRow> {
+    const cachedProvided = input.cachedInputCostPerMtokCents !== undefined;
     const audioProvided = input.audioCostPerMinCents !== undefined;
     const row = await this.db
       .insertInto("model_pricing")
@@ -130,6 +140,9 @@ export class ModelPricingRepository {
         output_cost_per_mtok_cents: input.outputCostPerMtokCents,
         currency: input.currency ?? "EUR",
         ...(input.capabilities ? { capabilities: JSON.stringify(input.capabilities) } : {}),
+        ...(cachedProvided
+          ? { cached_input_cost_per_mtok_cents: input.cachedInputCostPerMtokCents }
+          : {}),
         ...(audioProvided ? { audio_cost_per_min_cents: input.audioCostPerMinCents } : {}),
       })
       .onConflict((oc) =>
@@ -138,6 +151,9 @@ export class ModelPricingRepository {
           output_cost_per_mtok_cents: input.outputCostPerMtokCents,
           ...(input.currency ? { currency: input.currency } : {}),
           ...(input.capabilities ? { capabilities: JSON.stringify(input.capabilities) } : {}),
+          ...(cachedProvided
+            ? { cached_input_cost_per_mtok_cents: input.cachedInputCostPerMtokCents }
+            : {}),
           ...(audioProvided ? { audio_cost_per_min_cents: input.audioCostPerMinCents } : {}),
           updated_at: sql`now()`,
         }),

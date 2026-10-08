@@ -144,4 +144,22 @@ describe("models tool authorization", () => {
     expect(row?.capabilities).toEqual(["audio"]);
     expect(Number(row?.audio_cost_per_min_cents)).toBe(4);
   });
+
+  it("lets the owner set a cached input price, and list reports it", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const res = await tool("models").execute(
+      {
+        action: "set_price",
+        model_id: "some-cached-model",
+        input_cost_per_mtok_cents: 60,
+        cached_input_cost_per_mtok_cents: 12,
+        output_cost_per_mtok_cents: 330,
+      },
+      ctx,
+    );
+    expect(res).toMatch(/cached in 12¢\/Mtok/);
+    const rows = JSON.parse(await tool("models").execute({ action: "list" }, ctx));
+    const row = rows.find((r: { model_id: string }) => r.model_id === "some-cached-model");
+    expect(row.cached_input_cents_per_mtok).toBe(12);
+  });
 });

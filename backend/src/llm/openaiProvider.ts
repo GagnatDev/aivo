@@ -83,6 +83,18 @@ function toFinishReason(raw: string | undefined): FinishReason {
   }
 }
 
+/**
+ * The prompt-cache hit count from `usage.prompt_tokens_details.cached_tokens` — the
+ * OpenAI-compatible field vLLM-based servers (Scaleway) fill when the request prefix
+ * hit the cache. A missing, malformed, or out-of-range value from a lax server is
+ * clamped into [0, prompt_tokens], so it can only ever discount tokens that were
+ * actually sent, and an absent field bills everything at the full input price.
+ */
+export function toCachedTokens(raw: number | null | undefined, promptTokens: number): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return 0;
+  return Math.min(Math.max(0, Math.floor(raw)), promptTokens);
+}
+
 function toOpenAiTool(t: ToolSchema): ChatCompletionTool {
   return {
     type: "function",
@@ -160,18 +172,21 @@ export function createOpenAiProvider(opts: OpenAiProviderOptions): LlmProvider {
           rawToolCalls: rawToolCalls.length,
           keptToolCalls: toolCalls.length,
           promptTokens: res.usage?.prompt_tokens,
+          cachedTokens: res.usage?.prompt_tokens_details?.cached_tokens,
           completionTokens: res.usage?.completion_tokens,
         },
         "llm response",
       );
 
+      const tokensIn = res.usage?.prompt_tokens ?? 0;
       return {
         content: choice?.message.content ?? null,
         toolCalls,
         finishReason: toFinishReason(choice?.finish_reason ?? undefined),
         usage: {
-          tokensIn: res.usage?.prompt_tokens ?? 0,
+          tokensIn,
           tokensOut: res.usage?.completion_tokens ?? 0,
+          tokensCached: toCachedTokens(res.usage?.prompt_tokens_details?.cached_tokens, tokensIn),
         },
       };
     },

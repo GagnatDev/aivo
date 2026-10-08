@@ -74,6 +74,7 @@ export interface LlmUsage {
   id: Generated<string>;
   model: string;
   task_type: string;
+  tokens_cached: Generated<number>;
   tokens_in: number;
   tokens_out: number;
   user_id: string;
@@ -108,6 +109,7 @@ export interface Messages {
 export interface ModelPricing {
   active: Generated<boolean>;
   audio_cost_per_min_cents: Numeric | null;
+  cached_input_cost_per_mtok_cents: Numeric | null;
   capabilities: ColumnType<ModelCapability[], string | undefined, string>;
   currency: Generated<string>;
   id: Generated<string>;

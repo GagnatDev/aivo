@@ -13,6 +13,8 @@ export interface ModelRow {
   roles: Array<{ capability: ModelCapability; role: TierRole }>;
   capabilities: ModelCapability[];
   inputCentsPerMtok: number;
+  /** Price of prompt-cache-hit input tokens; null when the model has no cache discount. */
+  cachedInputCentsPerMtok: number | null;
   outputCentsPerMtok: number;
   /** Cents per minute of audio for audio models; null otherwise. */
   audioCentsPerMin: number | null;
@@ -30,7 +32,15 @@ export interface ModelsOverview {
 
 export interface ModelsUsage {
   since: string;
-  models: Array<{ model: string; cost: Money; calls: number; tokensIn: number; tokensOut: number }>;
+  models: Array<{
+    model: string;
+    cost: Money;
+    calls: number;
+    tokensIn: number;
+    tokensOut: number;
+    /** How many of tokensIn the provider served from its prompt cache. */
+    tokensCached: number;
+  }>;
 }
 
 export interface ModelShare {
@@ -39,6 +49,8 @@ export interface ModelShare {
   calls: number;
   /** Fraction of total spend in the window, 0..1 (0 when there is no spend). */
   share: number;
+  /** Fraction of input tokens served from the prompt cache, 0..1; null with no input. */
+  cacheHitRatio: number | null;
   /** Palette slot by stable alphabetical identity — matches the Usage page's
    * group coloring so a model keeps its color across pages. */
   colorIndex: number;
@@ -56,6 +68,7 @@ export function buildShares(usage: ModelsUsage): ModelShare[] {
     cost: m.cost,
     calls: m.calls,
     share: total > 0 ? m.cost.cents / total : 0,
+    cacheHitRatio: m.tokensIn > 0 ? m.tokensCached / m.tokensIn : null,
     colorIndex: alphabetical.indexOf(m.model),
   }));
 }

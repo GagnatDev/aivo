@@ -39,6 +39,16 @@ describe("LlmUsageRepository", () => {
     expect(await usage.todayCents(userId)).toBeCloseTo(0.35, 4);
   });
 
+  it("modelTotals sums prompt-cache hits per model; rows without them count 0", async () => {
+    const { usage, userId } = await setup();
+    const base = { userId, taskType: "chat", model: "m", tokensOut: 1, costCents: 0.1 };
+    await usage.insert({ ...base, tokensIn: 1000, tokensCached: 600 });
+    await usage.insert({ ...base, tokensIn: 1000 });
+    const [total] = await usage.modelTotals(userId, new Date(0));
+    expect(total?.tokensIn).toBe(2000);
+    expect(total?.tokensCached).toBe(600);
+  });
+
   it("spendSinceCents is zero with no usage", async () => {
     const { usage, userId } = await setup();
     expect(await usage.spendSinceCents(userId, new Date(0))).toBe(0);

@@ -8,8 +8,22 @@ describe("buildShares", () => {
     const usage: ModelsUsage = {
       since: "2026-06-01T00:00:00.000Z",
       models: [
-        { model: "premium-1", cost: money(6), calls: 2, tokensIn: 10, tokensOut: 5 },
-        { model: "cheap-1", cost: money(2), calls: 8, tokensIn: 100, tokensOut: 50 },
+        {
+          model: "premium-1",
+          cost: money(6),
+          calls: 2,
+          tokensIn: 10,
+          tokensOut: 5,
+          tokensCached: 0,
+        },
+        {
+          model: "cheap-1",
+          cost: money(2),
+          calls: 8,
+          tokensIn: 100,
+          tokensOut: 50,
+          tokensCached: 0,
+        },
       ],
     };
     const shares = buildShares(usage);
@@ -22,8 +36,8 @@ describe("buildShares", () => {
     const usage: ModelsUsage = {
       since: "2026-06-01T00:00:00.000Z",
       models: [
-        { model: "zeta", cost: money(9), calls: 1, tokensIn: 1, tokensOut: 1 },
-        { model: "alpha", cost: money(1), calls: 1, tokensIn: 1, tokensOut: 1 },
+        { model: "zeta", cost: money(9), calls: 1, tokensIn: 1, tokensOut: 1, tokensCached: 0 },
+        { model: "alpha", cost: money(1), calls: 1, tokensIn: 1, tokensOut: 1, tokensCached: 0 },
       ],
     };
     const shares = buildShares(usage);
@@ -31,10 +45,32 @@ describe("buildShares", () => {
     expect(shares.find((s) => s.model === "zeta")?.colorIndex).toBe(1);
   });
 
+  it("reports each model's prompt-cache hit ratio over its input tokens", () => {
+    const usage: ModelsUsage = {
+      since: "2026-06-01T00:00:00.000Z",
+      models: [
+        {
+          model: "cached",
+          cost: money(1),
+          calls: 1,
+          tokensIn: 1000,
+          tokensOut: 1,
+          tokensCached: 750,
+        },
+        { model: "audio", cost: money(1), calls: 1, tokensIn: 0, tokensOut: 0, tokensCached: 0 },
+      ],
+    };
+    const shares = buildShares(usage);
+    expect(shares[0]?.cacheHitRatio).toBeCloseTo(0.75);
+    expect(shares[1]?.cacheHitRatio).toBeNull();
+  });
+
   it("yields zero shares when there is no spend", () => {
     const usage: ModelsUsage = {
       since: "2026-06-01T00:00:00.000Z",
-      models: [{ model: "cheap-1", cost: money(0), calls: 3, tokensIn: 1, tokensOut: 1 }],
+      models: [
+        { model: "cheap-1", cost: money(0), calls: 3, tokensIn: 1, tokensOut: 1, tokensCached: 0 },
+      ],
     };
     expect(buildShares(usage)[0]?.share).toBe(0);
   });
