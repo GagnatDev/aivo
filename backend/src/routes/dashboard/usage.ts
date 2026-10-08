@@ -90,6 +90,7 @@ export function usageRoutes(deps: DashboardDeps): Router {
         calls: b.calls,
         tokensIn: b.tokensIn,
         tokensOut: b.tokensOut,
+        tokensCached: b.tokensCached,
       })),
     });
   });

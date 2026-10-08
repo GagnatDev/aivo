@@ -63,7 +63,8 @@ approval-gate estimate deliberately ignores caching (it can't know the hit rate 
 time), so it stays an over-estimate. Cache hits need a byte-identical prefix, which is
 why `buildContext` orders the prompt most-stable-first (persona → memories → the volatile
 clock line → transcript). The dashboard's Models page shows each model's cached price
-and its observed cache-hit ratio.
+and its observed cache-hit ratio; the Usage page's token-mix chart plots cached input per
+day alongside tokens in/out, with the range's overall cache-hit rate.
 
 ## Getting started
 

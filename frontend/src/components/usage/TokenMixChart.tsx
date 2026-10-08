@@ -16,7 +16,12 @@ export interface TokenMixChartProps {
   points: TokenMixPoint[];
 }
 
-/** U-4: daily tokens in vs tokens out — two fixed-slot series with a legend. */
+/**
+ * U-4: daily tokens in vs tokens out, plus the cached share of tokens in — three
+ * fixed-slot series on one token axis, with a legend. Cached is a subset of tokens in,
+ * so it always runs at or under that line; it is also dashed so it never reads by
+ * color alone.
+ */
 export function TokenMixChart({ points }: TokenMixChartProps) {
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -45,6 +50,9 @@ export function TokenMixChart({ points }: TokenMixChartProps) {
           formatter={(value: string) => <span className="legend-label">{value}</span>}
           iconType="circle"
           iconSize={9}
+          // Keep the drawing order (in → cached → out) so the cached subset sits next
+          // to its total, instead of Recharts' default alphabetical sort.
+          itemSorter={null}
         />
         <Line
           name="Tokens in"
@@ -52,6 +60,17 @@ export function TokenMixChart({ points }: TokenMixChartProps) {
           dataKey="tokensIn"
           stroke={seriesColor(0)}
           strokeWidth={2}
+          strokeLinecap="round"
+          dot={false}
+          activeDot={{ r: 4, stroke: CHART.surface, strokeWidth: 2 }}
+        />
+        <Line
+          name="Cached in"
+          type="monotone"
+          dataKey="tokensCached"
+          stroke={seriesColor(2)}
+          strokeWidth={2}
+          strokeDasharray="6 4"
           strokeLinecap="round"
           dot={false}
           activeDot={{ r: 4, stroke: CHART.surface, strokeWidth: 2 }}

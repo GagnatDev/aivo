@@ -96,13 +96,14 @@ describe("LlmUsageRepository.dailySeries", () => {
         model,
         tokens_in: 10,
         tokens_out: 5,
+        tokens_cached: 4,
         cost_cents: costCents,
         created_at: createdAt,
       })
       .execute();
   }
 
-  it("buckets by UTC day, ordered ascending, summing cost and tokens", async () => {
+  it("buckets by UTC day, ordered ascending, summing cost and tokens (cached included)", async () => {
     const { usage, userId } = await setup();
     await seedAt(userId, new Date("2026-06-05T23:59:00Z"), "m1", 1.5);
     await seedAt(userId, new Date("2026-06-05T01:00:00Z"), "m1", 0.5);
@@ -113,8 +114,24 @@ describe("LlmUsageRepository.dailySeries", () => {
       to: new Date("2026-07-01T00:00:00Z"),
     });
     expect(buckets).toEqual([
-      { day: "2026-06-01", group: null, costCents: 4, calls: 1, tokensIn: 10, tokensOut: 5 },
-      { day: "2026-06-05", group: null, costCents: 2, calls: 2, tokensIn: 20, tokensOut: 10 },
+      {
+        day: "2026-06-01",
+        group: null,
+        costCents: 4,
+        calls: 1,
+        tokensIn: 10,
+        tokensOut: 5,
+        tokensCached: 4,
+      },
+      {
+        day: "2026-06-05",
+        group: null,
+        costCents: 2,
+        calls: 2,
+        tokensIn: 20,
+        tokensOut: 10,
+        tokensCached: 8,
+      },
     ]);
   });
 

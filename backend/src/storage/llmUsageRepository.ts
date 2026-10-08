@@ -58,6 +58,8 @@ export interface DailyUsageBucket {
   calls: number;
   tokensIn: number;
   tokensOut: number;
+  /** Prompt-cache hits among `tokensIn`. */
+  tokensCached: number;
 }
 
 /**
@@ -140,6 +142,7 @@ export class LlmUsageRepository {
         eb.fn.countAll<string>().as("calls"),
         eb.fn.coalesce(eb.fn.sum("tokens_in"), sql<string>`0`).as("tokensIn"),
         eb.fn.coalesce(eb.fn.sum("tokens_out"), sql<string>`0`).as("tokensOut"),
+        eb.fn.coalesce(eb.fn.sum("tokens_cached"), sql<string>`0`).as("tokensCached"),
       ])
       .where("user_id", "=", userId)
       .where("created_at", ">=", opts.from)
@@ -156,6 +159,7 @@ export class LlmUsageRepository {
       calls: Number(r.calls),
       tokensIn: Number(r.tokensIn),
       tokensOut: Number(r.tokensOut),
+      tokensCached: Number(r.tokensCached),
     }));
   }
 

@@ -94,6 +94,7 @@ describe("GET /api/dashboard/usage/series", () => {
         calls: 2,
         tokensIn: 200,
         tokensOut: 100,
+        tokensCached: 0,
       },
       {
         day: "2026-06-03",
@@ -102,6 +103,7 @@ describe("GET /api/dashboard/usage/series", () => {
         calls: 1,
         tokensIn: 100,
         tokensOut: 50,
+        tokensCached: 0,
       },
     ]);
   });
