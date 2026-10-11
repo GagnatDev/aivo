@@ -12,3 +12,7 @@ packageExtensions:
   kysely-codegen:
     dependencies:
       typescript: ~6.0.3
+
+overrides:
+  '@discordjs/rest>undici': ^6.28.1
+  node-pg-migrate>glob: ^11.1.0
