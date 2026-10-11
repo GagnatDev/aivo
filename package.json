@@ -2,7 +2,7 @@
   "name": "aivo",
   "private": true,
   "version": "0.0.1",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=24"
   },
@@ -13,14 +13,5 @@
     "test": "pnpm -r run test",
     "dev:backend": "pnpm --filter @aivo/backend run dev",
     "dev:frontend": "pnpm --filter @aivo/frontend run dev"
-  },
-  "pnpm": {
-    "packageExtensions": {
-      "kysely-codegen": {
-        "dependencies": {
-          "typescript": "~6.0.3"
-        }
-      }
-    }
   }
 }

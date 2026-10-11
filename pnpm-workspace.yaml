@@ -2,5 +2,13 @@ packages:
   - backend
   - frontend
 
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false
+
+packageExtensions:
+  kysely-codegen:
+    dependencies:
+      typescript: ~6.0.3
