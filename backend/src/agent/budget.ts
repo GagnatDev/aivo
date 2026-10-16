@@ -42,6 +42,18 @@ export interface PreCallDecision {
 }
 
 /**
+ * Prompt-cache hits that are safe to bill and store: a subset of `tokensIn`.
+ * A missing, non-finite, or negative report counts as zero (full input price).
+ * A report above `tokensIn` is clipped, so the ledger ratio and the cents agree.
+ */
+function clampCachedTokens(tokensIn: number, tokensCached: number | undefined): number {
+  if (!Number.isFinite(tokensIn) || tokensIn <= 0) return 0;
+  const reported = tokensCached ?? 0;
+  if (!Number.isFinite(reported) || reported <= 0) return 0;
+  return Math.min(reported, tokensIn);
+}
+
+/**
  * Cost of a single call in fractional cents. Prices are cents per 1,000,000 tokens.
  * Prompt-cache hits (`usage.tokensCached`, a subset of `tokensIn`) bill at the cached
  * input price when the model has one, and at the full input price otherwise:
@@ -56,7 +68,7 @@ export function computeCostCents(
   },
   usage: TokenUsage,
 ): number {
-  const cached = Math.min(usage.tokensCached ?? 0, usage.tokensIn);
+  const cached = clampCachedTokens(usage.tokensIn, usage.tokensCached);
   const cachedRate = pricing.cachedInputCostPerMtokCents ?? pricing.inputCostPerMtokCents;
   return (
     ((usage.tokensIn - cached) * pricing.inputCostPerMtokCents +
@@ -197,6 +209,10 @@ export async function recordUsageAndAlert(
   usage: TokenUsage,
 ): Promise<UsageRecord> {
   const pricing = await deps.modelPricing.getByModelId(model);
+  // Bill and store the same clamped count. A raw provider value above tokensIn, or a
+  // negative one, would otherwise make the ledger ratio and the cents disagree.
+  const tokensCached = clampCachedTokens(usage.tokensIn, usage.tokensCached);
+  const metered = { ...usage, tokensCached };
   const costCents = pricing
     ? computeCostCents(
         {
@@ -207,7 +223,7 @@ export async function recordUsageAndAlert(
               ? Number(pricing.cached_input_cost_per_mtok_cents)
               : null,
         },
-        usage,
+        metered,
       )
     : 0;
 
@@ -217,7 +233,7 @@ export async function recordUsageAndAlert(
     model,
     tokensIn: usage.tokensIn,
     tokensOut: usage.tokensOut,
-    tokensCached: usage.tokensCached ?? 0,
+    tokensCached,
     costCents,
   });
 

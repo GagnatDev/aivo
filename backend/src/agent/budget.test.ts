@@ -67,6 +67,21 @@ describe("computeCostCents", () => {
     );
     expect(cost).toBeCloseTo(8, 6);
   });
+
+  it("ignores a negative or non-finite cache-hit count instead of billing extra input", () => {
+    const pricing = {
+      inputCostPerMtokCents: 40,
+      cachedInputCostPerMtokCents: 8,
+      outputCostPerMtokCents: 80,
+    };
+    // 1M in @ 40¢, no discount: a negative count must not add tokens to the bill.
+    expect(
+      computeCostCents(pricing, { tokensIn: 1_000_000, tokensCached: -100_000, tokensOut: 0 }),
+    ).toBeCloseTo(40, 6);
+    expect(
+      computeCostCents(pricing, { tokensIn: 1_000_000, tokensCached: Number.NaN, tokensOut: 0 }),
+    ).toBeCloseTo(40, 6);
+  });
 });
 
 describe("computeAudioCostCents", () => {
@@ -188,6 +203,23 @@ describe("recordUsageAndAlert", () => {
     });
     expect(row?.tokensIn).toBe(1_000_000);
     expect(row?.tokensCached).toBe(800_000);
+  });
+
+  it("stores the same clamped cache-hit count the cost was computed from", async () => {
+    const { deps, userId } = await setup();
+    const record = await recordUsageAndAlert(deps, userId, "chat", "deepseek-v4-flash-0731", {
+      tokensIn: 1_000_000,
+      tokensCached: 5_000_000,
+      tokensOut: 0,
+    });
+    // All of tokensIn at the 8¢ cached rate.
+    expect(record.costCents).toBeCloseTo(8, 4);
+    const [row] = await deps.llmUsage.listRows(userId, {
+      from: new Date(0),
+      to: new Date(Date.now() + 60_000),
+      limit: 10,
+    });
+    expect(row?.tokensCached).toBe(1_000_000);
   });
 
   it("fires an alert once per threshold crossing, not on every call", async () => {
