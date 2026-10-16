@@ -183,8 +183,8 @@ export function UsagePage() {
         <div className="card chart-card">
           <h2>Token mix</h2>
           <p className="muted">
-            Tokens in vs. tokens out per day; "cached in" is the part of tokens in served from the
-            provider's prompt cache, billed at the cheaper cached price.
+            Tokens in vs. tokens out per day. "Cached in" is the part of tokens in served from the
+            provider's prompt cache, billed at that model's cached price when one is set.
           </p>
           {cacheRatio != null ? (
             <p className="cache-headline">
