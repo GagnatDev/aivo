@@ -120,6 +120,7 @@ export const nb: Messages = {
     noModels: "Ingen modeller er konfigurert ennå.",
     unassigned: "ikke tildelt",
     modelsTitle: "**Tilgjengelige modeller**",
+    cachedPrice: (cents) => `(bufret ${cents}¢)`,
     budgetTitle: "**Budsjett**",
     budgetToday: "I dag",
     budgetMonthToDate: "Hittil i måneden",

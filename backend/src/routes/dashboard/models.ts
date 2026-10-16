@@ -48,6 +48,10 @@ export function modelsRoutes(deps: DashboardDeps): Router {
           .map((a) => ({ capability: a.capability, role: a.tier_role })),
         capabilities: r.capabilities,
         inputCentsPerMtok: Number(r.input_cost_per_mtok_cents),
+        cachedInputCentsPerMtok:
+          r.cached_input_cost_per_mtok_cents != null
+            ? Number(r.cached_input_cost_per_mtok_cents)
+            : null,
         outputCentsPerMtok: Number(r.output_cost_per_mtok_cents),
         audioCentsPerMin:
           r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
@@ -86,6 +90,7 @@ export function modelsRoutes(deps: DashboardDeps): Router {
         calls: t.calls,
         tokensIn: t.tokensIn,
         tokensOut: t.tokensOut,
+        tokensCached: t.tokensCached,
       })),
     });
   });

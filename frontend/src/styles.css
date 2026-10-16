@@ -353,6 +353,18 @@ a {
   margin-bottom: 0.75rem;
 }
 
+.cache-headline {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: -0.25rem 0 0.75rem;
+}
+
+.cache-headline-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .chart-controls {
   display: flex;
   align-items: center;

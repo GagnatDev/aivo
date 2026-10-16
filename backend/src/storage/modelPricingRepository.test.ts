@@ -166,4 +166,35 @@ describe("ModelPricingRepository", () => {
     expect(row.capabilities).toEqual(["audio"]);
     expect(Number(row.audio_cost_per_min_cents)).toBe(7.5);
   });
+
+  it("seeds the cache-priced Scaleway models, unassigned", async () => {
+    const repo = new ModelPricingRepository(testDb());
+    const deepseek = await repo.getByModelId("deepseek-v4-flash-0731");
+    expect(Number(deepseek?.input_cost_per_mtok_cents)).toBe(40);
+    expect(Number(deepseek?.cached_input_cost_per_mtok_cents)).toBe(8);
+    expect(Number(deepseek?.output_cost_per_mtok_cents)).toBe(80);
+    const qwen = await repo.getByModelId("qwen3.8-27b");
+    expect(qwen?.capabilities).toEqual(["chat", "vision"]);
+    expect(Number(qwen?.cached_input_cost_per_mtok_cents)).toBe(12);
+    const assigned = (await repo.listAssignments()).map((a) => a.model_id);
+    expect(assigned).not.toContain("deepseek-v4-flash-0731");
+    expect(assigned).not.toContain("qwen3.8-27b");
+  });
+
+  it("upsertModel keeps the cached price on a plain in/out refresh", async () => {
+    const repo = new ModelPricingRepository(testDb());
+    await repo.upsertModel({
+      modelId: "cache-model",
+      inputCostPerMtokCents: 40,
+      cachedInputCostPerMtokCents: 8,
+      outputCostPerMtokCents: 80,
+    });
+    const refreshed = await repo.upsertModel({
+      modelId: "cache-model",
+      inputCostPerMtokCents: 50,
+      outputCostPerMtokCents: 90,
+    });
+    expect(Number(refreshed.input_cost_per_mtok_cents)).toBe(50);
+    expect(Number(refreshed.cached_input_cost_per_mtok_cents)).toBe(8);
+  });
 });

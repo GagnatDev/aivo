@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { gateMatches } from "./gate.js";
 import { buildToolRegistry, type AgentTool, type ToolContext } from "./index.js";
 import { ModelPricingRepository } from "../../storage/modelPricingRepository.js";
 import { makeAgentDeps, OWNER_ID, provisionUser } from "../../test/agentDeps.js";
@@ -143,5 +144,56 @@ describe("models tool authorization", () => {
     const row = await ctx.deps.modelPricing.getByModelId("some-stt-model");
     expect(row?.capabilities).toEqual(["audio"]);
     expect(Number(row?.audio_cost_per_min_cents)).toBe(4);
+  });
+
+  it("lets the owner set a cached input price, and list reports it", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    const res = await tool("models").execute(
+      {
+        action: "set_price",
+        model_id: "some-cached-model",
+        input_cost_per_mtok_cents: 60,
+        cached_input_cost_per_mtok_cents: 12,
+        output_cost_per_mtok_cents: 330,
+      },
+      ctx,
+    );
+    expect(res).toMatch(/cached in 12¢\/Mtok/);
+    const rows = JSON.parse(await tool("models").execute({ action: "list" }, ctx));
+    const row = rows.find((r: { model_id: string }) => r.model_id === "some-cached-model");
+    expect(row.cached_input_cents_per_mtok).toBe(12);
+  });
+
+  it("lets the owner clear a cached input price back to no discount", async () => {
+    const ctx = await ctxFor(OWNER_ID);
+    await tool("models").execute(
+      {
+        action: "set_price",
+        model_id: "some-cached-model",
+        input_cost_per_mtok_cents: 60,
+        cached_input_cost_per_mtok_cents: 12,
+        output_cost_per_mtok_cents: 330,
+      },
+      ctx,
+    );
+    const res = await tool("models").execute(
+      {
+        action: "set_price",
+        model_id: "some-cached-model",
+        input_cost_per_mtok_cents: 60,
+        cached_input_cost_per_mtok_cents: null,
+        output_cost_per_mtok_cents: 330,
+      },
+      ctx,
+    );
+    expect(res).not.toMatch(/cached in/);
+    const row = await ctx.deps.modelPricing.getByModelId("some-cached-model");
+    expect(row?.cached_input_cost_per_mtok_cents).toBeNull();
+  });
+});
+
+describe("models tool gate", () => {
+  it("matches a Norwegian question about the cached price", () => {
+    expect(gateMatches(tool("models").gate ?? [], "sett bufret pris til 8")).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ export function PricingTable({ models }: { models: ModelRow[] }) {
             <th>Roles</th>
             <th>Capabilities</th>
             <th className="num">Input / Mtok</th>
+            <th className="num">Cached in / Mtok</th>
             <th className="num">Output / Mtok</th>
             <th className="num">Audio / min</th>
             <th>Currency</th>
@@ -31,6 +32,9 @@ export function PricingTable({ models }: { models: ModelRow[] }) {
               </td>
               <td>{m.capabilities.join(", ")}</td>
               <td className="num">{formatPerMtok(m.inputCentsPerMtok)}</td>
+              <td className="num">
+                {m.cachedInputCentsPerMtok != null ? formatPerMtok(m.cachedInputCentsPerMtok) : "—"}
+              </td>
               <td className="num">{formatPerMtok(m.outputCentsPerMtok)}</td>
               <td className="num">
                 {m.audioCentsPerMin != null ? formatPerMtok(m.audioCentsPerMin) : "—"}

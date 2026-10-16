@@ -122,6 +122,7 @@ export const en: Messages = {
     noModels: "No models are configured yet.",
     unassigned: "unassigned",
     modelsTitle: "**Available models**",
+    cachedPrice: (cents) => `(cached ${cents}¢)`,
     budgetTitle: "**Budget**",
     budgetToday: "Today",
     budgetMonthToDate: "Month to date",

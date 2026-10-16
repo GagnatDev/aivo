@@ -56,6 +56,18 @@ describe("runCommand", () => {
     expect(reply).toContain("llama-3.3-70b-instruct");
     expect(reply).toContain("premium");
     expect(reply).toContain("EUR");
+    // Default language is nb. The seeded cache price must follow it.
+    expect(reply).toContain("(bufret 8¢)");
+  });
+
+  it("!models names the cached price in English when that is the user's language", async () => {
+    const deps = makeAgentDeps();
+    await runCommand(deps, incoming({ content: "!models" }));
+    const user = await deps.users.findByDiscordId(OWNER_ID);
+    await deps.settings.update(user!.id, { language: "en" });
+    const reply = await runCommand(deps, incoming({ content: "!models" }));
+    expect(reply).toContain("(cached 8¢)");
+    expect(reply).not.toContain("bufret");
   });
 
   it("!budget reports spend against the ceiling for a provisioned user", async () => {

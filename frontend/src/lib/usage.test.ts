@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBurnDown,
   buildTokenMix,
+  cacheHitRatio,
   formatCentsTick,
   listUtcDays,
   MAX_GROUPS,
@@ -19,6 +20,7 @@ function bucket(day: string, group: string | null, cents: number): SeriesBucket 
     calls: 1,
     tokensIn: 10,
     tokensOut: 5,
+    tokensCached: 4,
   };
 }
 
@@ -74,9 +76,23 @@ describe("buildTokenMix", () => {
       ["2026-06-01", "2026-06-02"],
     );
     expect(points).toEqual([
-      { day: "2026-06-01", tokensIn: 20, tokensOut: 10 },
-      { day: "2026-06-02", tokensIn: 0, tokensOut: 0 },
+      { day: "2026-06-01", tokensIn: 20, tokensOut: 10, tokensCached: 8 },
+      { day: "2026-06-02", tokensIn: 0, tokensOut: 0, tokensCached: 0 },
     ]);
+  });
+});
+
+describe("cacheHitRatio", () => {
+  it("is cached over input tokens across the whole range", () => {
+    const points = buildTokenMix(
+      [bucket("2026-06-01", null, 1), bucket("2026-06-02", null, 1)],
+      ["2026-06-01", "2026-06-02", "2026-06-03"],
+    );
+    expect(cacheHitRatio(points)).toBeCloseTo(0.4);
+  });
+
+  it("is null when no input tokens were sent", () => {
+    expect(cacheHitRatio(buildTokenMix([], ["2026-06-01"]))).toBeNull();
   });
 });
 

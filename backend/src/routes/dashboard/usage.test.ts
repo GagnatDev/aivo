@@ -94,6 +94,7 @@ describe("GET /api/dashboard/usage/series", () => {
         calls: 2,
         tokensIn: 200,
         tokensOut: 100,
+        tokensCached: 0,
       },
       {
         day: "2026-06-03",
@@ -102,6 +103,7 @@ describe("GET /api/dashboard/usage/series", () => {
         calls: 1,
         tokensIn: 100,
         tokensOut: 50,
+        tokensCached: 0,
       },
     ]);
   });
@@ -220,10 +222,12 @@ describe("GET /api/dashboard/usage/export.csv", () => {
       'attachment; filename="aivo-usage-2026-07-01_2026-07-03.csv"',
     );
     const lines = res.text.trimEnd().split("\n");
-    expect(lines[0]).toBe("created_at,model,task_type,tokens_in,tokens_out,cost_cents");
-    expect(lines[1]).toBe("2026-07-01T10:00:00.000Z,cheap-1,chat,100,50,0.1234");
+    expect(lines[0]).toBe(
+      "created_at,model,task_type,tokens_in,tokens_out,cost_cents,tokens_cached",
+    );
+    expect(lines[1]).toBe("2026-07-01T10:00:00.000Z,cheap-1,chat,100,50,0.1234,0");
     // Fields with commas/quotes are quoted per RFC 4180.
-    expect(lines[2]).toBe('2026-07-02T10:00:00.000Z,"weird,""model",stage1_rank,100,50,2.5');
+    expect(lines[2]).toBe('2026-07-02T10:00:00.000Z,"weird,""model",stage1_rank,100,50,2.5,0');
   });
 
   it("never exports another user's rows and 400s a backwards range", async () => {

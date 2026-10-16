@@ -125,6 +125,8 @@ export interface Messages {
     noModels: string;
     unassigned: string;
     modelsTitle: string;
+    /** Parenthetical cached-input price on `!models`, e.g. "(cached 8¢)". */
+    cachedPrice: (cents: number) => string;
     budgetTitle: string;
     budgetToday: string;
     budgetMonthToDate: string;

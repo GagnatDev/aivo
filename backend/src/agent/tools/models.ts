@@ -5,6 +5,7 @@ const modelsArgs = z.object({
   action: z.enum(["list", "set_price", "set_tier_role"]),
   model_id: z.string().optional(),
   input_cost_per_mtok_cents: z.number().nonnegative().optional(),
+  cached_input_cost_per_mtok_cents: z.number().nonnegative().nullable().optional(),
   output_cost_per_mtok_cents: z.number().nonnegative().optional(),
   audio_cost_per_min_cents: z.number().nonnegative().optional(),
   capabilities: z.array(z.enum(["chat", "audio", "vision"])).optional(),
@@ -23,10 +24,15 @@ export const modelsTool: AgentTool = {
     "pris",
     "scaleway",
     "llama",
+    "deepseek",
+    "qwen",
     "whisper",
     "voxtral",
     "mtok",
     "per token",
+    "cache",
+    "cached",
+    "bufret",
     "tier",
     "premium",
     "cheap",
@@ -46,9 +52,12 @@ export const modelsTool: AgentTool = {
       "adding one, or their token prices ('hva er prisen per token?'). For how much has been " +
       "SPENT, use the budget tool instead. 'list' shows models with their " +
       "capabilities (chat|audio|vision), the slots they fill (e.g. chat:cheap — aivo uses a " +
-      "model only for slots it holds), token prices (cents per 1,000,000 tokens) and, for " +
-      "audio models, the per-minute audio price (anyone). 'set_price' adds a model (new " +
-      "model_id, optionally with capabilities and an audio per-minute price) or updates prices; " +
+      "model only for slots it holds), token prices (cents per 1,000,000 tokens; the cached " +
+      "input price is what prompt-cache hits cost, null = no discount) and, for audio models, " +
+      "the per-minute audio price (anyone). 'set_price' adds a model (new model_id, optionally " +
+      "with capabilities, a cached input price and an audio per-minute price) or updates prices; " +
+      "pass cached_input_cost_per_mtok_cents null to clear a discount so hits bill at the full " +
+      "input price. Omitting it leaves the current cached price unchanged. " +
       "'set_tier_role' points a (capability, cheap|premium) slot at a model — pass 'capability' " +
       "when the model has several; one model may fill many slots. Audio models (e.g. Scaleway " +
       "whisper/voxtral) transcribe voice messages. set_price and set_tier_role are OWNER-ONLY: " +
@@ -62,6 +71,10 @@ export const modelsTool: AgentTool = {
         input_cost_per_mtok_cents: {
           type: "number",
           description: "cents per 1M input tokens (set_price)",
+        },
+        cached_input_cost_per_mtok_cents: {
+          type: ["number", "null"],
+          description: "cents per 1M prompt-cache hits (set_price), or null to clear the discount",
         },
         output_cost_per_mtok_cents: {
           type: "number",
@@ -110,6 +123,10 @@ export const modelsTool: AgentTool = {
               .map((a) => `${a.capability}:${a.tier_role}`),
             capabilities: r.capabilities,
             input_cents_per_mtok: Number(r.input_cost_per_mtok_cents),
+            cached_input_cents_per_mtok:
+              r.cached_input_cost_per_mtok_cents != null
+                ? Number(r.cached_input_cost_per_mtok_cents)
+                : null,
             output_cents_per_mtok: Number(r.output_cost_per_mtok_cents),
             audio_cents_per_min:
               r.audio_cost_per_min_cents != null ? Number(r.audio_cost_per_min_cents) : null,
@@ -131,15 +148,22 @@ export const modelsTool: AgentTool = {
           inputCostPerMtokCents: p.value.input_cost_per_mtok_cents,
           outputCostPerMtokCents: p.value.output_cost_per_mtok_cents,
           ...(p.value.capabilities ? { capabilities: p.value.capabilities } : {}),
+          ...(p.value.cached_input_cost_per_mtok_cents !== undefined
+            ? { cachedInputCostPerMtokCents: p.value.cached_input_cost_per_mtok_cents }
+            : {}),
           ...(p.value.audio_cost_per_min_cents !== undefined
             ? { audioCostPerMinCents: p.value.audio_cost_per_min_cents }
             : {}),
         });
+        const cachedNote =
+          row.cached_input_cost_per_mtok_cents != null
+            ? `, cached in ${Number(row.cached_input_cost_per_mtok_cents)}¢/Mtok`
+            : "";
         const audioNote =
           row.audio_cost_per_min_cents != null
             ? `, audio ${Number(row.audio_cost_per_min_cents)}¢/min`
             : "";
-        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok${audioNote}. Capabilities: ${row.capabilities.join(", ")}.`;
+        return `Set ${row.model_id} pricing: in ${Number(row.input_cost_per_mtok_cents)}¢/Mtok${cachedNote}, out ${Number(row.output_cost_per_mtok_cents)}¢/Mtok${audioNote}. Capabilities: ${row.capabilities.join(", ")}.`;
       }
       case "set_tier_role": {
         if (!ctx.isOwner) return OWNER_ONLY;

@@ -90,6 +90,7 @@ export function usageRoutes(deps: DashboardDeps): Router {
         calls: b.calls,
         tokensIn: b.tokensIn,
         tokensOut: b.tokensOut,
+        tokensCached: b.tokensCached,
       })),
     });
   });
@@ -111,7 +112,7 @@ export function usageRoutes(deps: DashboardDeps): Router {
     }
     const rows = await deps.llmUsage.listRows(req.userId!, { from, to, limit: EXPORT_MAX_ROWS });
     const lines = [
-      "created_at,model,task_type,tokens_in,tokens_out,cost_cents",
+      "created_at,model,task_type,tokens_in,tokens_out,cost_cents,tokens_cached",
       ...rows.map((r) =>
         [
           r.createdAt.toISOString(),
@@ -120,6 +121,7 @@ export function usageRoutes(deps: DashboardDeps): Router {
           String(r.tokensIn),
           String(r.tokensOut),
           String(r.costCents),
+          String(r.tokensCached),
         ].join(","),
       ),
     ];

@@ -60,6 +60,13 @@ export interface ChatRequest {
 export interface TokenUsage {
   tokensIn: number;
   tokensOut: number;
+  /**
+   * How many of `tokensIn` the provider served from its prompt cache — a subset of
+   * `tokensIn`, never additional to it. Absent/0 when the provider reported no cache
+   * hit (or doesn't report caching at all), in which case every input token is billed
+   * at the full input price.
+   */
+  tokensCached?: number;
 }
 
 /**

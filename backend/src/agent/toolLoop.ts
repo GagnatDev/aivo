@@ -113,6 +113,8 @@ interface TurnStats {
   toolErrors: number;
   tokensIn: number;
   tokensOut: number;
+  /** Prompt-cache hits among tokensIn — log-only, to see whether caching kicks in. */
+  tokensCached: number;
   costCents: number;
   finishReasons: FinishReason[];
 }
@@ -146,6 +148,7 @@ export async function runToolLoop(
     toolErrors: 0,
     tokensIn: 0,
     tokensOut: 0,
+    tokensCached: 0,
     costCents: 0,
     finishReasons: [],
   };
@@ -247,6 +250,7 @@ export async function runToolLoop(
     stats.iterations = i + 1;
     stats.tokensIn += result.usage.tokensIn;
     stats.tokensOut += result.usage.tokensOut;
+    stats.tokensCached += result.usage.tokensCached ?? 0;
     stats.costCents += record.costCents;
     stats.finishReasons.push(result.finishReason);
 
@@ -419,6 +423,7 @@ async function forceFinalAnswer(
     // The forced call is a real round-trip of the same turn — fold it into the record.
     stats.tokensIn += result.usage.tokensIn;
     stats.tokensOut += result.usage.tokensOut;
+    stats.tokensCached += result.usage.tokensCached ?? 0;
     stats.costCents += record.costCents;
     stats.finishReasons.push(result.finishReason);
     const nextAlert = record.alertPct ? Math.max(alertPct ?? 0, record.alertPct) : alertPct;

@@ -10,6 +10,7 @@ import { TokenMixChart } from "../components/usage/TokenMixChart.js";
 import {
   buildBurnDown,
   buildTokenMix,
+  cacheHitRatio,
   listUtcDays,
   pivotBuckets,
   rangeToWindow,
@@ -75,6 +76,7 @@ export function UsagePage() {
     () => (series.data ? buildTokenMix(series.data.buckets, rangeDays) : null),
     [series.data, rangeDays],
   );
+  const cacheRatio = useMemo(() => (tokenMix ? cacheHitRatio(tokenMix) : null), [tokenMix]);
   const burnDown = useMemo(() => {
     if (!burnDownSeries.data || !summary.data) return null;
     const mtd = rangeToWindow("mtd", now);
@@ -180,7 +182,16 @@ export function UsagePage() {
       {tokenMix && hasUsage ? (
         <div className="card chart-card">
           <h2>Token mix</h2>
-          <p className="muted">Tokens in vs. tokens out per day (informational, not billing).</p>
+          <p className="muted">
+            Tokens in vs. tokens out per day. "Cached in" is the part of tokens in served from the
+            provider's prompt cache, billed at that model's cached price when one is set.
+          </p>
+          {cacheRatio != null ? (
+            <p className="cache-headline">
+              <span className="cache-headline-value">{Math.round(cacheRatio * 100)}%</span> of input
+              tokens cached in this range
+            </p>
+          ) : null}
           <TokenMixChart points={tokenMix} />
         </div>
       ) : series.loading ? (

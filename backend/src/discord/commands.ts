@@ -75,11 +75,15 @@ const COMMANDS: Record<string, CommandDef> = {
         const role = roles.length > 0 ? roles.join(", ") : c.unassigned;
         const input = Number(r.input_cost_per_mtok_cents);
         const output = Number(r.output_cost_per_mtok_cents);
+        const cached =
+          r.cached_input_cost_per_mtok_cents != null
+            ? ` ${c.cachedPrice(Number(r.cached_input_cost_per_mtok_cents))}`
+            : "";
         const audio =
           r.audio_cost_per_min_cents != null
             ? `, audio ${Number(r.audio_cost_per_min_cents)}¢/min`
             : "";
-        return `• ${r.model_id} — ${role} — in ${input}¢ / out ${output}¢ per Mtok${audio} (${r.currency})`;
+        return `• ${r.model_id} — ${role} — in ${input}¢${cached} / out ${output}¢ per Mtok${audio} (${r.currency})`;
       });
       return `${c.modelsTitle}\n${lines.join("\n")}`;
     },

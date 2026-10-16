@@ -26,6 +26,8 @@ export interface SeriesBucket {
   calls: number;
   tokensIn: number;
   tokensOut: number;
+  /** Prompt-cache hits among tokensIn (a subset, not extra). */
+  tokensCached: number;
 }
 
 export interface UsageSeries {
@@ -125,20 +127,34 @@ export interface TokenMixPoint {
   day: string;
   tokensIn: number;
   tokensOut: number;
+  /** The share of tokensIn served from the provider's prompt cache. */
+  tokensCached: number;
 }
 
-/** Daily tokens in vs out (U-4), zero-filled across the range. */
+/** Daily tokens in vs out, plus cached input (U-4), zero-filled across the range. */
 export function buildTokenMix(buckets: SeriesBucket[], days: string[]): TokenMixPoint[] {
   const byDay = new Map<string, TokenMixPoint>(
-    days.map((day) => [day, { day, tokensIn: 0, tokensOut: 0 }]),
+    days.map((day) => [day, { day, tokensIn: 0, tokensOut: 0, tokensCached: 0 }]),
   );
   for (const b of buckets) {
     const point = byDay.get(b.day);
     if (!point) continue;
     point.tokensIn += b.tokensIn;
     point.tokensOut += b.tokensOut;
+    point.tokensCached += b.tokensCached;
   }
   return [...byDay.values()];
+}
+
+/** Fraction of input tokens served from the prompt cache over the range; null with no input. */
+export function cacheHitRatio(points: TokenMixPoint[]): number | null {
+  let tokensIn = 0;
+  let tokensCached = 0;
+  for (const p of points) {
+    tokensIn += p.tokensIn;
+    tokensCached += p.tokensCached;
+  }
+  return tokensIn > 0 ? tokensCached / tokensIn : null;
 }
 
 export type UsageRange = "7d" | "30d" | "mtd";
