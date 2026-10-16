@@ -32,6 +32,7 @@ export const modelsTool: AgentTool = {
     "per token",
     "cache",
     "cached",
+    "bufret",
     "tier",
     "premium",
     "cheap",

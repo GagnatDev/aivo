@@ -77,7 +77,7 @@ const COMMANDS: Record<string, CommandDef> = {
         const output = Number(r.output_cost_per_mtok_cents);
         const cached =
           r.cached_input_cost_per_mtok_cents != null
-            ? ` (cached ${Number(r.cached_input_cost_per_mtok_cents)}¢)`
+            ? ` ${c.cachedPrice(Number(r.cached_input_cost_per_mtok_cents))}`
             : "";
         const audio =
           r.audio_cost_per_min_cents != null
