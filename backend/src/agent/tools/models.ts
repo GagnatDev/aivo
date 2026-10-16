@@ -73,7 +73,7 @@ export const modelsTool: AgentTool = {
           description: "cents per 1M input tokens (set_price)",
         },
         cached_input_cost_per_mtok_cents: {
-          type: "number",
+          type: ["number", "null"],
           description: "cents per 1M prompt-cache hits (set_price), or null to clear the discount",
         },
         output_cost_per_mtok_cents: {
