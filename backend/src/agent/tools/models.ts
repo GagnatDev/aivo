@@ -5,7 +5,7 @@ const modelsArgs = z.object({
   action: z.enum(["list", "set_price", "set_tier_role"]),
   model_id: z.string().optional(),
   input_cost_per_mtok_cents: z.number().nonnegative().optional(),
-  cached_input_cost_per_mtok_cents: z.number().nonnegative().optional(),
+  cached_input_cost_per_mtok_cents: z.number().nonnegative().nullable().optional(),
   output_cost_per_mtok_cents: z.number().nonnegative().optional(),
   audio_cost_per_min_cents: z.number().nonnegative().optional(),
   capabilities: z.array(z.enum(["chat", "audio", "vision"])).optional(),
@@ -56,6 +56,8 @@ export const modelsTool: AgentTool = {
       "input price is what prompt-cache hits cost, null = no discount) and, for audio models, " +
       "the per-minute audio price (anyone). 'set_price' adds a model (new model_id, optionally " +
       "with capabilities, a cached input price and an audio per-minute price) or updates prices; " +
+      "pass cached_input_cost_per_mtok_cents null to clear a discount so hits bill at the full " +
+      "input price. Omitting it leaves the current cached price unchanged. " +
       "'set_tier_role' points a (capability, cheap|premium) slot at a model — pass 'capability' " +
       "when the model has several; one model may fill many slots. Audio models (e.g. Scaleway " +
       "whisper/voxtral) transcribe voice messages. set_price and set_tier_role are OWNER-ONLY: " +
@@ -72,8 +74,7 @@ export const modelsTool: AgentTool = {
         },
         cached_input_cost_per_mtok_cents: {
           type: "number",
-          description:
-            "cents per 1M input tokens served from the provider's prompt cache (set_price)",
+          description: "cents per 1M prompt-cache hits (set_price), or null to clear the discount",
         },
         output_cost_per_mtok_cents: {
           type: "number",
