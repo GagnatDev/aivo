@@ -1,5 +1,5 @@
+import { formatCacheHitRatio, type ModelShare } from "../../lib/models.js";
 import { seriesColor } from "../../lib/palette.js";
-import type { ModelShare } from "../../lib/models.js";
 
 /**
  * M-4: per-model spend share as horizontal bars — reads at a glance on a phone
@@ -16,8 +16,7 @@ export function UsageShareList({ shares }: { shares: ModelShare[] }) {
             <span className="share-model">{s.model}</span>
             <span className="share-figures">
               {s.cost.formatted} · {s.calls} {s.calls === 1 ? "call" : "calls"} ·{" "}
-              {Math.round(s.share * 100)}%
-              {s.cacheHitRatio ? ` · ${Math.round(s.cacheHitRatio * 100)}% cached` : ""}
+              {Math.round(s.share * 100)}%{formatCacheHitRatio(s.cacheHitRatio)}
             </span>
           </div>
           <div className="share-track">

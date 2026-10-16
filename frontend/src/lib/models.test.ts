@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildShares, formatPerMtok, type ModelsUsage } from "./models.js";
+import { buildShares, formatCacheHitRatio, formatPerMtok, type ModelsUsage } from "./models.js";
 
 const money = (cents: number) => ({ cents, formatted: `${cents}¢` });
 
@@ -63,6 +63,19 @@ describe("buildShares", () => {
     const shares = buildShares(usage);
     expect(shares[0]?.cacheHitRatio).toBeCloseTo(0.75);
     expect(shares[1]?.cacheHitRatio).toBeNull();
+  });
+
+  it("keeps a zero hit rate distinct from a model that sent no input", () => {
+    const usage: ModelsUsage = {
+      since: "2026-06-01T00:00:00.000Z",
+      models: [
+        { model: "cold", cost: money(1), calls: 1, tokensIn: 1000, tokensOut: 1, tokensCached: 0 },
+      ],
+    };
+    expect(buildShares(usage)[0]?.cacheHitRatio).toBe(0);
+    expect(formatCacheHitRatio(0)).toBe(" · 0% cached");
+    expect(formatCacheHitRatio(0.75)).toBe(" · 75% cached");
+    expect(formatCacheHitRatio(null)).toBe("");
   });
 
   it("yields zero shares when there is no spend", () => {

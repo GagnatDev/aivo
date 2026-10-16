@@ -73,6 +73,16 @@ export function buildShares(usage: ModelsUsage): ModelShare[] {
   }));
 }
 
+/**
+ * Share-list suffix for a model's cache-hit rate. Null (the model sent no input
+ * tokens) hides it. Zero is shown, so "no hits reported" is visible rather than
+ * looking like a model that never sent input.
+ */
+export function formatCacheHitRatio(ratio: number | null): string {
+  if (ratio == null) return "";
+  return ` · ${Math.round(ratio * 100)}% cached`;
+}
+
 /** "20¢ / 90¢ per Mtok" — trim trailing zeros the numeric(12,4) column carries. */
 export function formatPerMtok(cents: number): string {
   if (cents >= 100) return `€${Number((cents / 100).toFixed(4))}`;
