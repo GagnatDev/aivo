@@ -60,6 +60,7 @@ export function activityRoutes(deps: DashboardDeps): Router {
     const turns = oldest
       ? await deps.turnSummaries.listForWindow(conversation.id, {
           since: oldest.created_at,
+          sinceMessageId: oldest.id,
           ...(before !== undefined && { beforeMessageId: before }),
         })
       : [];

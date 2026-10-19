@@ -60,6 +60,12 @@ export interface TurnWindow {
   /** Inclusive lower bound — the timestamp of the message page's oldest row. */
   since: Date;
   /**
+   * When set, the lower bound is this message's stored timestamp instead of `since`.
+   * TIMESTAMPTZ carries microseconds that a JS `Date` round-trip drops, so a turn
+   * written in the same millisecond as the anchor can otherwise fall inside the window.
+   */
+  sinceMessageId?: string;
+  /**
    * Exclusive upper bound, given as the message id the page was anchored on
    * (`?before=`). Omitted for the newest page, which has no upper bound — the last
    * turn's record is written after its final message, so an upper bound there would
@@ -112,8 +118,18 @@ export class TurnSummaryRepository {
     let query = this.db
       .selectFrom("turn_summaries")
       .select(TURN_SUMMARY_COLUMNS)
-      .where("conversation_id", "=", conversationId)
-      .where("created_at", ">=", window.since);
+      .where("conversation_id", "=", conversationId);
+    if (window.sinceMessageId) {
+      // Same reason as the `before` bound below: compare against the stored
+      // TIMESTAMPTZ, not a millisecond-precision Date.
+      query = query.where(
+        sql<boolean>`turn_summaries.created_at >= (
+          select created_at from messages where id = ${window.sinceMessageId} and conversation_id = ${conversationId}
+        )`,
+      );
+    } else {
+      query = query.where("created_at", ">=", window.since);
+    }
     if (window.beforeMessageId) {
       // The anchor's timestamp is resolved inside this statement rather than via a JS
       // `Date`, for the same reason messageRepository.listPage does it: TIMESTAMPTZ

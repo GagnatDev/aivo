@@ -108,6 +108,7 @@ describe("TurnSummaryRepository.listForWindow", () => {
 
     const window = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
       since: second.message.created_at,
+      sinceMessageId: second.message.id,
     });
 
     expect(window.map((t) => t.id)).toEqual([second.turn.id]);
@@ -115,6 +116,7 @@ describe("TurnSummaryRepository.listForWindow", () => {
 
     const all = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
       since: first.message.created_at,
+      sinceMessageId: first.message.id,
     });
     expect(all.map((t) => t.id)).toEqual([first.turn.id, second.turn.id]);
   });
@@ -127,6 +129,7 @@ describe("TurnSummaryRepository.listForWindow", () => {
     // The older page: anchored on the newer page's oldest message.
     const older = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
       since: first.message.created_at,
+      sinceMessageId: first.message.id,
       beforeMessageId: second.message.id,
     });
     expect(older.map((t) => t.id)).toEqual([first.turn.id]);
@@ -149,6 +152,7 @@ describe("TurnSummaryRepository.listForWindow", () => {
 
     const window = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
       since: mine.message.created_at,
+      sinceMessageId: mine.message.id,
     });
     expect(window.map((t) => t.id)).toEqual([mine.turn.id]);
   });
