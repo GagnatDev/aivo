@@ -1,4 +1,3 @@
-import { sql } from "kysely";
 import type { Db } from "../db/kysely.js";
 import type { StoredFinishReason, TurnOutcome } from "../db/schema.enums.js";
 
@@ -55,14 +54,16 @@ export interface InsertTurnSummaryInput {
   finishReasons: StoredFinishReason[];
 }
 
-/** One page of a conversation's turn records, aligned to a page of its messages. */
+/**
+ * One page of a conversation's turn records, aligned to a page of its messages. Both
+ * bounds are message ids whose stored TIMESTAMPTZ is resolved inside the query, never
+ * via a JS `Date`: a millisecond-precision round-trip drops the microseconds, which
+ * would let a turn from the same millisecond land on both sides of a page boundary.
+ */
 export interface TurnWindow {
-  /** Inclusive lower bound — the timestamp of the message page's oldest row. */
-  since: Date;
   /**
-   * When set, the lower bound is this message's stored timestamp instead of `since`.
-   * TIMESTAMPTZ carries microseconds that a JS `Date` round-trip drops, so a turn
-   * written in the same millisecond as the anchor can otherwise fall inside the window.
+   * Inclusive lower bound, given as the page's oldest message id. Omitted means
+   * unbounded (the whole conversation).
    */
   sinceMessageId?: string;
   /**
@@ -110,38 +111,44 @@ export class TurnSummaryRepository {
   /**
    * The turn records covering one page of a conversation's messages, oldest first, so
    * the activity view can interleave them with the thread it already fetched. The
-   * window is half-open — `[since, before)` — which makes consecutive pages disjoint:
-   * a page's `before` anchor is the previous (newer) page's oldest message, so no
+   * window is half-open — `[sinceMessageId, beforeMessageId)` — which makes consecutive
+   * pages disjoint: a page's `before` anchor is the previous (newer) page's oldest message, so no
    * record is rendered twice when paging back, and none falls between two pages.
    */
-  async listForWindow(conversationId: string, window: TurnWindow): Promise<TurnSummaryRow[]> {
+  async listForWindow(conversationId: string, window: TurnWindow = {}): Promise<TurnSummaryRow[]> {
     let query = this.db
       .selectFrom("turn_summaries")
       .select(TURN_SUMMARY_COLUMNS)
       .where("conversation_id", "=", conversationId);
     if (window.sinceMessageId) {
-      // Same reason as the `before` bound below: compare against the stored
-      // TIMESTAMPTZ, not a millisecond-precision Date.
       query = query.where(
-        sql<boolean>`turn_summaries.created_at >= (
-          select created_at from messages where id = ${window.sinceMessageId} and conversation_id = ${conversationId}
-        )`,
+        "created_at",
+        ">=",
+        this.messageCreatedAt(conversationId, window.sinceMessageId),
       );
-    } else {
-      query = query.where("created_at", ">=", window.since);
     }
     if (window.beforeMessageId) {
-      // The anchor's timestamp is resolved inside this statement rather than via a JS
-      // `Date`, for the same reason messageRepository.listPage does it: TIMESTAMPTZ
-      // carries microseconds that a millisecond-precision round-trip would drop.
       query = query.where(
-        sql<boolean>`turn_summaries.created_at < (
-          select created_at from messages where id = ${window.beforeMessageId} and conversation_id = ${conversationId}
-        )`,
+        "created_at",
+        "<",
+        this.messageCreatedAt(conversationId, window.beforeMessageId),
       );
     }
     const rows = await query.orderBy("created_at", "asc").orderBy("id", "asc").execute();
     return rows.map(toRow);
+  }
+
+  /**
+   * A message's stored `created_at` as a scalar subquery, so the comparison happens at
+   * full TIMESTAMPTZ precision — the same reason messageRepository.listPage resolves
+   * its `before` anchor in-statement.
+   */
+  private messageCreatedAt(conversationId: string, messageId: string) {
+    return this.db
+      .selectFrom("messages")
+      .select("created_at")
+      .where("id", "=", messageId)
+      .where("conversation_id", "=", conversationId);
   }
 }
 

@@ -55,7 +55,7 @@ jobs:
           ref: ${{ env.IMAGE_TAG }}
 
       - name: Setup Scaleway CLI and get kubeconfig
-        uses: scaleway/action-scw@v0.0.3
+        uses: scaleway/action-scw@v0
         with:
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}

@@ -659,7 +659,7 @@ describe("turn observability record", () => {
 
     await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
 
-    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    const rows = await deps.turnSummaries.listForWindow(conversationId);
     expect(rows).toHaveLength(1);
     const logged = record();
     expect(rows[0]).toMatchObject({
@@ -691,7 +691,7 @@ describe("turn observability record", () => {
 
     await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
 
-    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    const rows = await deps.turnSummaries.listForWindow(conversationId);
     expect(rows.map((r) => r.outcome)).toEqual(["iteration_cap"]);
     expect(rows[0]?.iterations).toBe(2);
   });
