@@ -80,6 +80,11 @@ pnpm dev            # backend + frontend, both in watch mode
 run. See [`AGENTS.md`](AGENTS.md) for the full command list (typecheck, lint, test, build)
 and the repo's internal conventions.
 
+The Compose volume is named for its PostgreSQL major. A new major therefore starts with
+a fresh volume instead of trying to open an older major's incompatible data directory.
+If local data must survive a major upgrade, dump it from the old container and restore
+it into the new one; do not rename or reuse the old volume directly.
+
 By default `pnpm dev` serves the backend on `:8081` and the Vite frontend on `:3001`
 (see `frontend/vite.config.ts`); these are dedicated local ports chosen to avoid
 colliding with the other homectl repos' dev servers in this workspace.
