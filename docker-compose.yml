@@ -11,10 +11,9 @@ services:
     ports:
       - "5532:5432"
     volumes:
-      # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker and
-      # refuse to start with a volume at the old .../data path. The volume is named per
-      # major so an existing Postgres 16 volume is left alone rather than misread.
-      - postgres18_data:/var/lib/postgresql
+      # Named per major so a Postgres 16 data directory stays on its own volume.
+      # Postgres 17 keeps PGDATA at /var/lib/postgresql/data.
+      - postgres17_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aivo -d aivo"]
       interval: 5s
@@ -22,4 +21,4 @@ services:
       retries: 5
 
 volumes:
-  postgres18_data:
+  postgres17_data:
