@@ -545,7 +545,11 @@ describe("turn observability record", () => {
       return completed[0]?.[0] as Record<string, unknown>;
     };
     /** The turn id bound onto every line of the turn (and onto its persisted row). */
-    const turnId = (): string => (child.mock.calls[0]?.[0] as { turnId: string }).turnId;
+    const turnId = (): string => {
+      const call = child.mock.calls[0];
+      if (!call) throw new Error("expected the turn logger to be created");
+      return (call[0] as { turnId: string }).turnId;
+    };
     return { child, record, turnId };
   }
 
@@ -655,7 +659,7 @@ describe("turn observability record", () => {
 
     await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
 
-    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    const rows = await deps.turnSummaries.listForWindow(conversationId);
     expect(rows).toHaveLength(1);
     const logged = record();
     expect(rows[0]).toMatchObject({
@@ -687,7 +691,7 @@ describe("turn observability record", () => {
 
     await runAgent(deps, { userId, isOwner, conversationId, triggerMessageId: "m1" });
 
-    const rows = await deps.turnSummaries.listForWindow(conversationId, { since: new Date(0) });
+    const rows = await deps.turnSummaries.listForWindow(conversationId);
     expect(rows.map((r) => r.outcome)).toEqual(["iteration_cap"]);
     expect(rows[0]?.iterations).toBe(2);
   });

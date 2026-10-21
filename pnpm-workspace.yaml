@@ -15,4 +15,3 @@ packageExtensions:
 
 overrides:
   '@discordjs/rest>undici': ^6.28.1
-  node-pg-migrate>glob: ^11.1.0

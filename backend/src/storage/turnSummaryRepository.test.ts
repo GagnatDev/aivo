@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { ConversationRepository } from "./conversationRepository.js";
 import { MessageRepository } from "./messageRepository.js";
@@ -101,20 +102,27 @@ describe("TurnSummaryRepository.listForWindow", () => {
     return { message, turn };
   }
 
-  it("returns the records at or after `since`, oldest first", async () => {
+  /** Pin a row's stored timestamp, microseconds included. */
+  async function setCreatedAt(table: "messages" | "turn_summaries", id: string, at: string) {
+    await sql`update ${sql.table(table)} set created_at = ${at}::timestamptz where id = ${id}`.execute(
+      testDb(),
+    );
+  }
+
+  it("returns the records at or after the `sinceMessageId` anchor, oldest first", async () => {
     const ctx = await setup();
     const first = await turnWithMessage(ctx, "one", "final_answer");
     const second = await turnWithMessage(ctx, "two", "iteration_cap");
 
     const window = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
-      since: second.message.created_at,
+      sinceMessageId: second.message.id,
     });
 
     expect(window.map((t) => t.id)).toEqual([second.turn.id]);
     expect(window[0]?.outcome).toBe("iteration_cap");
 
     const all = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
-      since: first.message.created_at,
+      sinceMessageId: first.message.id,
     });
     expect(all.map((t) => t.id)).toEqual([first.turn.id, second.turn.id]);
   });
@@ -126,10 +134,41 @@ describe("TurnSummaryRepository.listForWindow", () => {
 
     // The older page: anchored on the newer page's oldest message.
     const older = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
-      since: first.message.created_at,
+      sinceMessageId: first.message.id,
       beforeMessageId: second.message.id,
     });
     expect(older.map((t) => t.id)).toEqual([first.turn.id]);
+  });
+
+  it("compares the lower bound at full TIMESTAMPTZ precision, so pages stay disjoint", async () => {
+    const ctx = await setup();
+    const first = await turnWithMessage(ctx, "one", "final_answer");
+    const second = await turnWithMessage(ctx, "two", "final_answer");
+    // The first turn's record lands in the same millisecond as the newer page's oldest
+    // message, but 300µs before it — a `Date` lower bound would pull it into both pages.
+    await setCreatedAt("messages", second.message.id, "2030-01-01T00:00:00.000500Z");
+    await setCreatedAt("turn_summaries", first.turn.id, "2030-01-01T00:00:00.000200Z");
+    await setCreatedAt("turn_summaries", second.turn.id, "2030-01-01T00:00:01Z");
+
+    const newer = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
+      sinceMessageId: second.message.id,
+    });
+    expect(newer.map((t) => t.id)).toEqual([second.turn.id]);
+
+    const older = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
+      sinceMessageId: first.message.id,
+      beforeMessageId: second.message.id,
+    });
+    expect(older.map((t) => t.id)).toEqual([first.turn.id]);
+  });
+
+  it("is unbounded when no anchors are given", async () => {
+    const ctx = await setup();
+    const first = await turnWithMessage(ctx, "one", "final_answer");
+    const second = await turnWithMessage(ctx, "two", "final_answer");
+
+    const all = await ctx.turnSummaries.listForWindow(ctx.conversationId);
+    expect(all.map((t) => t.id)).toEqual([first.turn.id, second.turn.id]);
   });
 
   it("never returns another conversation's records", async () => {
@@ -148,7 +187,7 @@ describe("TurnSummaryRepository.listForWindow", () => {
     });
 
     const window = await ctx.turnSummaries.listForWindow(ctx.conversationId, {
-      since: mine.message.created_at,
+      sinceMessageId: mine.message.id,
     });
     expect(window.map((t) => t.id)).toEqual([mine.turn.id]);
   });

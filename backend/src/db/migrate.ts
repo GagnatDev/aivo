@@ -23,8 +23,8 @@ export interface MigrateOptions {
 }
 
 /**
- * Apply all pending migrations. node-pg-migrate takes a Postgres advisory lock
- * by default, so concurrent boots (e.g. a brief rolling-update overlap) are safe.
+ * Apply all pending migrations. The runner waits on its Postgres advisory lock so
+ * concurrent boots (e.g. a brief rolling-update overlap) apply migrations once.
  * Forward-only — no automated down migrations.
  *
  * Intentionally free of app config/logger imports so it can run inside the
@@ -40,6 +40,8 @@ export async function runMigrations(
     direction: "up",
     migrationsTable: MIGRATIONS_TABLE,
     count: Infinity,
+    // v9's default is to fail when another boot already holds the lock.
+    advisoryLockMode: "wait",
     log: options.log ?? (() => {}),
   });
 }

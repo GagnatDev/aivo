@@ -3,7 +3,7 @@
 # `pnpm dev` against a real Discord token from .env, not from compose.
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17.11-alpine
     environment:
       POSTGRES_USER: aivo
       POSTGRES_PASSWORD: aivo
@@ -11,7 +11,9 @@ services:
     ports:
       - "5532:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Named per major so a Postgres 16 data directory stays on its own volume.
+      # Postgres 17 keeps PGDATA at /var/lib/postgresql/data.
+      - postgres17_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aivo -d aivo"]
       interval: 5s
@@ -19,4 +21,4 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
+  postgres17_data:
