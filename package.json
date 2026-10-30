@@ -2,9 +2,9 @@
   "name": "aivo",
   "private": true,
   "version": "0.0.1",
-  "packageManager": "pnpm@12.15.0",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
-    "node": ">=24.22.1 <25"
+    "node": ">=24.22.2 <25"
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
