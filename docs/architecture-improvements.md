@@ -382,6 +382,15 @@ later, retry policy), and tests assert taxonomy, not log strings.
 > migration and the committed types disagree. Kysely's `Database` interface is now `DB`
 > (`db/kysely.ts` updated); `kysely-codegen` is pinned as a dev dependency and the generated
 > file is excluded from Biome. The section below is preserved as the original proposal.
+>
+> **Update (2026-11-01):** `kysely-codegen` was replaced by a small in-house generator.
+> `db/codegen.ts` introspects with Kysely's built-in `db.introspection.getTables()` and
+> renders through the pure `db/schemaRender.ts` (unit-tested in `schemaRender.test.ts`),
+> whose `SCALAR_TYPES` table maps Postgres types to TS and fails codegen on an unmapped
+> type. Output is identical apart from the header; `overrides`/`customImports`, the
+> `numeric`-as-string convention and the drift test are unchanged. This drops
+> kysely-codegen's runtime use of the pre-7 TypeScript API and with it the
+> `typescript@6` `packageExtensions` alias in `pnpm-workspace.yaml` (#45).
 
 **Problem.** The Kysely types in `backend/src/db/schema.ts` (192 lines) are written by
 hand against 10 SQL migrations. Nothing verifies they agree; a drifted column type

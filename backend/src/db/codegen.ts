@@ -1,7 +1,10 @@
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { generate, getDialect } from "kysely-codegen";
+import { Kysely, PostgresDialect } from "kysely";
+import { createPool } from "./pool.js";
 import { MIGRATIONS_TABLE } from "./migrate.js";
+import { renderSchema } from "./schemaRender.js";
 
 // Single source of truth for how `db/schema.ts` is generated. Both the
 // regenerate script (scripts/codegen.ts) and the drift-check test
@@ -44,7 +47,7 @@ const OVERRIDES = {
 } as const;
 
 // Wire the override type names to their hand-authored source so the generated file
-// imports them (ColumnType comes from kysely and is already imported by the generator).
+// imports them (ColumnType comes from kysely and is always imported by the renderer when used).
 const CUSTOM_IMPORTS = {
   Channel: "./schema.enums.js",
   MessageRole: "./schema.enums.js",
@@ -75,24 +78,28 @@ export async function runSchemaCodegen(
   connectionString: string,
   { verify = false }: { verify?: boolean } = {},
 ): Promise<void> {
-  // node-pg returns `numeric` as a string to preserve precision (the money convention,
-  // see docs/data-model.md); keep the generated read type a string to match.
-  const dialect = getDialect("postgres", { numericParser: "string" });
-  const db = await dialect.introspector.connect({ connectionString, dialect });
+  const db = new Kysely<unknown>({
+    dialect: new PostgresDialect({ pool: createPool(connectionString) }),
+  });
+  let source: string;
   try {
-    await generate({
-      db,
-      dialect,
-      outFile: SCHEMA_OUT_FILE,
+    const tables = await db.introspection.getTables();
+    source = renderSchema(
       // Skip node-pg-migrate's bookkeeping table — it's created by runMigrations, not
       // part of the app schema, and never queried through Kysely.
-      excludePattern: MIGRATIONS_TABLE,
-      overrides: OVERRIDES,
-      customImports: CUSTOM_IMPORTS,
-      typeOnlyImports: true,
-      verify,
-    });
+      tables.filter((t) => t.schema === "public" && t.name !== MIGRATIONS_TABLE),
+      { overrides: OVERRIDES.columns, customImports: CUSTOM_IMPORTS },
+    );
   } finally {
     await db.destroy();
+  }
+
+  if (!verify) {
+    await writeFile(SCHEMA_OUT_FILE, source);
+    return;
+  }
+  const committed = await readFile(SCHEMA_OUT_FILE, "utf8").catch(() => "");
+  if (committed !== source) {
+    throw new Error("src/db/schema.ts is out of date with the migrations.");
   }
 }
