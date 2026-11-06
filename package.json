@@ -2,7 +2,7 @@
   "name": "aivo",
   "private": true,
   "version": "0.0.1",
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=24.22.2 <25"
   },
