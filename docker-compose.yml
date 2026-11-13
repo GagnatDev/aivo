@@ -3,7 +3,7 @@
 # `pnpm dev` against a real Discord token from .env, not from compose.
 services:
   postgres:
-    image: postgres:17.11-alpine
+    image: postgres:17.12-alpine
     environment:
       POSTGRES_USER: aivo
       POSTGRES_PASSWORD: aivo
