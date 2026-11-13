@@ -22,7 +22,7 @@ export async function setup({ provide }: TestProject): Promise<void> {
     provide("databaseUrl", external);
     return;
   }
-  container = await new PostgreSqlContainer("postgres:17.11-alpine").start();
+  container = await new PostgreSqlContainer("postgres:17.12-alpine").start();
   const uri = container.getConnectionUri();
   await runMigrations(uri);
   provide("databaseUrl", uri);

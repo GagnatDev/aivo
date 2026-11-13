@@ -15,3 +15,8 @@ packageExtensions:
 
 overrides:
   '@discordjs/rest>undici': ^6.28.1
+  # GHSA-3g3m-2fjr-6pw4 and GHSA-qxr8-q827-836c. Also pulls minimatch >=11 (GHSA-g3hv-75wg-m249).
+  'glob@>=9.0.0 <14.0.2': 14.0.6
+
+minimumReleaseAgeExclude:
+  - glob@14.0.6

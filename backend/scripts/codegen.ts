@@ -22,7 +22,7 @@ let container: StartedPostgreSqlContainer | undefined;
 try {
   let url = process.env.TEST_DATABASE_URL;
   if (!url) {
-    container = await new PostgreSqlContainer("postgres:17.11-alpine").start();
+    container = await new PostgreSqlContainer("postgres:17.12-alpine").start();
     url = container.getConnectionUri();
   }
   await runMigrations(url);
