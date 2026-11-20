@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useApi } from "../api/useApi.js";
 import { DigestFailureNote } from "../components/digests/DigestFailureNote.js";
 import { CardGridSkeleton, StatGridSkeleton } from "../components/Skeleton.js";
