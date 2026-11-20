@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useApi } from "../api/useApi.js";
 import { PricingTable } from "../components/models/PricingTable.js";
 import { TierCards } from "../components/models/TierCards.js";

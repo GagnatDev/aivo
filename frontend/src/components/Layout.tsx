@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router";
 import type { Me } from "../api/client.js";
 import { useApi } from "../api/useApi.js";
 import { auth } from "../auth/auth.js";
